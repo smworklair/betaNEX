@@ -1,0 +1,31 @@
+# ЗАГОТОВКА (веха M9). Замените nex.example.com на реальный домен —
+# TLS-сертификат Caddy получит и продлит сам.
+nex.example.com {
+	encode zstd gzip
+
+	# API уходит в nexd.
+	handle /api/* {
+		reverse_proxy nexd:8080
+	}
+	handle /healthz {
+		reverse_proxy nexd:8080
+	}
+	handle /readyz {
+		reverse_proxy nexd:8080
+	}
+
+	# Всё остальное — статика SPA: любой путь без файла отдаёт index.html,
+	# дальше разбирается роутер фронтенда.
+	handle {
+		root * /srv/web
+		try_files {path} /index.html
+		file_server
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+}

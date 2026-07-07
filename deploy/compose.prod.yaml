@@ -1,0 +1,53 @@
+# ЗАГОТОВКА прод-окружения (веха M9): один VPS, Docker Compose + Caddy.
+# Не использовать до прохождения вех M8 (тесты) и M11 (hardening).
+#
+# Секреты приходят из .env рядом с этим файлом (не коммитится):
+#   POSTGRES_PASSWORD=...
+#   NEX_DATABASE_URL=postgres://nex:...@postgres:5432/nex?sslmode=disable
+name: nex-prod
+
+services:
+  nexd:
+    image: ghcr.io/smworklair/nex:latest # публикуется CI по git-тегу
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NEX_ENV: production
+      NEX_HTTP_ADDR: ":8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "8080"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./web-dist:/srv/web:ro # собранный фронтенд (vite build)
+      - caddy_data:/data
+      - caddy_config:/config
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nex
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+      POSTGRES_DB: nex
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nex -d nex"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,14 @@
+meta {
+  name: healthz — liveness
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/healthz
+}
+
+assert {
+  res.status: eq 200
+  res.body.status: eq ok
+}

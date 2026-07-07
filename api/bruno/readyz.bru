@@ -1,0 +1,14 @@
+meta {
+  name: readyz — readiness
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/readyz
+}
+
+assert {
+  res.status: eq 200
+  res.body.status: eq ok
+}
