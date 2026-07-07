@@ -1,0 +1,14 @@
+# Node / frontend prototype
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+
+# Go / NEX backend
+/bin/
+/tmp/
+*.test

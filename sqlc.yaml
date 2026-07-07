@@ -1,0 +1,14 @@
+# Конфигурация sqlc (ADR-006): типобезопасный Go из SQL.
+# Запуск: make sqlc. Запросы кладём в internal/platform/postgres/queries/,
+# схему sqlc читает из миграций goose.
+version: "2"
+sql:
+  - engine: "postgresql"
+    schema: "migrations"
+    queries: "internal/platform/postgres/queries"
+    gen:
+      go:
+        package: "db"
+        out: "internal/platform/postgres/db"
+        sql_package: "pgx/v5"
+        emit_pointers_for_null_types: true

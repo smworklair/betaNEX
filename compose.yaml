@@ -1,0 +1,29 @@
+# Dev-окружение NEX: docker compose up -d (или make dev).
+# Прод-компоуз будет отдельным файлом на вехе M9.
+name: nex
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: nex
+      POSTGRES_PASSWORD: nex # только для локальной разработки
+      POSTGRES_DB: nex
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nex -d nex"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Valkey добавим, когда появится реальная потребность в сетевом кэше (ADR-008):
+  # valkey:
+  #   image: valkey/valkey:8-alpine
+  #   ports:
+  #     - "6379:6379"
+
+volumes:
+  pgdata:

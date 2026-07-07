@@ -1,0 +1,22 @@
+# Конфигурация golangci-lint (ADR-017).
+# Запуск: make lint (или golangci-lint run).
+version: "2"
+
+linters:
+  default: standard # govet, staticcheck, errcheck, ineffassign, unused
+  enable:
+    - misspell      # опечатки в комментариях и строках
+    - revive        # стиль: замена golint
+    - gosec         # типовые проблемы безопасности
+    - sqlclosecheck # незакрытые rows/statements
+    - bodyclose     # незакрытые тела HTTP-ответов
+    - noctx         # HTTP-запросы без context
+    - copyloopvar   # устаревшие копии переменных цикла
+
+formatters:
+  enable:
+    - gofumpt
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

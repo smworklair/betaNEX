@@ -1,0 +1,14 @@
+# Hot-reload Go-сервера: air (https://github.com/air-verse/air).
+# Запуск: make watch. Сохранил файл — nexd пересобрался и перезапустился.
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "go build -o ./tmp/nexd ./cmd/nexd"
+bin = "./tmp/nexd"
+include_ext = ["go"]
+exclude_dir = ["web", "docs", "learning", "migrations", "tmp", "bin", "api"]
+delay = 200
+
+[log]
+main_only = true

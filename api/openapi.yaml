@@ -1,0 +1,62 @@
+# NEX API — источник истины контракта (веха M5).
+# Из этой спеки генерируются: серверные интерфейсы Go (oapi-codegen)
+# и TypeScript-клиент (openapi-typescript). Правило: сначала меняем
+# спеку, потом код.
+openapi: 3.1.0
+info:
+  title: NEX API
+  version: 0.1.0
+  description: |
+    API платформы NEX. Ошибки возвращаются в формате RFC 9457
+    (application/problem+json). Все доменные маршруты будут жить
+    под /api/v1 и требовать аутентификации.
+servers:
+  - url: http://localhost:8080
+    description: Локальная разработка
+
+paths:
+  /healthz:
+    get:
+      operationId: getHealthz
+      summary: Liveness-проверка
+      description: Возвращает 200, если процесс жив. Не проверяет зависимости.
+      tags: [system]
+      responses:
+        "200":
+          description: Процесс жив
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+
+    # RFC 9457 Problem Details — единый формат ошибок API.
+    Problem:
+      type: object
+      required: [title, status]
+      properties:
+        type:
+          type: string
+          format: uri
+          default: about:blank
+        title:
+          type: string
+          description: Краткое человекочитаемое описание проблемы
+        status:
+          type: integer
+          description: HTTP-статус
+        detail:
+          type: string
+          description: Подробности конкретного случая
+        instance:
+          type: string
+          description: URI конкретного случая (для поиска в логах)
