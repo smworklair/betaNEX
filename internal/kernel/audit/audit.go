@@ -1,0 +1,79 @@
+package audit
+
+import (
+	"context"
+	"log/slog"
+	"sync"
+	"time"
+)
+
+// Outcome — исход команды, зафиксированный в журнале.
+type Outcome string
+
+const (
+	OutcomeOK     Outcome = "ok"     // команда исполнена
+	OutcomeDenied Outcome = "denied" // отказ авторизации
+	OutcomeError  Outcome = "error"  // ошибка валидации или исполнения
+)
+
+// Entry — одна запись журнала: кто, что, когда и с каким исходом.
+type Entry struct {
+	Command    string    // имя команды, напр. "college.student.enroll"
+	Outcome    Outcome   // исход
+	ActorID    string    // кто (пусто = аноним/система)
+	TenantID   string    // в каком tenant'е
+	Detail     string    // подробности (текст ошибки, причина отказа)
+	OccurredAt time.Time // момент фиксации (UTC)
+}
+
+// Recorder фиксирует записи журнала. Реализация поверх Postgres появится
+// на вехе M2 и будет писать в той же транзакции, что и изменение данных, —
+// тогда журнал не сможет разойтись с данными.
+type Recorder interface {
+	Record(ctx context.Context, e Entry)
+}
+
+// SlogRecorder — временная реализация Recorder: пишет журнал в структурный
+// лог процесса. Используется, пока нет слоя Postgres.
+type SlogRecorder struct {
+	log *slog.Logger
+}
+
+// NewSlogRecorder создаёт рекордер поверх переданного логгера.
+func NewSlogRecorder(log *slog.Logger) *SlogRecorder {
+	return &SlogRecorder{log: log}
+}
+
+// Record пишет запись журнала одной строкой лога.
+func (r *SlogRecorder) Record(ctx context.Context, e Entry) {
+	r.log.LogAttrs(ctx, slog.LevelInfo, "audit",
+		slog.String("command", e.Command),
+		slog.String("outcome", string(e.Outcome)),
+		slog.String("actor_id", e.ActorID),
+		slog.String("tenant_id", e.TenantID),
+		slog.String("detail", e.Detail),
+		slog.Time("occurred_at", e.OccurredAt),
+	)
+}
+
+// MemoryRecorder накапливает записи в памяти. Предназначен для тестов.
+type MemoryRecorder struct {
+	mu      sync.Mutex
+	entries []Entry
+}
+
+// Record добавляет запись в память.
+func (r *MemoryRecorder) Record(_ context.Context, e Entry) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.entries = append(r.entries, e)
+}
+
+// Entries возвращает копию накопленных записей.
+func (r *MemoryRecorder) Entries() []Entry {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]Entry, len(r.entries))
+	copy(out, r.entries)
+	return out
+}
