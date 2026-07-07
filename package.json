@@ -1,0 +1,11 @@
+{
+  "name": "betanex",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "dev": "pnpm --filter react-example dev",
+    "build": "pnpm --filter react-example build",
+    "preview": "pnpm --filter react-example preview",
+    "lint": "pnpm --filter react-example lint"
+  }
+}
