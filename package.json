@@ -3,9 +3,16 @@
   "private": true,
   "version": "0.0.0",
   "scripts": {
-    "dev": "npm --prefix web install && npm --prefix web run dev",
-    "build": "npm --prefix web install && npm --prefix web run build",
-    "preview": "npm --prefix web run preview",
-    "lint": "npm --prefix web run lint"
+    "dev": "pnpm -C web dev",
+    "build": "pnpm -C web build",
+    "preview": "pnpm -C web preview",
+    "lint": "pnpm -C web lint"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "@google/genai",
+      "protobufjs"
+    ]
   }
 }
