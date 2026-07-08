@@ -1,0 +1,30 @@
+meta {
+  name: finance — провести операцию
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/v1/finance/entries
+  body: json
+}
+
+headers {
+  X-Dev-Actor: u1
+  X-Dev-Roles: accountant
+  X-Dev-Tenant: college-1
+}
+
+body:json {
+  {
+    "memo": "оплата обучения, июнь",
+    "lines": [
+      { "account_id": "ID_СЧЁТА_КАССЫ", "side": "debit", "amount": 4500000 },
+      { "account_id": "ID_СЧЁТА_ДОХОДА", "side": "credit", "amount": 4500000 }
+    ]
+  }
+}
+
+assert {
+  res.status: eq 201
+}

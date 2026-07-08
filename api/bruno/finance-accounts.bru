@@ -1,0 +1,19 @@
+meta {
+  name: finance — счета с сальдо
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/v1/finance/accounts
+}
+
+headers {
+  X-Dev-Actor: u1
+  X-Dev-Roles: accountant
+  X-Dev-Tenant: college-1
+}
+
+assert {
+  res.status: eq 200
+}

@@ -1,0 +1,28 @@
+meta {
+  name: finance — создать счёт
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/v1/finance/accounts
+  body: json
+}
+
+headers {
+  X-Dev-Actor: u1
+  X-Dev-Roles: accountant
+  X-Dev-Tenant: college-1
+}
+
+body:json {
+  {
+    "code": "50",
+    "name": "Касса",
+    "type": "asset"
+  }
+}
+
+assert {
+  res.status: eq 201
+}
