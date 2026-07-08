@@ -62,7 +62,7 @@ func mustUUID(t *testing.T, s string) pgtype.UUID {
 }
 
 // createAccount вставляет счёт от имени tenant'а через InTenantTx.
-func createAccount(t *testing.T, d *postgres.DB, ctx context.Context, tenantID, code string) {
+func createAccount(ctx context.Context, t *testing.T, d *postgres.DB, tenantID, code string) {
 	t.Helper()
 	err := d.InTenantTx(ctx, func(ctx context.Context, q *db.Queries) error {
 		_, err := q.CreateFinanceAccount(ctx, db.CreateFinanceAccountParams{
@@ -87,7 +87,7 @@ func TestRLSSecondLine(t *testing.T) {
 	tenant1, ctx1 := newTenant(t, d)
 	_, ctx2 := newTenant(t, d)
 
-	createAccount(t, d, ctx1, tenant1, "50")
+	createAccount(ctx1, t, d, tenant1, "50")
 
 	t.Run("без app.tenant_id не видно ни строки", func(t *testing.T) {
 		// Запрос мимо InTenantTx — на «голом» пуле, без set_config.

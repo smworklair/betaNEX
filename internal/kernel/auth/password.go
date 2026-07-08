@@ -62,9 +62,9 @@ func VerifyPassword(password, phc string) (bool, error) {
 		return false, ErrHashFormat
 	}
 	want, err := base64.RawStdEncoding.DecodeString(parts[5])
-	if err != nil {
+	if err != nil || len(want) == 0 || len(want) > 512 {
 		return false, ErrHashFormat
 	}
-	got := argon2.IDKey([]byte(password), salt, time, memory, threads, uint32(len(want)))
+	got := argon2.IDKey([]byte(password), salt, time, memory, threads, uint32(len(want))) // #nosec G115 -- длина ограничена проверкой выше (0 < len <= 512)
 	return subtle.ConstantTimeCompare(got, want) == 1, nil
 }

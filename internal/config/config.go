@@ -24,6 +24,7 @@ import (
 // never be used to branch on domain behaviour.
 type Environment string
 
+// Supported deployment environments.
 const (
 	EnvDevelopment Environment = "development"
 	EnvProduction  Environment = "production"

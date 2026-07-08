@@ -11,6 +11,7 @@ import (
 // у пассивных, капитальных и доходных — кредитовое.
 type AccountType string
 
+// Типы счетов плана счетов.
 const (
 	AccountAsset     AccountType = "asset"     // активы: касса, банк, дебиторка
 	AccountLiability AccountType = "liability" // обязательства: авансы, кредиторка
@@ -41,6 +42,7 @@ type Account struct {
 // Side — сторона строки проводки.
 type Side string
 
+// Стороны двойной записи.
 const (
 	Debit  Side = "debit"
 	Credit Side = "credit"

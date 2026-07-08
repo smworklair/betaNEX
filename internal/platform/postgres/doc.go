@@ -1,4 +1,4 @@
-// Пакет postgres — адаптер платформы к PostgreSQL.
+// Package postgres — адаптер платформы к PostgreSQL.
 //
 // Содержимое:
 //   - Connect / Ready — пул pgx и readiness-пинг для /readyz;

@@ -10,6 +10,7 @@ import (
 // Outcome — исход команды, зафиксированный в журнале.
 type Outcome string
 
+// Возможные исходы.
 const (
 	OutcomeOK     Outcome = "ok"     // команда исполнена
 	OutcomeDenied Outcome = "denied" // отказ авторизации

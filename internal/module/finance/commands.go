@@ -29,7 +29,10 @@ type CreateAccount struct {
 	Currency    string // пусто = RUB
 }
 
-func (CreateAccount) Name() string       { return CmdAccountCreate }
+// Name возвращает стабильное имя команды для аудита.
+func (CreateAccount) Name() string { return CmdAccountCreate }
+
+// Permission возвращает право, требуемое для исполнения.
 func (CreateAccount) Permission() string { return PermAccountsWrite }
 
 // Validate проверяет инварианты входа до обращения к хранилищу.
@@ -55,7 +58,10 @@ type PostEntry struct {
 	Lines []Line
 }
 
-func (PostEntry) Name() string       { return CmdEntryPost }
+// Name возвращает стабильное имя команды для аудита.
+func (PostEntry) Name() string { return CmdEntryPost }
+
+// Permission возвращает право, требуемое для исполнения.
 func (PostEntry) Permission() string { return PermEntriesPost }
 
 // Validate гарантирует главный инвариант двойной записи: сумма дебетов

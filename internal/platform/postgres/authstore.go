@@ -46,7 +46,7 @@ func (s *AuthStore) UserByID(ctx context.Context, id string) (auth.User, error) 
 
 func (s *AuthStore) user(ctx context.Context, get func(q *db.Queries) (db.User, error)) (auth.User, error) {
 	var out auth.User
-	err := s.db.InTenantTx(ctx, func(ctx context.Context, q *db.Queries) error {
+	err := s.db.InTenantTx(ctx, func(_ context.Context, q *db.Queries) error {
 		row, err := get(q)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return auth.ErrNoUser

@@ -66,8 +66,8 @@ func TestPGFinanceEndToEnd(t *testing.T) {
 	bus := newBus(repo)
 	ctx := pgTenantCtx(t, d, "pg-e2e-"+t.Name())
 
-	cash := createAccount(t, bus, repo, ctx, "50", "Касса", finance.AccountAsset)
-	income := createAccount(t, bus, repo, ctx, "90", "Доход от обучения", finance.AccountIncome)
+	cash := createAccount(ctx, t, bus, repo, "50", "Касса", finance.AccountAsset)
+	income := createAccount(ctx, t, bus, repo, "90", "Доход от обучения", finance.AccountIncome)
 
 	err := bus.Dispatch(ctx, finance.PostEntry{
 		Memo: "оплата обучения, июнь",
@@ -114,7 +114,7 @@ func TestPGTenantIsolation(t *testing.T) {
 
 	ctx1 := pgTenantCtx(t, d, "pg-iso-1-"+t.Name())
 	ctx2 := pgTenantCtx(t, d, "pg-iso-2-"+t.Name())
-	createAccount(t, bus, repo, ctx1, "50", "Касса", finance.AccountAsset)
+	createAccount(ctx1, t, bus, repo, "50", "Касса", finance.AccountAsset)
 
 	// Второй tenant не видит счетов первого.
 	balances, err := repo.Accounts(ctx2)
@@ -143,7 +143,7 @@ func TestPGErrors(t *testing.T) {
 	bus := newBus(repo)
 	ctx := pgTenantCtx(t, d, "pg-err-"+t.Name())
 
-	cash := createAccount(t, bus, repo, ctx, "50", "Касса", finance.AccountAsset)
+	cash := createAccount(ctx, t, bus, repo, "50", "Касса", finance.AccountAsset)
 
 	// Дубликат кода счёта.
 	err := bus.Dispatch(ctx, finance.CreateAccount{Code: "50", DisplayName: "Касса-2", AccountType: finance.AccountAsset})
@@ -166,7 +166,7 @@ func TestPGErrors(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("создание валютного счёта: %v", err)
 	}
-	usd := accountID(t, repo, ctx, "52")
+	usd := accountID(ctx, t, repo, "52")
 	err = bus.Dispatch(ctx, finance.PostEntry{Lines: []finance.Line{
 		{AccountID: usd, Side: finance.Debit, Amount: 100},
 		{AccountID: cash, Side: finance.Credit, Amount: 100},
@@ -253,7 +253,7 @@ func (failCmd) Permission() string { return "test:fail" }
 func (failCmd) Validate() error    { return nil }
 
 // accountID возвращает ID счёта по коду.
-func accountID(t *testing.T, repo finance.Repository, ctx context.Context, code string) string {
+func accountID(ctx context.Context, t *testing.T, repo finance.Repository, code string) string {
 	t.Helper()
 	balances, err := repo.Accounts(ctx)
 	if err != nil {
