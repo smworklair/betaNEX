@@ -106,6 +106,8 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		financeRepo   finance.Repository
 		readiness     []httpapi.ReadinessCheck
 		resolveTenant func(ctx context.Context, v string) (string, error)
+		recorder      audit.Recorder
+		busOpts       []command.Option
 	)
 	if cfg.DB.URL != "" {
 		pg, err := postgres.Connect(ctx, cfg.DB.URL)
@@ -127,14 +129,19 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		} else {
 			resolveTenant = pg.ResolveTenant
 		}
+
+		// Аудит — в append-only таблицу, в одной транзакции с изменением
+		// данных (шина оборачивает хендлер и запись журнала в RunTx).
+		recorder = postgres.NewAuditRecorder(pg, httpapi.RequestIDFrom)
+		busOpts = append(busOpts, command.WithTxRunner(pg))
 	} else {
 		log.Warn("NEX_DATABASE_URL is empty: running with in-memory storage, data is lost on restart")
 		financeRepo = finance.NewMemoryRepository()
+		recorder = audit.NewSlogRecorder(log)
 	}
 
-	// Шина команд: единственный путь изменения данных. Пока рекордер аудита
-	// пишет в лог; с вехой M2 он начнёт писать в Postgres в той же транзакции.
-	bus := command.NewMemoryBus(authz.NewPolicyAuthorizer(policy), audit.NewSlogRecorder(log))
+	// Шина команд: единственный путь изменения данных.
+	bus := command.NewMemoryBus(authz.NewPolicyAuthorizer(policy), recorder, busOpts...)
 	if err := finance.RegisterCommands(bus, financeRepo); err != nil {
 		return fmt.Errorf("register finance commands: %w", err)
 	}

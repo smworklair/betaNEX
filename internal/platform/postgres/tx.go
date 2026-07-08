@@ -61,6 +61,14 @@ func (d *DB) InTx(ctx context.Context, fn func(ctx context.Context, q *db.Querie
 	return d.inTx(ctx, tenant, fn)
 }
 
+// RunTx реализует command.TxRunner: исполняет fn в транзакции с
+// tenant-контекстом (если он есть). Шина команд оборачивает в неё
+// хендлер и запись аудита; репозитории внутри fn присоединяются к
+// транзакции через контекст.
+func (d *DB) RunTx(ctx context.Context, fn func(ctx context.Context) error) error {
+	return d.InTx(ctx, func(ctx context.Context, _ *db.Queries) error { return fn(ctx) })
+}
+
 func (d *DB) inTx(ctx context.Context, tenant string, fn func(ctx context.Context, q *db.Queries) error) error {
 	if tx, ok := txFrom(ctx); ok {
 		return fn(ctx, db.New(tx))

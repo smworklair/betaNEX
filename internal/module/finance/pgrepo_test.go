@@ -8,10 +8,13 @@ import (
 	"os"
 	"testing"
 
+	"github.com/smworklair/betakis/internal/kernel/authz"
+	"github.com/smworklair/betakis/internal/kernel/command"
 	"github.com/smworklair/betakis/internal/kernel/identity"
 	"github.com/smworklair/betakis/internal/kernel/tenancy"
 	"github.com/smworklair/betakis/internal/module/finance"
 	"github.com/smworklair/betakis/internal/platform/postgres"
+	"github.com/smworklair/betakis/internal/platform/postgres/db"
 )
 
 // pgTestDB подключается к БД из NEX_TEST_DATABASE_URL и применяет
@@ -172,6 +175,82 @@ func TestPGErrors(t *testing.T) {
 		t.Errorf("смешение валют: err = %v, want ErrCurrencyMismatch", err)
 	}
 }
+
+// TestPGTransactionalAudit проверяет спайн Commands→Audit на Postgres:
+// успех команды оставляет запись «ok» в журнале в той же транзакции,
+// а ошибка хендлера откатывает данные, но след «error» в журнале остаётся.
+func TestPGTransactionalAudit(t *testing.T) {
+	d := pgTestDB(t)
+	repo := finance.NewPostgresRepository(d)
+	ctx := pgTenantCtx(t, d, "pg-audit")
+
+	policy := authz.NewPolicy()
+	policy.Grant("accountant", finance.PermAccountsWrite)
+	policy.Grant("accountant", "test:fail")
+	bus := command.NewMemoryBus(authz.NewPolicyAuthorizer(policy),
+		postgres.NewAuditRecorder(d, nil), command.WithTxRunner(d))
+	if err := finance.RegisterCommands(bus, repo); err != nil {
+		t.Fatal(err)
+	}
+	// Хендлер, который меняет данные и затем падает: изменение обязано
+	// откатиться вместе с транзакцией шины.
+	err := bus.Register("test.fail", func(ctx context.Context, _ command.Command) error {
+		if err := repo.CreateAccount(ctx, finance.Account{Code: "66", Name: "x", Type: finance.AccountAsset, Currency: "RUB"}); err != nil {
+			return err
+		}
+		return errors.New("boom")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Успех: счёт создан, в журнале «ok».
+	if err := bus.Dispatch(ctx, finance.CreateAccount{Code: "50", DisplayName: "Касса", AccountType: finance.AccountAsset}); err != nil {
+		t.Fatalf("создание счёта: %v", err)
+	}
+
+	// Ошибка: изменение откатилось, в журнале «error».
+	if err := bus.Dispatch(ctx, failCmd{}); err == nil {
+		t.Fatal("ожидалась ошибка команды test.fail")
+	}
+	balances, err := repo.Accounts(ctx)
+	if err != nil {
+		t.Fatalf("Accounts: %v", err)
+	}
+	for _, b := range balances {
+		if b.Account.Code == "66" {
+			t.Error("счёт 66 пережил откат транзакции")
+		}
+	}
+
+	outcomes := map[string]string{} // команда → исход
+	err = d.InTenantTx(ctx, func(ctx context.Context, q *db.Queries) error {
+		rows, err := q.ListAuditEntries(ctx, 10)
+		if err != nil {
+			return err
+		}
+		for _, r := range rows {
+			outcomes[r.Command] = r.Outcome
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("чтение журнала: %v", err)
+	}
+	if outcomes[finance.CmdAccountCreate] != "ok" {
+		t.Errorf("аудит %s = %q, want ok", finance.CmdAccountCreate, outcomes[finance.CmdAccountCreate])
+	}
+	if outcomes["test.fail"] != "error" {
+		t.Errorf("аудит test.fail = %q, want error", outcomes["test.fail"])
+	}
+}
+
+// failCmd — тестовая команда для проверки отката.
+type failCmd struct{}
+
+func (failCmd) Name() string       { return "test.fail" }
+func (failCmd) Permission() string { return "test:fail" }
+func (failCmd) Validate() error    { return nil }
 
 // accountID возвращает ID счёта по коду.
 func accountID(t *testing.T, repo finance.Repository, ctx context.Context, code string) string {
