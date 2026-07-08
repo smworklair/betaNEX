@@ -12,11 +12,16 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/smworklair/betakis/internal/config"
+	"github.com/smworklair/betakis/internal/kernel/audit"
+	"github.com/smworklair/betakis/internal/kernel/authz"
+	"github.com/smworklair/betakis/internal/kernel/command"
+	"github.com/smworklair/betakis/internal/module/finance"
 	"github.com/smworklair/betakis/internal/platform/httpapi"
 	"github.com/smworklair/betakis/internal/platform/logging"
 )
@@ -47,7 +52,28 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	router := httpapi.NewRouter(log)
+	// RBAC-политика приложения: модули объявляют права, корень раздаёт их
+	// ролям. С вехой M4 раздача переедет в настраиваемую политику tenant'а.
+	policy := authz.NewPolicy()
+	for _, perm := range []string{finance.PermAccountsWrite, finance.PermEntriesPost} {
+		policy.Grant("admin", perm)
+		policy.Grant("accountant", perm)
+	}
+
+	// Шина команд: единственный путь изменения данных. Пока рекордер аудита
+	// пишет в лог; с вехой M2 он начнёт писать в Postgres в той же транзакции.
+	bus := command.NewMemoryBus(authz.NewPolicyAuthorizer(policy), audit.NewSlogRecorder(log))
+
+	// Модуль «Финансы» на in-memory хранилище (Postgres — веха M1/M2).
+	financeRepo := finance.NewMemoryRepository()
+	if err := finance.RegisterCommands(bus, financeRepo); err != nil {
+		return fmt.Errorf("register finance commands: %w", err)
+	}
+
+	router := httpapi.NewRouter(log, httpapi.RouterConfig{
+		DevAuth: cfg.Env == config.EnvDevelopment,
+		Mount:   []func(*http.ServeMux){finance.Routes(bus, financeRepo)},
+	})
 	server := httpapi.New(router, httpapi.Options{
 		Addr:            cfg.HTTP.Addr,
 		ReadTimeout:     cfg.HTTP.ReadTimeout,
