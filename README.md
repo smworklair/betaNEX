@@ -44,7 +44,19 @@ Administrative subcommands:
 ```sh
 nexd migrate                      # apply migrations and exit
 nexd tenant create <slug> <name>  # register an organization
+nexd user create --tenant <slug> --email <email> [--name <n>] [--role admin]
+                                  # password: NEX_USER_PASSWORD or generated
 ```
+
+## Authentication
+
+Server-side sessions (ADR-004): `POST /api/v1/auth/login` with
+`{"tenant": "<slug>", "email": "...", "password": "..."}` sets an
+httpOnly `nex_session` cookie; `GET /api/v1/auth/me` returns the current
+user; `POST /api/v1/auth/logout` revokes the session instantly. Passwords
+are stored as argon2id hashes, session tokens as sha256 hashes. Login
+attempts are rate-limited and audited. In development, `X-Dev-*` headers
+remain available as a shortcut alongside real sessions.
 
 Once running, the liveness endpoint is available:
 
@@ -69,6 +81,7 @@ variable is optional and falls back to a sensible default.
 | `NEX_LOG_LEVEL`             | `info`         | `debug`, `info`, `warn` or `error`.                |
 | `NEX_LOG_FORMAT`            | env-dependent  | `json` or `text` (defaults: text in dev, json in prod). |
 | `NEX_DATABASE_URL`          | *(empty)*      | PostgreSQL DSN. Empty = in-memory mode (no persistence). |
+| `NEX_SESSION_TTL`           | `24h`          | Lifetime of an issued session (and its cookie).    |
 
 ## Project layout
 

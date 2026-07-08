@@ -25,6 +25,10 @@ type RouterConfig struct {
 	// nil означает «использовать как есть» (in-memory режим).
 	ResolveTenant func(ctx context.Context, v string) (string, error)
 
+	// Auth подключает настоящую аутентификацию: endpoints /api/v1/auth/*
+	// и session-middleware. nil — без неё (in-memory режим, dev-заголовки).
+	Auth *AuthConfig
+
 	// Mount — функции монтирования маршрутов модулей. Каждый модуль
 	// отдаёт свою функцию (например, finance.Routes), а корень передаёт
 	// их сюда — так httpapi не знает о конкретных модулях.
@@ -48,11 +52,22 @@ func NewRouter(log *slog.Logger, cfg RouterConfig) http.Handler {
 	mux.Handle("GET /healthz", handleHealthz())
 	mux.Handle("GET /readyz", handleReadyz(cfg.Readiness))
 
+	var authLayer *authAPI
+	if cfg.Auth != nil {
+		authLayer = newAuthAPI(*cfg.Auth)
+		authLayer.mount(mux)
+	}
 	for _, mount := range cfg.Mount {
 		mount(mux)
 	}
 
+	// Порядок цепочки: сессия аутентифицирует первой; dev-заголовки могут
+	// подменить актора только там, где включены; резолвер tenant'а
+	// нормализует то, что положили предыдущие слои.
 	mws := []middleware{requestID(), requestLogger(log), recoverer(log)}
+	if authLayer != nil {
+		mws = append(mws, authLayer.sessionIdentity())
+	}
 	if cfg.DevAuth {
 		mws = append(mws, devIdentity())
 	}

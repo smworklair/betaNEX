@@ -41,6 +41,9 @@ type Config struct {
 	// DB configures the PostgreSQL connection.
 	DB DBConfig
 
+	// Auth configures kernel authentication.
+	Auth AuthConfig
+
 	// Log configures structured logging.
 	Log LogConfig
 }
@@ -51,6 +54,12 @@ type DBConfig struct {
 	// in-memory mode: no persistence, intended only for quick local runs
 	// without a database.
 	URL string
+}
+
+// AuthConfig configures kernel authentication.
+type AuthConfig struct {
+	// SessionTTL is how long an issued session (and its cookie) lives.
+	SessionTTL time.Duration
 }
 
 // HTTPConfig configures the HTTP server that exposes NEX over the network.
@@ -102,6 +111,9 @@ func Load() (Config, error) {
 		DB: DBConfig{
 			URL: r.str("NEX_DATABASE_URL", ""),
 		},
+		Auth: AuthConfig{
+			SessionTTL: r.duration("NEX_SESSION_TTL", 24*time.Hour),
+		},
 		Log: LogConfig{
 			Level:  r.str("NEX_LOG_LEVEL", "info"),
 			Format: r.str("NEX_LOG_FORMAT", ""),
@@ -141,6 +153,10 @@ func (c Config) validate() error {
 
 	if c.HTTP.Addr == "" {
 		errs = append(errs, errors.New("NEX_HTTP_ADDR: must not be empty"))
+	}
+
+	if c.Auth.SessionTTL <= 0 {
+		errs = append(errs, errors.New("NEX_SESSION_TTL: must be positive"))
 	}
 
 	switch c.Log.Level {
