@@ -6,6 +6,12 @@
 // concrete components, wires them together, and runs them until the process is
 // signalled to stop. Keeping all wiring here means dependencies flow in one
 // direction and nothing deeper in the tree reaches for globals.
+//
+// Подкоманды:
+//
+//	nexd [serve]                     запустить сервис (по умолчанию)
+//	nexd migrate                     применить миграции и выйти
+//	nexd tenant create <slug> <имя>  зарегистрировать организацию
 package main
 
 import (
@@ -15,6 +21,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/smworklair/betakis/internal/config"
@@ -24,6 +31,7 @@ import (
 	"github.com/smworklair/betakis/internal/module/finance"
 	"github.com/smworklair/betakis/internal/platform/httpapi"
 	"github.com/smworklair/betakis/internal/platform/logging"
+	"github.com/smworklair/betakis/internal/platform/postgres"
 )
 
 func main() {
@@ -44,13 +52,45 @@ func run() error {
 	}
 
 	log := logging.New(os.Stdout, cfg.Log.Level, cfg.Log.Format)
-	log.Info("starting nexd", slog.String("env", string(cfg.Env)))
 
 	// ctx is cancelled on the first SIGINT or SIGTERM, which triggers graceful
 	// shutdown. A second signal restores default behaviour and terminates the
 	// process immediately, so a stuck shutdown can still be interrupted.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	switch cmd := subcommand(); cmd {
+	case "serve":
+		return serve(ctx, cfg, log)
+	case "migrate":
+		if cfg.DB.URL == "" {
+			return fmt.Errorf("migrate: NEX_DATABASE_URL is not set")
+		}
+		if err := postgres.Migrate(ctx, cfg.DB.URL); err != nil {
+			return err
+		}
+		log.Info("migrations applied")
+		return nil
+	case "tenant":
+		return tenantCmd(ctx, cfg, os.Args[2:])
+	default:
+		return fmt.Errorf("unknown subcommand %q (want serve, migrate or tenant)", cmd)
+	}
+}
+
+// subcommand возвращает первую подкоманду из аргументов ("serve", если
+// аргументов нет).
+func subcommand() string {
+	if len(os.Args) < 2 {
+		return "serve"
+	}
+	return os.Args[1]
+}
+
+// serve собирает все компоненты сервиса и обслуживает HTTP до сигнала
+// остановки.
+func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
+	log.Info("starting nexd", slog.String("env", string(cfg.Env)))
 
 	// RBAC-политика приложения: модули объявляют права, корень раздаёт их
 	// ролям. С вехой M4 раздача переедет в настраиваемую политику tenant'а.
@@ -60,19 +100,50 @@ func run() error {
 		policy.Grant("accountant", perm)
 	}
 
+	// Хранилище: PostgreSQL, если задан NEX_DATABASE_URL, иначе память
+	// процесса (только для быстрых локальных запусков без БД).
+	var (
+		financeRepo   finance.Repository
+		readiness     []httpapi.ReadinessCheck
+		resolveTenant func(ctx context.Context, v string) (string, error)
+	)
+	if cfg.DB.URL != "" {
+		pg, err := postgres.Connect(ctx, cfg.DB.URL)
+		if err != nil {
+			return err
+		}
+		defer pg.Close()
+		if err := postgres.Migrate(ctx, cfg.DB.URL); err != nil {
+			return err
+		}
+		log.Info("postgres connected, migrations applied")
+
+		financeRepo = finance.NewPostgresRepository(pg)
+		readiness = append(readiness, httpapi.ReadinessCheck{Name: "postgres", Check: pg.Ready})
+		if cfg.Env == config.EnvDevelopment {
+			// В разработке неизвестный slug создаёт tenant на лету:
+			// локальная работа не начинается с ручной регистрации.
+			resolveTenant = pg.EnsureTenant
+		} else {
+			resolveTenant = pg.ResolveTenant
+		}
+	} else {
+		log.Warn("NEX_DATABASE_URL is empty: running with in-memory storage, data is lost on restart")
+		financeRepo = finance.NewMemoryRepository()
+	}
+
 	// Шина команд: единственный путь изменения данных. Пока рекордер аудита
 	// пишет в лог; с вехой M2 он начнёт писать в Postgres в той же транзакции.
 	bus := command.NewMemoryBus(authz.NewPolicyAuthorizer(policy), audit.NewSlogRecorder(log))
-
-	// Модуль «Финансы» на in-memory хранилище (Postgres — веха M1/M2).
-	financeRepo := finance.NewMemoryRepository()
 	if err := finance.RegisterCommands(bus, financeRepo); err != nil {
 		return fmt.Errorf("register finance commands: %w", err)
 	}
 
 	router := httpapi.NewRouter(log, httpapi.RouterConfig{
-		DevAuth: cfg.Env == config.EnvDevelopment,
-		Mount:   []func(*http.ServeMux){finance.Routes(bus, financeRepo)},
+		Readiness:     readiness,
+		DevAuth:       cfg.Env == config.EnvDevelopment,
+		ResolveTenant: resolveTenant,
+		Mount:         []func(*http.ServeMux){finance.Routes(bus, financeRepo)},
 	})
 	server := httpapi.New(router, httpapi.Options{
 		Addr:            cfg.HTTP.Addr,
@@ -88,5 +159,37 @@ func run() error {
 	}
 
 	log.Info("nexd stopped")
+	return nil
+}
+
+// tenantCmd — администрирование реестра tenant'ов:
+//
+//	nexd tenant create <slug> <отображаемое имя>
+func tenantCmd(ctx context.Context, cfg config.Config, args []string) error {
+	if len(args) < 1 || args[0] != "create" {
+		return fmt.Errorf("tenant: usage: nexd tenant create <slug> <name>")
+	}
+	if len(args) < 3 {
+		return fmt.Errorf("tenant create: usage: nexd tenant create <slug> <name>")
+	}
+	if cfg.DB.URL == "" {
+		return fmt.Errorf("tenant create: NEX_DATABASE_URL is not set")
+	}
+	slug, name := args[1], strings.Join(args[2:], " ")
+
+	pg, err := postgres.Connect(ctx, cfg.DB.URL)
+	if err != nil {
+		return err
+	}
+	defer pg.Close()
+	if err := postgres.Migrate(ctx, cfg.DB.URL); err != nil {
+		return err
+	}
+
+	id, err := pg.CreateTenant(ctx, slug, name)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("tenant created: %s (%s)\n", id, slug)
 	return nil
 }

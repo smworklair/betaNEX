@@ -21,15 +21,29 @@ authorized, audited paths as any other actor — it is not part of the kernel.
 
 ## Requirements
 
-- Go 1.24 or newer.
+- Go 1.25 or newer (older toolchains auto-upgrade via the `go` directive).
+- PostgreSQL 16+ for persistent mode (`docker compose up -d` provides one).
 
 ## Running
 
 ```sh
+make dev      # start Postgres (docker compose)
 make run      # run nexd from source
 make build    # compile to ./bin/nexd
 make test     # run all tests with the race detector
+make test-db  # same, plus Postgres integration tests
 make help     # list all targets
+```
+
+Without `NEX_DATABASE_URL` the service runs in **in-memory mode** (no
+persistence) — handy for a quick look, not for real use. With a database
+URL set, `nexd` applies embedded SQL migrations automatically on startup.
+
+Administrative subcommands:
+
+```sh
+nexd migrate                      # apply migrations and exit
+nexd tenant create <slug> <name>  # register an organization
 ```
 
 Once running, the liveness endpoint is available:
@@ -54,14 +68,22 @@ variable is optional and falls back to a sensible default.
 | `NEX_HTTP_SHUTDOWN_TIMEOUT` | `15s`          | Grace period for in-flight requests on shutdown.   |
 | `NEX_LOG_LEVEL`             | `info`         | `debug`, `info`, `warn` or `error`.                |
 | `NEX_LOG_FORMAT`            | env-dependent  | `json` or `text` (defaults: text in dev, json in prod). |
+| `NEX_DATABASE_URL`          | *(empty)*      | PostgreSQL DSN. Empty = in-memory mode (no persistence). |
 
 ## Project layout
 
 ```
-cmd/nexd/            Service entry point (composition root).
+cmd/nexd/            Service entry point (composition root, subcommands).
+migrations/          SQL migrations (goose), embedded into the binary.
 internal/config/     Environment configuration: load + validate.
-internal/kernel/     Domain-free core (skeleton): identity, tenancy, authz,
-                     command/event/audit spine. Implemented in M2-M4.
-internal/module/     Domain modules (empty until M6).
+internal/kernel/     Domain-free core: identity, tenancy, authz,
+                     command/event/audit spine.
+internal/module/     Domain modules (finance: double-entry ledger).
 internal/platform/   Cross-cutting infrastructure adapters.
-  httpapi/           Inbound
+  httpapi/           Inbound HTTP transport: router, middleware, problem+json.
+  logging/           slog construction.
+  postgres/          pgx pool, tenant-scoped transactions (RLS), goose
+                     migrations, sqlc-generated queries (db/).
+api/                 OpenAPI contract and Bruno request collection.
+web/                 Frontend prototype (design reference only).
+```

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 )
@@ -18,6 +19,11 @@ type RouterConfig struct {
 	// X-Dev-* (см. devauth.go). Устанавливается только в development;
 	// с появлением настоящих сессий (веха M3) исчезнет.
 	DevAuth bool
+
+	// ResolveTenant нормализует идентификатор tenant'а из запроса
+	// (например, slug → UUID) до того, как он попадёт в команды и SQL.
+	// nil означает «использовать как есть» (in-memory режим).
+	ResolveTenant func(ctx context.Context, v string) (string, error)
 
 	// Mount — функции монтирования маршрутов модулей. Каждый модуль
 	// отдаёт свою функцию (например, finance.Routes), а корень передаёт
@@ -49,6 +55,9 @@ func NewRouter(log *slog.Logger, cfg RouterConfig) http.Handler {
 	mws := []middleware{requestID(), requestLogger(log), recoverer(log)}
 	if cfg.DevAuth {
 		mws = append(mws, devIdentity())
+	}
+	if cfg.ResolveTenant != nil {
+		mws = append(mws, tenantResolver(cfg.ResolveTenant))
 	}
 	return chain(mux, mws...)
 }
