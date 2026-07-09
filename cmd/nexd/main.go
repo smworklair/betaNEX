@@ -145,6 +145,7 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		filesRepo     *files.Repository
 		filesStore    *blob.Store
 		pgDB          *postgres.DB
+		idemStore     httpapi.IdempotencyStore
 	)
 	if cfg.DB.URL != "" {
 		pg, err := postgres.Connect(ctx, cfg.DB.URL)
@@ -172,6 +173,14 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 
 		// Вьюер журнала аудита (только admin): кто что менял.
 		extraMounts = append(extraMounts, httpapi.AuditRoutes(postgres.NewAuditReader(pg)))
+
+		// Идемпотентность записи по Idempotency-Key + ночная чистка ключей.
+		idemStore = postgres.NewIdempotencyStore(pg)
+		if err := sched.Add(cron.Job{Name: "idempotency.cleanup", At: "03:45", Run: func(ctx context.Context) error {
+			return pg.ForEachTenant(ctx, pg.CleanupIdempotencyKeys)
+		}}); err != nil {
+			return err
+		}
 
 		// Файловое хранилище: метаданные в БД, содержимое на диске.
 		filesStore, err = blob.NewStore(cfg.Files.Dir)
@@ -251,6 +260,7 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		ResolveTenant: resolveTenant,
 		Auth:          authCfg,
 		Observe:       observe,
+		Idempotency:   idemStore,
 		Mount:         mounts,
 	})
 	server := httpapi.New(router, httpapi.Options{

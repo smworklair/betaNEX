@@ -39,6 +39,10 @@ type RouterConfig struct {
 	// Pprof монтирует /debug/pprof/* (только development).
 	Pprof bool
 
+	// Idempotency включает поддержку заголовка Idempotency-Key для
+	// мутирующих запросов (offline-синхронизация, ретраи). nil = выкл.
+	Idempotency IdempotencyStore
+
 	// Mount — функции монтирования маршрутов модулей. Каждый модуль
 	// отдаёт свою функцию (например, finance.Routes), а корень передаёт
 	// их сюда — так httpapi не знает о конкретных модулях.
@@ -91,6 +95,11 @@ func NewRouter(log *slog.Logger, cfg RouterConfig) http.Handler {
 	}
 	if cfg.ResolveTenant != nil {
 		mws = append(mws, tenantResolver(cfg.ResolveTenant))
+	}
+	if cfg.Idempotency != nil {
+		// Внутренним слоем: ключ хранится в разрезе окончательного
+		// (уже разрешённого) tenant'а.
+		mws = append(mws, idempotency(cfg.Idempotency))
 	}
 	return chain(mux, mws...)
 }

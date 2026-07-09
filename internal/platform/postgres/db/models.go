@@ -71,6 +71,15 @@ type FinanceMonthlyTurnover struct {
 	RefreshedAt pgtype.Timestamptz
 }
 
+type IdempotencyKey struct {
+	TenantID    pgtype.UUID
+	Key         string
+	Status      int32
+	ContentType string
+	Body        []byte
+	CreatedAt   pgtype.Timestamptz
+}
+
 type Session struct {
 	ID        pgtype.UUID
 	TenantID  pgtype.UUID
