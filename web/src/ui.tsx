@@ -2,9 +2,18 @@ import { createContext, useContext, useState, useEffect, type ReactNode, type Fo
 import { Sparkles, ArrowUp, AlertTriangle, Wallet, ShieldCheck } from 'lucide-react';
 import type { Role, Severity } from './data';
 import type { NexReply } from './nexbrain';
+import { apiMe, primaryRole } from './api/auth';
 
 export type Theme = 'light' | 'dark';
-export interface User { name: string; role: Role; }
+export interface User {
+  name: string;
+  role: Role;
+  /** Поля реальной сессии бэкенда (в демо-режиме отсутствуют). */
+  id?: string;
+  email?: string;
+  tenant?: string;
+  roles?: string[];
+}
 
 /* ---- персонализация интерфейса (хранится в localStorage) ---- */
 export interface Prefs {
@@ -116,6 +125,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [prefs]);
 
   const setPref = <K extends keyof Prefs>(k: K, v: Prefs[K]) => setPrefs((p) => ({ ...p, [k]: v }));
+
+  /* Восстановление сессии при старте: если бэкенд сконфигурирован и
+     есть живая cookie nex_session — входим без формы. В демо-режиме
+     apiMe() возвращает null и ничего не делает. */
+  useEffect(() => {
+    let live = true;
+    apiMe().then((u) => {
+      if (!live || !u) return;
+      setUser({
+        name: u.display_name || u.email,
+        role: primaryRole(u.roles),
+        id: u.id,
+        email: u.email,
+        tenant: u.tenant,
+        roles: u.roles,
+      });
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
 
   const openStudent = (id: number) => setObjStudent(id);
   const closeObject = () => setObjStudent(null);

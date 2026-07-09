@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { CheckCircle2, Circle, Sparkles, ClipboardCheck, ChevronLeft, ChevronRight } from 'lucide-react';
 import { PageHead, Chip, NexAsk, useApp } from '../ui';
 import { tasks as seedTasks, nexLog, exams, calEvents } from '../data';
+import { tasksApi } from '../api';
 
 /* ============================ Лента · Календарь (полный месяц) ============================ */
 const WD = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
@@ -55,8 +56,31 @@ export function MonthCalendar() {
 /* ============================ Лента · Задачи ============================ */
 export function Tasks() {
   const { toast } = useApp();
+  // Список из бэкенда (/api/v1/tasks) с автофолбэком на моки — грузим при монтировании.
+  const [items, setItems] = useState<tasksApi.UITask[]>(() => seedTasks.map(tasksApi.seedToUI));
   const [done, setDone] = useState<Record<string, boolean>>(() => Object.fromEntries(seedTasks.map((t) => [t.id, t.done])));
-  const open = seedTasks.filter((t) => !done[t.id]).length;
+
+  useEffect(() => {
+    let live = true;
+    tasksApi.listTasks().then((ts) => {
+      if (!live) return;
+      setItems(ts);
+      setDone(Object.fromEntries(ts.map((t) => [t.id, t.status === 'done'])));
+    });
+    return () => { live = false; };
+  }, []);
+
+  const toggle = (t: tasksApi.UITask) => {
+    const next = !done[t.id];
+    setDone((d) => ({ ...d, [t.id]: next }));
+    if (next) {
+      toast('Отмечено выполненным');
+      // Best-effort: фиксируем на сервере, если он подключён; при ошибке — оставляем локально.
+      tasksApi.completeTask(t.id).catch(() => {});
+    }
+  };
+
+  const open = items.filter((t) => !done[t.id]).length;
   return (
     <div className="fade content-narrow">
       <PageHead title="Задачи" sub={`${open} дел ждут действия · собрано NEX из всех разделов`} />
@@ -65,9 +89,9 @@ export function Tasks() {
         <div className="ai-body">Я собрал всё, что требует вашего внимания, в один список — из финансов, приёма, безопасности и расписания. Отмечайте галочкой, что сделано.</div>
       </div>
       <div className="card"><div className="row-list">
-        {seedTasks.map((t) => (
+        {items.map((t) => (
           <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}
-            onClick={() => { setDone((d) => ({ ...d, [t.id]: !d[t.id] })); if (!done[t.id]) toast('Отмечено выполненным'); }}>
+            onClick={() => toggle(t)}>
             <span style={{ color: done[t.id] ? 'var(--success)' : 'var(--text-3)', flexShrink: 0 }}>
               {done[t.id] ? <CheckCircle2 size={20} /> : <Circle size={20} />}
             </span>

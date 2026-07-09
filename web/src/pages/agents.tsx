@@ -7,9 +7,12 @@ import { PageHead, Chip, Beta, useApp } from '../ui';
 import { planFor } from '../nexbrain';
 import { llmReady, llmPlan } from '../llm';
 import {
-  AGENTS, QUEUE, AGENT_LOG, AUTONOMY_LEVELS, AUTOPILOT_PRESETS, RULES, agentById, guessAgent, dryRun,
+  AUTONOMY_LEVELS, AUTOPILOT_PRESETS, RULES, agentById, guessAgent, dryRun,
   type Agent, type Autonomy, type PendingAction, type Rule,
 } from '../agents';
+// Данные агентов идут через слой api/ (пока моки — бэкенд-модуль планируется).
+// Подключение реального /api/v1/agents/* — правка одного файла api/agents.ts.
+import { AGENTS, QUEUE, AGENT_LOG } from '../api/agents';
 
 /* ============================================================
    АГЕНТЫ — экспериментальный центр агентности NEX (только админ).

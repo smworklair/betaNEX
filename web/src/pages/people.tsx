@@ -1,23 +1,31 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Search, Plus, Users } from 'lucide-react';
 import { PageHead, Chip, Avatar, AiInsightCard, NexAsk, Soon, useApp } from '../ui';
-import { students, groups, staff } from '../data';
+import { students, groups, staff, type Student, type Group } from '../data';
+import { campusApi } from '../api';
 
 const statusTone = (s: string) => (s === 'Обучается' || s === 'Активен' ? 'chip-success' : s === 'Академический отпуск' || s === 'Отпуск' ? 'chip-warn' : 'chip-neutral');
 
 export function Students() {
   const { openStudent, setPage, toast } = useApp();
   const [q, setQ] = useState('');
+  // Студенты из бэкенда (/api/v1/campus/students) с автофолбэком на моки.
+  const [all, setAll] = useState<Student[]>(students);
+  useEffect(() => {
+    let live = true;
+    campusApi.listStudents().then((s) => { if (live) setAll(s); });
+    return () => { live = false; };
+  }, []);
   const list = useMemo(
-    () => students.filter((s) => `${s.lastname} ${s.firstname} ${s.group}`.toLowerCase().includes(q.toLowerCase())),
-    [q],
+    () => all.filter((s) => `${s.lastname} ${s.firstname} ${s.group}`.toLowerCase().includes(q.toLowerCase())),
+    [q, all],
   );
 
   return (
     <div className="fade content-narrow">
       <PageHead
         title="Студенты"
-        sub={`Всего ${students.length} · отсортированы по релевантности`}
+        sub={`Всего ${all.length} · отсортированы по релевантности`}
         actions={<><Soon /><button className="btn btn-primary" onClick={() => toast('Функция в разработке')}><Plus size={15} />Добавить</button></>}
       />
 
@@ -72,11 +80,18 @@ export function Students() {
 
 export function Groups() {
   const { toast } = useApp();
+  // Группы из бэкенда (/api/v1/campus/groups) с автофолбэком на моки.
+  const [all, setAll] = useState<Group[]>(groups);
+  useEffect(() => {
+    let live = true;
+    campusApi.listGroups().then((g) => { if (live) setAll(g); });
+    return () => { live = false; };
+  }, []);
   return (
     <div className="fade content-narrow">
-      <PageHead title="Группы" sub={`${groups.length} учебных групп`} actions={<><NexAsk q="Сравни группы: численность, успеваемость, риски" label="Сравнить группы" /><Soon /><button className="btn btn-primary" onClick={() => toast('Функция в разработке')}><Plus size={15} />Новая группа</button></>} />
+      <PageHead title="Группы" sub={`${all.length} учебных групп`} actions={<><NexAsk q="Сравни группы: численность, успеваемость, риски" label="Сравнить группы" /><Soon /><button className="btn btn-primary" onClick={() => toast('Функция в разработке')}><Plus size={15} />Новая группа</button></>} />
       <div className="grid cols-2">
-        {groups.map((g) => (
+        {all.map((g) => (
           <div className="card" key={g.id}>
             <div className="card-body">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>

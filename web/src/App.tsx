@@ -11,6 +11,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useApp, Beta, useIsMobile, type User } from './ui';
+import { auth as authApi, ApiError } from './api';
 import { DOCK_BY_ID, DEFAULT_DOCK, DEFAULT_TOPBAR } from './dock';
 import { roleLabel, students, type Role } from './data';
 import { ContextDrawer } from './blocks';
@@ -107,13 +108,40 @@ const ROLE_OPTS: { role: Role; icon: LucideIcon; hint: string }[] = [
 
 function Login() {
   const { setUser, setPage } = useApp();
+  const apiMode = authApi.authConfigured();
   const [role, setRole] = useState<Role>('admin');
   const [name, setName] = useState('');
+  const [tenant, setTenant] = useState('');
+  const [email, setEmail] = useState('');
   const [pass, setPass] = useState('');
   const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
 
-  const submit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
+    setErr('');
+
+    // Реальный вход через бэкенд (VITE_API_URL задан).
+    if (apiMode) {
+      if (!tenant.trim() || !email.trim() || !pass) { setErr('Заполните организацию, email и пароль'); return; }
+      setBusy(true);
+      try {
+        const u = await authApi.apiLogin(tenant.trim(), email.trim(), pass);
+        setUser({
+          name: u.display_name || u.email,
+          role: authApi.primaryRole(u.roles),
+          id: u.id, email: u.email, tenant: u.tenant, roles: u.roles,
+        });
+        setPage('home');
+      } catch (e2) {
+        setErr(e2 instanceof ApiError ? (e2.detail || e2.title) : 'Не удалось войти. Проверьте подключение к серверу.');
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
+    // Демо-режим (бэкенд не подключён): вход по имени и паролю 0000.
     if (!name.trim()) { setErr('Введите имя'); return; }
     if (pass !== '0000') { setErr('Неверный пароль (для демо: 0000)'); return; }
     setPage('home');
@@ -138,41 +166,63 @@ function Login() {
       <main className="login-main">
         <form className="login-card" onSubmit={submit}>
           <h1 style={{ fontSize: 26, fontWeight: 700, letterSpacing: '-0.03em' }}>Здравствуйте</h1>
-          <p className="muted" style={{ fontSize: 14, marginTop: 4, marginBottom: 20 }}>Выберите, кто вы, и войдите. Пароль для входа: <b className="mono">0000</b></p>
+          <p className="muted" style={{ fontSize: 14, marginTop: 4, marginBottom: 20 }}>
+            {apiMode
+              ? <>Вход в вашу организацию NEX по email и паролю.</>
+              : <>Выберите, кто вы, и войдите. Пароль для входа: <b className="mono">0000</b></>}
+          </p>
 
-          <label className="field-label">Кто вы</label>
-          <div className="role-grid" style={{ marginBottom: 14 }}>
-            {ROLE_OPTS.map((o) => {
-              const Icon = o.icon;
-              const frozen = o.role !== 'admin';
-              return (
-                <button type="button" key={o.role} disabled={frozen}
-                  className={`role-btn ${role === o.role ? 'active' : ''} ${frozen ? 'frozen' : ''}`}
-                  onClick={() => !frozen && setRole(o.role)}>
-                  <Icon className="ico" size={18} /><b>{roleLabel[o.role]}</b>
-                  <span>{frozen ? 'Скоро' : o.hint}</span>
-                  {frozen && <span className="frozen-badge"><Snowflake size={11} /></span>}
-                </button>
-              );
-            })}
-          </div>
+          {apiMode ? (
+            <>
+              <label className="field-label">Организация</label>
+              <div style={{ position: 'relative', marginBottom: 14 }}>
+                <ShieldCheck size={15} style={{ position: 'absolute', left: 11, top: 10, color: 'var(--text-3)' }} />
+                <input className="input" style={{ paddingLeft: 34 }} value={tenant} onChange={(e) => setTenant(e.target.value)} placeholder="slug организации" autoComplete="organization" />
+              </div>
 
-          <label className="field-label">Имя</label>
-          <div style={{ position: 'relative', marginBottom: 14 }}>
-            <UserIcon size={15} style={{ position: 'absolute', left: 11, top: 10, color: 'var(--text-3)' }} />
-            <input className="input" style={{ paddingLeft: 34 }} value={name} onChange={(e) => setName(e.target.value)} placeholder="Любое имя" />
-          </div>
+              <label className="field-label">Email</label>
+              <div style={{ position: 'relative', marginBottom: 14 }}>
+                <UserIcon size={15} style={{ position: 'absolute', left: 11, top: 10, color: 'var(--text-3)' }} />
+                <input className="input" style={{ paddingLeft: 34 }} type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.ru" autoComplete="username" />
+              </div>
+            </>
+          ) : (
+            <>
+              <label className="field-label">Кто вы</label>
+              <div className="role-grid" style={{ marginBottom: 14 }}>
+                {ROLE_OPTS.map((o) => {
+                  const Icon = o.icon;
+                  const frozen = o.role !== 'admin';
+                  return (
+                    <button type="button" key={o.role} disabled={frozen}
+                      className={`role-btn ${role === o.role ? 'active' : ''} ${frozen ? 'frozen' : ''}`}
+                      onClick={() => !frozen && setRole(o.role)}>
+                      <Icon className="ico" size={18} /><b>{roleLabel[o.role]}</b>
+                      <span>{frozen ? 'Скоро' : o.hint}</span>
+                      {frozen && <span className="frozen-badge"><Snowflake size={11} /></span>}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <label className="field-label">Имя</label>
+              <div style={{ position: 'relative', marginBottom: 14 }}>
+                <UserIcon size={15} style={{ position: 'absolute', left: 11, top: 10, color: 'var(--text-3)' }} />
+                <input className="input" style={{ paddingLeft: 34 }} value={name} onChange={(e) => setName(e.target.value)} placeholder="Любое имя" />
+              </div>
+            </>
+          )}
 
           <label className="field-label">Пароль</label>
           <div style={{ position: 'relative', marginBottom: 16 }}>
             <Lock size={15} style={{ position: 'absolute', left: 11, top: 10, color: 'var(--text-3)' }} />
-            <input className="input" style={{ paddingLeft: 34 }} type="password" value={pass} onChange={(e) => setPass(e.target.value)} placeholder="0000" />
+            <input className="input" style={{ paddingLeft: 34 }} type="password" value={pass} onChange={(e) => setPass(e.target.value)} placeholder={apiMode ? '••••••••' : '0000'} autoComplete="current-password" />
           </div>
 
           {err && <div className="chip chip-danger" style={{ marginBottom: 14 }}>{err}</div>}
 
-          <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', height: 40 }} type="submit">
-            Войти как {roleLabel[role]} <ArrowRight size={16} />
+          <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', height: 40 }} type="submit" disabled={busy}>
+            {apiMode ? (busy ? 'Вхожу…' : <>Войти <ArrowRight size={16} /></>) : <>Войти как {roleLabel[role]} <ArrowRight size={16} /></>}
           </button>
         </form>
       </main>
@@ -523,7 +573,7 @@ function MobileShell() {
               ))}
               <div className="m-drawer-sep" />
               <button className={`m-drawer-item ${page === 'settings' ? 'active' : ''}`} onClick={() => go('settings')}><SettingsIcon size={20} /><span>Настройки</span></button>
-              <button className="m-drawer-item" onClick={() => setUser(null)}><LogOut size={20} /><span>Выйти</span></button>
+              <button className="m-drawer-item" onClick={() => { void authApi.apiLogout(); setUser(null); }}><LogOut size={20} /><span>Выйти</span></button>
             </div>
           </div>
         </div>
