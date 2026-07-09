@@ -11,11 +11,22 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const clearFinanceMonthlyTurnovers = `-- name: ClearFinanceMonthlyTurnovers :exec
+
+DELETE FROM finance_monthly_turnovers
+`
+
+// Витрина оборотов: пересчёт «снести и перелить» в транзакции tenant'а.
+func (q *Queries) ClearFinanceMonthlyTurnovers(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, clearFinanceMonthlyTurnovers)
+	return err
+}
+
 const createFinanceAccount = `-- name: CreateFinanceAccount :one
 
 INSERT INTO finance_accounts (tenant_id, code, name, type, currency)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, tenant_id, code, name, type, currency, created_at
+RETURNING id, tenant_id, code, name, type, currency, created_at, search
 `
 
 type CreateFinanceAccountParams struct {
@@ -46,6 +57,7 @@ func (q *Queries) CreateFinanceAccount(ctx context.Context, arg CreateFinanceAcc
 		&i.Type,
 		&i.Currency,
 		&i.CreatedAt,
+		&i.Search,
 	)
 	return i, err
 }
@@ -53,7 +65,7 @@ func (q *Queries) CreateFinanceAccount(ctx context.Context, arg CreateFinanceAcc
 const createFinanceEntry = `-- name: CreateFinanceEntry :one
 INSERT INTO finance_entries (tenant_id, memo, posted_by)
 VALUES ($1, $2, $3)
-RETURNING id, tenant_id, memo, posted_by, posted_at
+RETURNING id, tenant_id, memo, posted_by, posted_at, search
 `
 
 type CreateFinanceEntryParams struct {
@@ -71,6 +83,7 @@ func (q *Queries) CreateFinanceEntry(ctx context.Context, arg CreateFinanceEntry
 		&i.Memo,
 		&i.PostedBy,
 		&i.PostedAt,
+		&i.Search,
 	)
 	return i, err
 }
@@ -99,8 +112,25 @@ func (q *Queries) CreateFinanceLine(ctx context.Context, arg CreateFinanceLinePa
 	return err
 }
 
+const fillFinanceMonthlyTurnovers = `-- name: FillFinanceMonthlyTurnovers :exec
+INSERT INTO finance_monthly_turnovers (tenant_id, month, account_id, debit, credit)
+SELECT l.tenant_id,
+       date_trunc('month', e.posted_at)::date,
+       l.account_id,
+       COALESCE(SUM(l.amount) FILTER (WHERE l.side = 'debit'), 0),
+       COALESCE(SUM(l.amount) FILTER (WHERE l.side = 'credit'), 0)
+FROM finance_lines l
+JOIN finance_entries e ON e.id = l.entry_id
+GROUP BY 1, 2, 3
+`
+
+func (q *Queries) FillFinanceMonthlyTurnovers(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, fillFinanceMonthlyTurnovers)
+	return err
+}
+
 const getFinanceAccount = `-- name: GetFinanceAccount :one
-SELECT id, tenant_id, code, name, type, currency, created_at FROM finance_accounts WHERE id = $1
+SELECT id, tenant_id, code, name, type, currency, created_at, search FROM finance_accounts WHERE id = $1
 `
 
 func (q *Queries) GetFinanceAccount(ctx context.Context, id pgtype.UUID) (FinanceAccount, error) {
@@ -114,12 +144,13 @@ func (q *Queries) GetFinanceAccount(ctx context.Context, id pgtype.UUID) (Financ
 		&i.Type,
 		&i.Currency,
 		&i.CreatedAt,
+		&i.Search,
 	)
 	return i, err
 }
 
 const listFinanceAccountsByIDs = `-- name: ListFinanceAccountsByIDs :many
-SELECT id, tenant_id, code, name, type, currency, created_at FROM finance_accounts WHERE id = ANY($1::uuid[])
+SELECT id, tenant_id, code, name, type, currency, created_at, search FROM finance_accounts WHERE id = ANY($1::uuid[])
 `
 
 func (q *Queries) ListFinanceAccountsByIDs(ctx context.Context, dollar_1 []pgtype.UUID) ([]FinanceAccount, error) {
@@ -139,6 +170,7 @@ func (q *Queries) ListFinanceAccountsByIDs(ctx context.Context, dollar_1 []pgtyp
 			&i.Type,
 			&i.Currency,
 			&i.CreatedAt,
+			&i.Search,
 		); err != nil {
 			return nil, err
 		}
@@ -152,7 +184,7 @@ func (q *Queries) ListFinanceAccountsByIDs(ctx context.Context, dollar_1 []pgtyp
 
 const listFinanceAccountsWithBalances = `-- name: ListFinanceAccountsWithBalances :many
 SELECT
-    a.id, a.tenant_id, a.code, a.name, a.type, a.currency, a.created_at,
+    a.id, a.tenant_id, a.code, a.name, a.type, a.currency, a.created_at, a.search,
     COALESCE(SUM(
         CASE
             WHEN a.type IN ('asset', 'expense') AND l.side = 'debit'  THEN l.amount
@@ -175,6 +207,7 @@ type ListFinanceAccountsWithBalancesRow struct {
 	Type      string
 	Currency  string
 	CreatedAt pgtype.Timestamptz
+	Search    interface{}
 	Balance   int64
 }
 
@@ -195,6 +228,7 @@ func (q *Queries) ListFinanceAccountsWithBalances(ctx context.Context) ([]ListFi
 			&i.Type,
 			&i.Currency,
 			&i.CreatedAt,
+			&i.Search,
 			&i.Balance,
 		); err != nil {
 			return nil, err
@@ -208,7 +242,7 @@ func (q *Queries) ListFinanceAccountsWithBalances(ctx context.Context) ([]ListFi
 }
 
 const listFinanceEntries = `-- name: ListFinanceEntries :many
-SELECT id, tenant_id, memo, posted_by, posted_at FROM finance_entries ORDER BY posted_at, id
+SELECT id, tenant_id, memo, posted_by, posted_at, search FROM finance_entries ORDER BY posted_at, id
 `
 
 func (q *Queries) ListFinanceEntries(ctx context.Context) ([]FinanceEntry, error) {
@@ -226,6 +260,7 @@ func (q *Queries) ListFinanceEntries(ctx context.Context) ([]FinanceEntry, error
 			&i.Memo,
 			&i.PostedBy,
 			&i.PostedAt,
+			&i.Search,
 		); err != nil {
 			return nil, err
 		}
@@ -257,6 +292,52 @@ func (q *Queries) ListFinanceLines(ctx context.Context) ([]FinanceLine, error) {
 			&i.AccountID,
 			&i.Side,
 			&i.Amount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listFinanceMonthlyTurnovers = `-- name: ListFinanceMonthlyTurnovers :many
+SELECT m.month, m.debit, m.credit, m.refreshed_at,
+       a.id AS account_id, a.code, a.name
+FROM finance_monthly_turnovers m
+JOIN finance_accounts a ON a.id = m.account_id
+ORDER BY m.month DESC, a.code
+`
+
+type ListFinanceMonthlyTurnoversRow struct {
+	Month       pgtype.Date
+	Debit       int64
+	Credit      int64
+	RefreshedAt pgtype.Timestamptz
+	AccountID   pgtype.UUID
+	Code        string
+	Name        string
+}
+
+func (q *Queries) ListFinanceMonthlyTurnovers(ctx context.Context) ([]ListFinanceMonthlyTurnoversRow, error) {
+	rows, err := q.db.Query(ctx, listFinanceMonthlyTurnovers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListFinanceMonthlyTurnoversRow
+	for rows.Next() {
+		var i ListFinanceMonthlyTurnoversRow
+		if err := rows.Scan(
+			&i.Month,
+			&i.Debit,
+			&i.Credit,
+			&i.RefreshedAt,
+			&i.AccountID,
+			&i.Code,
+			&i.Name,
 		); err != nil {
 			return nil, err
 		}

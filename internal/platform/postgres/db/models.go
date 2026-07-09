@@ -19,6 +19,20 @@ type AuditLog struct {
 	OccurredAt pgtype.Timestamptz
 }
 
+type File struct {
+	ID          pgtype.UUID
+	TenantID    pgtype.UUID
+	Name        string
+	ContentType string
+	Size        int64
+	Sha256      string
+	EntityType  string
+	EntityID    string
+	UploadedBy  string
+	CreatedAt   pgtype.Timestamptz
+	Search      interface{}
+}
+
 type FinanceAccount struct {
 	ID        pgtype.UUID
 	TenantID  pgtype.UUID
@@ -27,6 +41,7 @@ type FinanceAccount struct {
 	Type      string
 	Currency  string
 	CreatedAt pgtype.Timestamptz
+	Search    interface{}
 }
 
 type FinanceEntry struct {
@@ -35,6 +50,7 @@ type FinanceEntry struct {
 	Memo     string
 	PostedBy string
 	PostedAt pgtype.Timestamptz
+	Search   interface{}
 }
 
 type FinanceLine struct {
@@ -44,6 +60,24 @@ type FinanceLine struct {
 	AccountID pgtype.UUID
 	Side      string
 	Amount    int64
+}
+
+type FinanceMonthlyTurnover struct {
+	TenantID    pgtype.UUID
+	Month       pgtype.Date
+	AccountID   pgtype.UUID
+	Debit       int64
+	Credit      int64
+	RefreshedAt pgtype.Timestamptz
+}
+
+type IdempotencyKey struct {
+	TenantID    pgtype.UUID
+	Key         string
+	Status      int32
+	ContentType string
+	Body        []byte
+	CreatedAt   pgtype.Timestamptz
 }
 
 type Session struct {

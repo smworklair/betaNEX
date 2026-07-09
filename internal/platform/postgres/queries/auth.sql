@@ -24,3 +24,8 @@ WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now();
 -- name: RevokeSessionByTokenHash :exec
 UPDATE sessions SET revoked_at = now()
 WHERE token_hash = $1 AND revoked_at IS NULL;
+
+-- name: DeleteExpiredSessions :execrows
+DELETE FROM sessions
+WHERE expires_at < now() - interval '7 days'
+   OR (revoked_at IS NOT NULL AND revoked_at < now() - interval '7 days');

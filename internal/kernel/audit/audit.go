@@ -24,7 +24,21 @@ type Entry struct {
 	ActorID    string    // кто (пусто = аноним/система)
 	TenantID   string    // в каком tenant'е
 	Detail     string    // подробности (текст ошибки, причина отказа)
+	TraceID    string    // X-Request-Id запроса; заполняется при чтении
 	OccurredAt time.Time // момент фиксации (UTC)
+}
+
+// Filter — параметры выборки журнала для вьюера «кто что менял».
+type Filter struct {
+	Limit   int    // максимум записей (0 = разумный дефолт реализации)
+	Command string // пусто = любые команды
+	ActorID string // пусто = любые акторы
+}
+
+// Reader отдаёт записи журнала текущего tenant'а, свежие первыми.
+// Реализация — поверх Postgres (RLS сама ограничит tenant'ом).
+type Reader interface {
+	Entries(ctx context.Context, f Filter) ([]Entry, error)
 }
 
 // Recorder фиксирует записи журнала. Postgres-реализация пишет в той же

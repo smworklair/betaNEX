@@ -73,6 +73,20 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 	return i, err
 }
 
+const deleteExpiredSessions = `-- name: DeleteExpiredSessions :execrows
+DELETE FROM sessions
+WHERE expires_at < now() - interval '7 days'
+   OR (revoked_at IS NOT NULL AND revoked_at < now() - interval '7 days')
+`
+
+func (q *Queries) DeleteExpiredSessions(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteExpiredSessions)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getLiveSessionByTokenHash = `-- name: GetLiveSessionByTokenHash :one
 SELECT id, tenant_id, user_id, token_hash, created_at, expires_at, revoked_at FROM sessions
 WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now()

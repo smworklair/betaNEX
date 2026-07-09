@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/smworklair/betakis/internal/kernel/tenancy"
 	"github.com/smworklair/betakis/internal/platform/postgres/db"
 )
 
@@ -57,4 +58,20 @@ func (d *DB) CreateTenant(ctx context.Context, slug, name string) (string, error
 		return "", fmt.Errorf("postgres: create tenant %q: %w", slug, err)
 	}
 	return t.ID.String(), nil
+}
+
+// ForEachTenant исполняет fn в контексте каждого зарегистрированного
+// tenant'а. Для регламентных задач (пересчёт витрин): задача работает
+// под RLS каждого tenant'а по очереди, как работал бы человек.
+func (d *DB) ForEachTenant(ctx context.Context, fn func(ctx context.Context) error) error {
+	ids, err := db.New(d.pool).ListTenantIDs(ctx)
+	if err != nil {
+		return fmt.Errorf("postgres: list tenants: %w", err)
+	}
+	for _, id := range ids {
+		if err := fn(tenancy.WithTenant(ctx, id.String())); err != nil {
+			return fmt.Errorf("postgres: tenant %s: %w", id.String(), err)
+		}
+	}
+	return nil
 }

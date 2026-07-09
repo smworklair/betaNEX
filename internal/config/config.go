@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -45,6 +46,9 @@ type Config struct {
 	// Auth configures kernel authentication.
 	Auth AuthConfig
 
+	// Files configures on-disk file storage.
+	Files FilesConfig
+
 	// Log configures structured logging.
 	Log LogConfig
 }
@@ -61,6 +65,15 @@ type DBConfig struct {
 type AuthConfig struct {
 	// SessionTTL is how long an issued session (and its cookie) lives.
 	SessionTTL time.Duration
+}
+
+// FilesConfig configures on-disk file storage.
+type FilesConfig struct {
+	// Dir is the root directory for stored file content.
+	Dir string
+
+	// MaxUploadBytes bounds a single upload body.
+	MaxUploadBytes int64
 }
 
 // HTTPConfig configures the HTTP server that exposes NEX over the network.
@@ -114,6 +127,10 @@ func Load() (Config, error) {
 		},
 		Auth: AuthConfig{
 			SessionTTL: r.duration("NEX_SESSION_TTL", 24*time.Hour),
+		},
+		Files: FilesConfig{
+			Dir:            r.str("NEX_DATA_DIR", "./data"),
+			MaxUploadBytes: r.int64("NEX_MAX_UPLOAD_BYTES", 20<<20),
 		},
 		Log: LogConfig{
 			Level:  r.str("NEX_LOG_LEVEL", "info"),
@@ -203,6 +220,21 @@ func (r *envReader) duration(key string, def time.Duration) time.Duration {
 		return def
 	}
 	return d
+}
+
+// int64 parses the value of key as a decimal integer, or returns def if
+// key is unset or empty.
+func (r *envReader) int64(key string, def int64) int64 {
+	v, ok := os.LookupEnv(key)
+	if !ok || v == "" {
+		return def
+	}
+	n, err := strconv.ParseInt(v, 10, 64)
+	if err != nil {
+		r.errs = append(r.errs, fmt.Errorf("%s: invalid integer %q: %w", key, v, err))
+		return def
+	}
+	return n
 }
 
 // err returns the combined parse errors, or nil if there were none.

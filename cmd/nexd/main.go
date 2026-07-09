@@ -24,8 +24,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
+	"time"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/smworklair/betakis/internal/config"
 	"github.com/smworklair/betakis/internal/kernel/audit"
@@ -33,9 +37,13 @@ import (
 	"github.com/smworklair/betakis/internal/kernel/authz"
 	"github.com/smworklair/betakis/internal/kernel/command"
 	"github.com/smworklair/betakis/internal/kernel/tenancy"
+	"github.com/smworklair/betakis/internal/module/files"
 	"github.com/smworklair/betakis/internal/module/finance"
+	"github.com/smworklair/betakis/internal/platform/blob"
+	"github.com/smworklair/betakis/internal/platform/cron"
 	"github.com/smworklair/betakis/internal/platform/httpapi"
 	"github.com/smworklair/betakis/internal/platform/logging"
+	"github.com/smworklair/betakis/internal/platform/metrics"
 	"github.com/smworklair/betakis/internal/platform/postgres"
 )
 
@@ -99,6 +107,20 @@ func subcommand() string {
 func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	log.Info("starting nexd", slog.String("env", string(cfg.Env)))
 
+	// Метрики: /metrics в формате Prometheus, без внешних зависимостей.
+	reg := metrics.New()
+	reg.RegisterRuntime()
+	reg.Counter("nex_http_requests_total", "Число HTTP-запросов.", "route", "status")
+	reg.Histogram("nex_http_request_duration_seconds", "Латентность HTTP-запросов.", nil, "route", "status")
+	observe := func(route string, status int, dur time.Duration) {
+		s := strconv.Itoa(status)
+		reg.Inc("nex_http_requests_total", route, s)
+		reg.ObserveDuration("nex_http_request_duration_seconds", dur, route, s)
+	}
+
+	// Планировщик фоновых задач внутри процесса (ночные пересчёты, чистки).
+	sched := cron.New(log)
+
 	// RBAC-политика приложения: модули объявляют права, корень раздаёт их
 	// ролям. С вехой M4 раздача переедет в настраиваемую политику tenant'а.
 	policy := authz.NewPolicy()
@@ -106,6 +128,9 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		policy.Grant("admin", perm)
 		policy.Grant("accountant", perm)
 	}
+	policy.Grant("admin", files.PermWrite)
+	policy.Grant("admin", finance.PermStatsRefresh)
+	policy.Grant("accountant", finance.PermStatsRefresh)
 
 	// Хранилище: PostgreSQL, если задан NEX_DATABASE_URL, иначе память
 	// процесса (только для быстрых локальных запусков без БД).
@@ -116,6 +141,11 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		recorder      audit.Recorder
 		busOpts       []command.Option
 		authCfg       *httpapi.AuthConfig
+		extraMounts   []func(*http.ServeMux)
+		filesRepo     *files.Repository
+		filesStore    *blob.Store
+		pgDB          *postgres.DB
+		idemStore     httpapi.IdempotencyStore
 	)
 	if cfg.DB.URL != "" {
 		pg, err := postgres.Connect(ctx, cfg.DB.URL)
@@ -127,9 +157,37 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 			return err
 		}
 		log.Info("postgres connected, migrations applied")
+		pgDB = pg
 
 		financeRepo = finance.NewPostgresRepository(pg)
 		readiness = append(readiness, httpapi.ReadinessCheck{Name: "postgres", Check: pg.Ready})
+
+		// Показатели пула соединений — в /metrics.
+		reg.GaugeFunc("nex_db_pool_total_conns", func() float64 { return float64(pg.Pool().Stat().TotalConns()) })
+		reg.GaugeFunc("nex_db_pool_idle_conns", func() float64 { return float64(pg.Pool().Stat().IdleConns()) })
+
+		// Ночные регламентные задачи.
+		if err := sched.Add(cron.Job{Name: "sessions.cleanup", At: "03:15", Run: pg.CleanupSessions}); err != nil {
+			return err
+		}
+
+		// Вьюер журнала аудита (только admin): кто что менял.
+		extraMounts = append(extraMounts, httpapi.AuditRoutes(postgres.NewAuditReader(pg)))
+
+		// Идемпотентность записи по Idempotency-Key + ночная чистка ключей.
+		idemStore = postgres.NewIdempotencyStore(pg)
+		if err := sched.Add(cron.Job{Name: "idempotency.cleanup", At: "03:45", Run: func(ctx context.Context) error {
+			return pg.ForEachTenant(ctx, pg.CleanupIdempotencyKeys)
+		}}); err != nil {
+			return err
+		}
+
+		// Файловое хранилище: метаданные в БД, содержимое на диске.
+		filesStore, err = blob.NewStore(cfg.Files.Dir)
+		if err != nil {
+			return err
+		}
+		filesRepo = files.NewRepository(pg)
 		if cfg.Env == config.EnvDevelopment {
 			// В разработке неизвестный slug создаёт tenant на лету:
 			// локальная работа не начинается с ручной регистрации.
@@ -163,12 +221,47 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		return fmt.Errorf("register finance commands: %w", err)
 	}
 
+	mounts := []func(*http.ServeMux){
+		finance.Routes(bus, financeRepo),
+		func(mux *http.ServeMux) { mux.Handle("GET /metrics", reg.Handler()) },
+	}
+	var searchSources []httpapi.SearchSource
+	if pgRepo, ok := financeRepo.(*finance.PostgresRepository); ok {
+		searchSources = append(searchSources, pgRepo)
+
+		// Отчётная витрина: команда пересчёта + ночной пересчёт по всем
+		// tenant'ам + отчётные маршруты (JSON, CSV, XLSX).
+		if err := finance.RegisterStatsCommands(bus, pgRepo); err != nil {
+			return fmt.Errorf("register finance stats: %w", err)
+		}
+		mounts = append(mounts, finance.ReportRoutes(bus, pgRepo))
+		if err := sched.Add(cron.Job{Name: "finance.stats.refresh", At: "02:30", Run: func(ctx context.Context) error {
+			return pgDB.ForEachTenant(ctx, pgRepo.RefreshStats)
+		}}); err != nil {
+			return err
+		}
+	}
+	if filesRepo != nil {
+		if err := files.RegisterCommands(bus, filesRepo); err != nil {
+			return fmt.Errorf("register files commands: %w", err)
+		}
+		mounts = append(mounts, files.Routes(bus, filesRepo, filesStore, cfg.Files.MaxUploadBytes))
+		searchSources = append(searchSources, filesRepo)
+	}
+	if len(searchSources) > 0 {
+		mounts = append(mounts, httpapi.SearchRoutes(searchSources...))
+	}
+	mounts = append(mounts, extraMounts...)
+
 	router := httpapi.NewRouter(log, httpapi.RouterConfig{
 		Readiness:     readiness,
 		DevAuth:       cfg.Env == config.EnvDevelopment,
+		Pprof:         cfg.Env == config.EnvDevelopment,
 		ResolveTenant: resolveTenant,
 		Auth:          authCfg,
-		Mount:         []func(*http.ServeMux){finance.Routes(bus, financeRepo)},
+		Observe:       observe,
+		Idempotency:   idemStore,
+		Mount:         mounts,
 	})
 	server := httpapi.New(router, httpapi.Options{
 		Addr:            cfg.HTTP.Addr,
@@ -179,7 +272,11 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		Logger:          log,
 	})
 
-	if err := server.Run(ctx); err != nil {
+	// HTTP-сервер и планировщик живут до общей отмены контекста.
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error { return server.Run(gctx) })
+	g.Go(func() error { sched.Run(gctx); return nil })
+	if err := g.Wait(); err != nil {
 		return err
 	}
 
