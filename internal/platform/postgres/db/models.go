@@ -19,6 +19,37 @@ type AuditLog struct {
 	OccurredAt pgtype.Timestamptz
 }
 
+type CampusGrade struct {
+	ID        pgtype.UUID
+	TenantID  pgtype.UUID
+	StudentID pgtype.UUID
+	Subject   string
+	Grade     int16
+	GradedOn  pgtype.Date
+	GradedBy  string
+	Note      string
+	CreatedAt pgtype.Timestamptz
+}
+
+type CampusGroup struct {
+	ID        pgtype.UUID
+	TenantID  pgtype.UUID
+	Code      string
+	Name      string
+	CreatedAt pgtype.Timestamptz
+}
+
+type CampusStudent struct {
+	ID        pgtype.UUID
+	TenantID  pgtype.UUID
+	FullName  string
+	Email     string
+	GroupID   pgtype.UUID
+	Status    string
+	CreatedAt pgtype.Timestamptz
+	Search    interface{}
+}
+
 type File struct {
 	ID          pgtype.UUID
 	TenantID    pgtype.UUID
@@ -88,6 +119,20 @@ type Session struct {
 	CreatedAt pgtype.Timestamptz
 	ExpiresAt pgtype.Timestamptz
 	RevokedAt pgtype.Timestamptz
+}
+
+type Task struct {
+	ID        pgtype.UUID
+	TenantID  pgtype.UUID
+	Title     string
+	Note      string
+	Status    string
+	DueOn     pgtype.Date
+	Assignee  string
+	CreatedBy string
+	CreatedAt pgtype.Timestamptz
+	DoneAt    pgtype.Timestamptz
+	Search    interface{}
 }
 
 type Tenant struct {
