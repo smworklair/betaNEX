@@ -37,7 +37,9 @@ import (
 	"github.com/smworklair/betakis/internal/kernel/authz"
 	"github.com/smworklair/betakis/internal/kernel/command"
 	"github.com/smworklair/betakis/internal/kernel/tenancy"
+	"github.com/smworklair/betakis/internal/module/files"
 	"github.com/smworklair/betakis/internal/module/finance"
+	"github.com/smworklair/betakis/internal/platform/blob"
 	"github.com/smworklair/betakis/internal/platform/cron"
 	"github.com/smworklair/betakis/internal/platform/httpapi"
 	"github.com/smworklair/betakis/internal/platform/logging"
@@ -126,6 +128,7 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		policy.Grant("admin", perm)
 		policy.Grant("accountant", perm)
 	}
+	policy.Grant("admin", files.PermWrite)
 
 	// Хранилище: PostgreSQL, если задан NEX_DATABASE_URL, иначе память
 	// процесса (только для быстрых локальных запусков без БД).
@@ -137,6 +140,8 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		busOpts       []command.Option
 		authCfg       *httpapi.AuthConfig
 		extraMounts   []func(*http.ServeMux)
+		filesRepo     *files.Repository
+		filesStore    *blob.Store
 	)
 	if cfg.DB.URL != "" {
 		pg, err := postgres.Connect(ctx, cfg.DB.URL)
@@ -163,6 +168,13 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 
 		// Вьюер журнала аудита (только admin): кто что менял.
 		extraMounts = append(extraMounts, httpapi.AuditRoutes(postgres.NewAuditReader(pg)))
+
+		// Файловое хранилище: метаданные в БД, содержимое на диске.
+		filesStore, err = blob.NewStore(cfg.Files.Dir)
+		if err != nil {
+			return err
+		}
+		filesRepo = files.NewRepository(pg)
 		if cfg.Env == config.EnvDevelopment {
 			// В разработке неизвестный slug создаёт tenant на лету:
 			// локальная работа не начинается с ручной регистрации.
@@ -200,8 +212,19 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		finance.Routes(bus, financeRepo),
 		func(mux *http.ServeMux) { mux.Handle("GET /metrics", reg.Handler()) },
 	}
+	var searchSources []httpapi.SearchSource
 	if pgRepo, ok := financeRepo.(*finance.PostgresRepository); ok {
-		mounts = append(mounts, httpapi.SearchRoutes(pgRepo))
+		searchSources = append(searchSources, pgRepo)
+	}
+	if filesRepo != nil {
+		if err := files.RegisterCommands(bus, filesRepo); err != nil {
+			return fmt.Errorf("register files commands: %w", err)
+		}
+		mounts = append(mounts, files.Routes(bus, filesRepo, filesStore, cfg.Files.MaxUploadBytes))
+		searchSources = append(searchSources, filesRepo)
+	}
+	if len(searchSources) > 0 {
+		mounts = append(mounts, httpapi.SearchRoutes(searchSources...))
 	}
 	mounts = append(mounts, extraMounts...)
 

@@ -19,6 +19,20 @@ type AuditLog struct {
 	OccurredAt pgtype.Timestamptz
 }
 
+type File struct {
+	ID          pgtype.UUID
+	TenantID    pgtype.UUID
+	Name        string
+	ContentType string
+	Size        int64
+	Sha256      string
+	EntityType  string
+	EntityID    string
+	UploadedBy  string
+	CreatedAt   pgtype.Timestamptz
+	Search      interface{}
+}
+
 type FinanceAccount struct {
 	ID        pgtype.UUID
 	TenantID  pgtype.UUID
