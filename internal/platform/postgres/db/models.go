@@ -62,6 +62,15 @@ type FinanceLine struct {
 	Amount    int64
 }
 
+type FinanceMonthlyTurnover struct {
+	TenantID    pgtype.UUID
+	Month       pgtype.Date
+	AccountID   pgtype.UUID
+	Debit       int64
+	Credit      int64
+	RefreshedAt pgtype.Timestamptz
+}
+
 type Session struct {
 	ID        pgtype.UUID
 	TenantID  pgtype.UUID

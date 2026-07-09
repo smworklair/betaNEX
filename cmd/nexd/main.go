@@ -129,6 +129,8 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		policy.Grant("accountant", perm)
 	}
 	policy.Grant("admin", files.PermWrite)
+	policy.Grant("admin", finance.PermStatsRefresh)
+	policy.Grant("accountant", finance.PermStatsRefresh)
 
 	// Хранилище: PostgreSQL, если задан NEX_DATABASE_URL, иначе память
 	// процесса (только для быстрых локальных запусков без БД).
@@ -142,6 +144,7 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		extraMounts   []func(*http.ServeMux)
 		filesRepo     *files.Repository
 		filesStore    *blob.Store
+		pgDB          *postgres.DB
 	)
 	if cfg.DB.URL != "" {
 		pg, err := postgres.Connect(ctx, cfg.DB.URL)
@@ -153,6 +156,7 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 			return err
 		}
 		log.Info("postgres connected, migrations applied")
+		pgDB = pg
 
 		financeRepo = finance.NewPostgresRepository(pg)
 		readiness = append(readiness, httpapi.ReadinessCheck{Name: "postgres", Check: pg.Ready})
@@ -215,6 +219,18 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	var searchSources []httpapi.SearchSource
 	if pgRepo, ok := financeRepo.(*finance.PostgresRepository); ok {
 		searchSources = append(searchSources, pgRepo)
+
+		// Отчётная витрина: команда пересчёта + ночной пересчёт по всем
+		// tenant'ам + отчётные маршруты (JSON, CSV, XLSX).
+		if err := finance.RegisterStatsCommands(bus, pgRepo); err != nil {
+			return fmt.Errorf("register finance stats: %w", err)
+		}
+		mounts = append(mounts, finance.ReportRoutes(bus, pgRepo))
+		if err := sched.Add(cron.Job{Name: "finance.stats.refresh", At: "02:30", Run: func(ctx context.Context) error {
+			return pgDB.ForEachTenant(ctx, pgRepo.RefreshStats)
+		}}); err != nil {
+			return err
+		}
 	}
 	if filesRepo != nil {
 		if err := files.RegisterCommands(bus, filesRepo); err != nil {

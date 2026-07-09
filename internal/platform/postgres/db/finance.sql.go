@@ -11,6 +11,17 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const clearFinanceMonthlyTurnovers = `-- name: ClearFinanceMonthlyTurnovers :exec
+
+DELETE FROM finance_monthly_turnovers
+`
+
+// Витрина оборотов: пересчёт «снести и перелить» в транзакции tenant'а.
+func (q *Queries) ClearFinanceMonthlyTurnovers(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, clearFinanceMonthlyTurnovers)
+	return err
+}
+
 const createFinanceAccount = `-- name: CreateFinanceAccount :one
 
 INSERT INTO finance_accounts (tenant_id, code, name, type, currency)
@@ -98,6 +109,23 @@ func (q *Queries) CreateFinanceLine(ctx context.Context, arg CreateFinanceLinePa
 		arg.Side,
 		arg.Amount,
 	)
+	return err
+}
+
+const fillFinanceMonthlyTurnovers = `-- name: FillFinanceMonthlyTurnovers :exec
+INSERT INTO finance_monthly_turnovers (tenant_id, month, account_id, debit, credit)
+SELECT l.tenant_id,
+       date_trunc('month', e.posted_at)::date,
+       l.account_id,
+       COALESCE(SUM(l.amount) FILTER (WHERE l.side = 'debit'), 0),
+       COALESCE(SUM(l.amount) FILTER (WHERE l.side = 'credit'), 0)
+FROM finance_lines l
+JOIN finance_entries e ON e.id = l.entry_id
+GROUP BY 1, 2, 3
+`
+
+func (q *Queries) FillFinanceMonthlyTurnovers(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, fillFinanceMonthlyTurnovers)
 	return err
 }
 
@@ -264,6 +292,52 @@ func (q *Queries) ListFinanceLines(ctx context.Context) ([]FinanceLine, error) {
 			&i.AccountID,
 			&i.Side,
 			&i.Amount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listFinanceMonthlyTurnovers = `-- name: ListFinanceMonthlyTurnovers :many
+SELECT m.month, m.debit, m.credit, m.refreshed_at,
+       a.id AS account_id, a.code, a.name
+FROM finance_monthly_turnovers m
+JOIN finance_accounts a ON a.id = m.account_id
+ORDER BY m.month DESC, a.code
+`
+
+type ListFinanceMonthlyTurnoversRow struct {
+	Month       pgtype.Date
+	Debit       int64
+	Credit      int64
+	RefreshedAt pgtype.Timestamptz
+	AccountID   pgtype.UUID
+	Code        string
+	Name        string
+}
+
+func (q *Queries) ListFinanceMonthlyTurnovers(ctx context.Context) ([]ListFinanceMonthlyTurnoversRow, error) {
+	rows, err := q.db.Query(ctx, listFinanceMonthlyTurnovers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListFinanceMonthlyTurnoversRow
+	for rows.Next() {
+		var i ListFinanceMonthlyTurnoversRow
+		if err := rows.Scan(
+			&i.Month,
+			&i.Debit,
+			&i.Credit,
+			&i.RefreshedAt,
+			&i.AccountID,
+			&i.Code,
+			&i.Name,
 		); err != nil {
 			return nil, err
 		}
