@@ -15,7 +15,7 @@ func testLogger() *slog.Logger {
 }
 
 func TestRouterHealthzMethodRouting(t *testing.T) {
-	router := NewRouter(testLogger())
+	router := NewRouter(testLogger(), RouterConfig{})
 
 	t.Run("GET is allowed", func(t *testing.T) {
 		rec := httptest.NewRecorder()

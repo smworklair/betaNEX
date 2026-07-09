@@ -11,7 +11,7 @@ import (
 
 func TestReadyz(t *testing.T) {
 	t.Run("без проверок отвечает 200", func(t *testing.T) {
-		router := NewRouter(testLogger(), nil)
+		router := NewRouter(testLogger(), RouterConfig{})
 		rec := httptest.NewRecorder()
 		router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
 		if rec.Code != http.StatusOK {
@@ -24,7 +24,7 @@ func TestReadyz(t *testing.T) {
 			{Name: "postgres", Check: func(context.Context) error { return errors.New("connection refused") }},
 			{Name: "always-ok", Check: func(context.Context) error { return nil }},
 		}
-		router := NewRouter(testLogger(), checks)
+		router := NewRouter(testLogger(), RouterConfig{Readiness: checks})
 		rec := httptest.NewRecorder()
 		router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
 
@@ -38,7 +38,7 @@ func TestReadyz(t *testing.T) {
 }
 
 func TestRequestID(t *testing.T) {
-	router := NewRouter(testLogger(), nil)
+	router := NewRouter(testLogger(), RouterConfig{})
 
 	t.Run("генерируется, если клиент не прислал", func(t *testing.T) {
 		rec := httptest.NewRecorder()

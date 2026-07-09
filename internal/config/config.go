@@ -24,6 +24,7 @@ import (
 // never be used to branch on domain behaviour.
 type Environment string
 
+// Supported deployment environments.
 const (
 	EnvDevelopment Environment = "development"
 	EnvProduction  Environment = "production"
@@ -38,8 +39,28 @@ type Config struct {
 	// HTTP configures the inbound HTTP transport.
 	HTTP HTTPConfig
 
+	// DB configures the PostgreSQL connection.
+	DB DBConfig
+
+	// Auth configures kernel authentication.
+	Auth AuthConfig
+
 	// Log configures structured logging.
 	Log LogConfig
+}
+
+// DBConfig configures the connection to PostgreSQL.
+type DBConfig struct {
+	// URL is the connection string (DSN). An empty URL puts nexd in
+	// in-memory mode: no persistence, intended only for quick local runs
+	// without a database.
+	URL string
+}
+
+// AuthConfig configures kernel authentication.
+type AuthConfig struct {
+	// SessionTTL is how long an issued session (and its cookie) lives.
+	SessionTTL time.Duration
 }
 
 // HTTPConfig configures the HTTP server that exposes NEX over the network.
@@ -88,6 +109,12 @@ func Load() (Config, error) {
 			IdleTimeout:     r.duration("NEX_HTTP_IDLE_TIMEOUT", 60*time.Second),
 			ShutdownTimeout: r.duration("NEX_HTTP_SHUTDOWN_TIMEOUT", 15*time.Second),
 		},
+		DB: DBConfig{
+			URL: r.str("NEX_DATABASE_URL", ""),
+		},
+		Auth: AuthConfig{
+			SessionTTL: r.duration("NEX_SESSION_TTL", 24*time.Hour),
+		},
 		Log: LogConfig{
 			Level:  r.str("NEX_LOG_LEVEL", "info"),
 			Format: r.str("NEX_LOG_FORMAT", ""),
@@ -127,6 +154,10 @@ func (c Config) validate() error {
 
 	if c.HTTP.Addr == "" {
 		errs = append(errs, errors.New("NEX_HTTP_ADDR: must not be empty"))
+	}
+
+	if c.Auth.SessionTTL <= 0 {
+		errs = append(errs, errors.New("NEX_SESSION_TTL: must be positive"))
 	}
 
 	switch c.Log.Level {

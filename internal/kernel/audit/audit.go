@@ -10,6 +10,7 @@ import (
 // Outcome — исход команды, зафиксированный в журнале.
 type Outcome string
 
+// Возможные исходы.
 const (
 	OutcomeOK     Outcome = "ok"     // команда исполнена
 	OutcomeDenied Outcome = "denied" // отказ авторизации
@@ -26,11 +27,12 @@ type Entry struct {
 	OccurredAt time.Time // момент фиксации (UTC)
 }
 
-// Recorder фиксирует записи журнала. Реализация поверх Postgres появится
-// на вехе M2 и будет писать в той же транзакции, что и изменение данных, —
-// тогда журнал не сможет разойтись с данными.
+// Recorder фиксирует записи журнала. Postgres-реализация пишет в той же
+// транзакции, что и изменение данных (см. platform/postgres), поэтому
+// Record возвращает ошибку: несохранённый аудит обязан откатить и само
+// изменение — журнал не может разойтись с данными.
 type Recorder interface {
-	Record(ctx context.Context, e Entry)
+	Record(ctx context.Context, e Entry) error
 }
 
 // SlogRecorder — временная реализация Recorder: пишет журнал в структурный
@@ -45,7 +47,7 @@ func NewSlogRecorder(log *slog.Logger) *SlogRecorder {
 }
 
 // Record пишет запись журнала одной строкой лога.
-func (r *SlogRecorder) Record(ctx context.Context, e Entry) {
+func (r *SlogRecorder) Record(ctx context.Context, e Entry) error {
 	r.log.LogAttrs(ctx, slog.LevelInfo, "audit",
 		slog.String("command", e.Command),
 		slog.String("outcome", string(e.Outcome)),
@@ -54,6 +56,7 @@ func (r *SlogRecorder) Record(ctx context.Context, e Entry) {
 		slog.String("detail", e.Detail),
 		slog.Time("occurred_at", e.OccurredAt),
 	)
+	return nil
 }
 
 // MemoryRecorder накапливает записи в памяти. Предназначен для тестов.
@@ -63,10 +66,11 @@ type MemoryRecorder struct {
 }
 
 // Record добавляет запись в память.
-func (r *MemoryRecorder) Record(_ context.Context, e Entry) {
+func (r *MemoryRecorder) Record(_ context.Context, e Entry) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.entries = append(r.entries, e)
+	return nil
 }
 
 // Entries возвращает копию накопленных записей.

@@ -1,11 +1,13 @@
-// Пакет postgres — адаптер платформы к PostgreSQL (веха M1).
+// Package postgres — адаптер платформы к PostgreSQL.
 //
-// Здесь будут жить:
-//   - конструктор пула соединений pgx (pgxpool) из конфигурации;
-//   - Ping для readiness-проверки (/readyz);
-//   - помощник транзакций, устанавливающий SET LOCAL app.tenant_id
-//     из tenant-контекста (см. internal/kernel/tenancy);
-//   - каталог queries/ с SQL для sqlc (генерация: make sqlc).
-//
-// SQL-миграции лежат в /migrations и применяются goose (make migrate).
+// Содержимое:
+//   - Connect / Ready — пул pgx и readiness-пинг для /readyz;
+//   - InTenantTx / InTx — транзакции с SET LOCAL app.tenant_id из
+//     tenant-контекста (см. internal/kernel/tenancy): RLS-политики видят
+//     только данные текущего tenant'а, поэтому запросы вне транзакции
+//     с установленным tenant'ом не возвращают ничего;
+//   - Migrate — применение goose-миграций, встроенных в бинарник
+//     (пакет /migrations);
+//   - ResolveTenant / EnsureTenant / CreateTenant — реестр tenant'ов;
+//   - каталог queries/ — SQL для sqlc, генерация в db/ (make sqlc).
 package postgres

@@ -10,6 +10,23 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
+
+    # Postgres для интеграционных тестов (NEX_TEST_DATABASE_URL).
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: nex
+          POSTGRES_PASSWORD: nex
+          POSTGRES_DB: nex
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nex -d nex"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
     steps:
       - uses: actions/checkout@v4
 
@@ -20,7 +37,9 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v8
 
-      - name: Tests (race)
+      - name: Tests (race + Postgres)
+        env:
+          NEX_TEST_DATABASE_URL: postgres://nex:nex@localhost:5432/nex?sslmode=disable
         run: go test -race ./...
 
       - name: Build

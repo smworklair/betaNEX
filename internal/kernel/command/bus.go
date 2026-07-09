@@ -23,22 +23,32 @@ type Authorizer interface {
 	Authorize(ctx context.Context, cmd Command) error
 }
 
+// TxRunner исполняет функцию в транзакции хранилища: открытая транзакция
+// передаётся через контекст, и репозитории с рекордером аудита
+// присоединяются к ней (см. platform/postgres). Интерфейс объявлен здесь,
+// чтобы пакет command не зависел от конкретного хранилища.
+type TxRunner interface {
+	RunTx(ctx context.Context, fn func(ctx context.Context) error) error
+}
+
 // Ошибки шины. Проверяются через errors.Is.
 var (
 	ErrUnknownCommand    = errors.New("command: unknown command")
 	ErrAlreadyRegistered = errors.New("command: handler already registered")
 )
 
-// MemoryBus — in-memory реализация шины команд: валидация → авторизация →
+// MemoryBus — реализация шины команд: валидация → авторизация →
 // исполнение → аудит. Каждый исход (успех, отказ, ошибка) фиксируется
 // в журнале.
 //
-// Транзакционность появится вместе со слоем Postgres (веха M2): тогда
-// исполнение, события и запись аудита будут выполняться в одной
-// транзакции. Контракт Dispatch при этом не изменится.
+// С TxRunner (WithTxRunner) исполнение хендлера и запись аудита успеха
+// происходят в одной транзакции: изменение данных без записи журнала
+// невозможно, и наоборот. Без TxRunner шина работает в памяти — для
+// тестов и in-memory режима.
 type MemoryBus struct {
 	authz Authorizer
 	rec   audit.Recorder
+	tx    TxRunner // nil = без транзакций
 
 	mu       sync.RWMutex
 	handlers map[string]HandlerFunc
@@ -47,13 +57,26 @@ type MemoryBus struct {
 // Проверка соответствия интерфейсу на этапе компиляции.
 var _ Bus = (*MemoryBus)(nil)
 
+// Option настраивает шину при создании.
+type Option func(*MemoryBus)
+
+// WithTxRunner заставляет шину исполнять хендлер и аудит успеха в одной
+// транзакции хранилища.
+func WithTxRunner(tx TxRunner) Option {
+	return func(b *MemoryBus) { b.tx = tx }
+}
+
 // NewMemoryBus создаёт шину с заданными авторизатором и рекордером аудита.
-func NewMemoryBus(authz Authorizer, rec audit.Recorder) *MemoryBus {
-	return &MemoryBus{
+func NewMemoryBus(authz Authorizer, rec audit.Recorder, opts ...Option) *MemoryBus {
+	b := &MemoryBus{
 		authz:    authz,
 		rec:      rec,
 		handlers: make(map[string]HandlerFunc),
 	}
+	for _, opt := range opts {
+		opt(b)
+	}
+	return b
 }
 
 // Register связывает имя команды с хендлером. Повторная регистрация
@@ -93,19 +116,41 @@ func (b *MemoryBus) Dispatch(ctx context.Context, cmd Command) error {
 		return fmt.Errorf("command %s: %w", cmd.Name(), err)
 	}
 
-	if err := h(ctx, cmd); err != nil {
+	if err := b.execute(ctx, h, cmd); err != nil {
+		// Запись об ошибке — после отката, отдельной транзакцией: внутри
+		// откатившейся она исчезла бы вместе с изменениями.
 		b.record(ctx, cmd, audit.OutcomeError, err.Error())
 		return fmt.Errorf("command %s: %w", cmd.Name(), err)
 	}
-
-	b.record(ctx, cmd, audit.OutcomeOK, "")
 	return nil
 }
 
-// record собирает запись журнала из контекста запроса и передаёт её
+// execute исполняет хендлер и фиксирует успех. С TxRunner оба шага идут
+// в одной транзакции: не записался аудит — откатилось и изменение.
+func (b *MemoryBus) execute(ctx context.Context, h HandlerFunc, cmd Command) error {
+	run := func(ctx context.Context) error {
+		if err := h(ctx, cmd); err != nil {
+			return err
+		}
+		return b.recordErr(ctx, cmd, audit.OutcomeOK, "")
+	}
+	if b.tx == nil {
+		return run(ctx)
+	}
+	return b.tx.RunTx(ctx, run)
+}
+
+// record — как recordErr, но для исходов denied/error: там запись
+// журнала best-effort (основная ошибка уже возвращается вызывающему,
+// а провал самой записи фиксировать некуда).
+func (b *MemoryBus) record(ctx context.Context, cmd Command, outcome audit.Outcome, detail string) {
+	_ = b.recordErr(ctx, cmd, outcome, detail)
+}
+
+// recordErr собирает запись журнала из контекста запроса и передаёт её
 // рекордеру. Отсутствие актора или tenant'а не ошибка на этом уровне:
 // запись честно фиксирует, что их не было.
-func (b *MemoryBus) record(ctx context.Context, cmd Command, outcome audit.Outcome, detail string) {
+func (b *MemoryBus) recordErr(ctx context.Context, cmd Command, outcome audit.Outcome, detail string) error {
 	e := audit.Entry{
 		Command:    cmd.Name(),
 		Outcome:    outcome,
@@ -118,5 +163,8 @@ func (b *MemoryBus) record(ctx context.Context, cmd Command, outcome audit.Outco
 	if tenant, ok := tenancy.TenantFrom(ctx); ok {
 		e.TenantID = tenant
 	}
-	b.rec.Record(ctx, e)
+	if err := b.rec.Record(ctx, e); err != nil {
+		return fmt.Errorf("command: audit record: %w", err)
+	}
+	return nil
 }

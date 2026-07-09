@@ -17,5 +17,8 @@ type EntryPosted struct {
 // Проверка соответствия контракту событий на этапе компиляции.
 var _ event.Event = EntryPosted{}
 
-func (EntryPosted) Name() string            { return "finance.entry.posted" }
+// Name возвращает стабильное имя события.
+func (EntryPosted) Name() string { return "finance.entry.posted" }
+
+// OccurredAt возвращает момент, когда проводка была проведена.
 func (e EntryPosted) OccurredAt() time.Time { return e.At }

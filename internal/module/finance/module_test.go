@@ -32,7 +32,7 @@ func accountantCtx(tenant string) context.Context {
 }
 
 // createAccount — хелпер: создаёт счёт и возвращает его ID из репозитория.
-func createAccount(t *testing.T, bus *command.MemoryBus, repo finance.Repository, ctx context.Context, code, name string, typ finance.AccountType) string {
+func createAccount(ctx context.Context, t *testing.T, bus *command.MemoryBus, repo finance.Repository, code, name string, typ finance.AccountType) string {
 	t.Helper()
 	if err := bus.Dispatch(ctx, finance.CreateAccount{Code: code, DisplayName: name, AccountType: typ}); err != nil {
 		t.Fatalf("создание счёта %s: %v", code, err)
@@ -55,8 +55,8 @@ func TestFinanceEndToEnd(t *testing.T) {
 	bus := newBus(repo)
 	ctx := accountantCtx("college-1")
 
-	cash := createAccount(t, bus, repo, ctx, "50", "Касса", finance.AccountAsset)
-	income := createAccount(t, bus, repo, ctx, "90", "Доход от обучения", finance.AccountIncome)
+	cash := createAccount(ctx, t, bus, repo, "50", "Касса", finance.AccountAsset)
+	income := createAccount(ctx, t, bus, repo, "90", "Доход от обучения", finance.AccountIncome)
 
 	// Студент оплатил обучение: 45 000 ₽ = 4 500 000 копеек.
 	err := bus.Dispatch(ctx, finance.PostEntry{
@@ -102,7 +102,7 @@ func TestTenantIsolation(t *testing.T) {
 	bus := newBus(repo)
 
 	ctx1 := accountantCtx("college-1")
-	createAccount(t, bus, repo, ctx1, "50", "Касса", finance.AccountAsset)
+	createAccount(ctx1, t, bus, repo, "50", "Касса", finance.AccountAsset)
 
 	// Второй tenant не видит счетов первого.
 	balances, err := repo.Accounts(accountantCtx("college-2"))
@@ -138,7 +138,7 @@ func TestDuplicateCodeAndMissingAccount(t *testing.T) {
 	bus := newBus(repo)
 	ctx := accountantCtx("college-1")
 
-	createAccount(t, bus, repo, ctx, "50", "Касса", finance.AccountAsset)
+	createAccount(ctx, t, bus, repo, "50", "Касса", finance.AccountAsset)
 
 	// Дубликат кода.
 	err := bus.Dispatch(ctx, finance.CreateAccount{Code: "50", DisplayName: "Касса-2", AccountType: finance.AccountAsset})

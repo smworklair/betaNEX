@@ -1,5 +1,6 @@
--- Запросы модуля «Финансы» для sqlc (ЧЕРНОВИК до вехи M2).
--- Генерация: make sqlc → internal/platform/postgres/db.
+-- Запросы модуля «Финансы». Генерация: make sqlc → internal/platform/postgres/db.
+-- Фильтра по tenant_id в тексте запросов нет намеренно: каждый запрос
+-- выполняется в транзакции с app.tenant_id, и границу проводит RLS.
 
 -- name: CreateFinanceAccount :one
 INSERT INTO finance_accounts (tenant_id, code, name, type, currency)
@@ -8,6 +9,9 @@ RETURNING *;
 
 -- name: GetFinanceAccount :one
 SELECT * FROM finance_accounts WHERE id = $1;
+
+-- name: ListFinanceAccountsByIDs :many
+SELECT * FROM finance_accounts WHERE id = ANY($1::uuid[]);
 
 -- name: ListFinanceAccountsWithBalances :many
 SELECT
@@ -35,7 +39,7 @@ INSERT INTO finance_lines (tenant_id, entry_id, account_id, side, amount)
 VALUES ($1, $2, $3, $4, $5);
 
 -- name: ListFinanceEntries :many
-SELECT * FROM finance_entries ORDER BY posted_at;
+SELECT * FROM finance_entries ORDER BY posted_at, id;
 
--- name: ListFinanceLinesByEntry :many
-SELECT * FROM finance_lines WHERE entry_id = $1 ORDER BY id;
+-- name: ListFinanceLines :many
+SELECT * FROM finance_lines ORDER BY entry_id, id;

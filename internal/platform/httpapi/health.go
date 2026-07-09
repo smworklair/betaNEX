@@ -11,7 +11,7 @@ import "net/http"
 // dependencies exist. Keeping liveness dependency-free means an orchestrator
 // will not kill a process that is healthy but waiting on a slow dependency.
 func handleHealthz() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
