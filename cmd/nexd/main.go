@@ -37,8 +37,10 @@ import (
 	"github.com/smworklair/betakis/internal/kernel/authz"
 	"github.com/smworklair/betakis/internal/kernel/command"
 	"github.com/smworklair/betakis/internal/kernel/tenancy"
+	"github.com/smworklair/betakis/internal/module/campus"
 	"github.com/smworklair/betakis/internal/module/files"
 	"github.com/smworklair/betakis/internal/module/finance"
+	"github.com/smworklair/betakis/internal/module/tasks"
 	"github.com/smworklair/betakis/internal/platform/blob"
 	"github.com/smworklair/betakis/internal/platform/cron"
 	"github.com/smworklair/betakis/internal/platform/httpapi"
@@ -131,6 +133,13 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	policy.Grant("admin", files.PermWrite)
 	policy.Grant("admin", finance.PermStatsRefresh)
 	policy.Grant("accountant", finance.PermStatsRefresh)
+	for _, perm := range []string{campus.PermGroupsWrite, campus.PermStudentsWrite, campus.PermGradesWrite} {
+		policy.Grant("admin", perm)
+	}
+	policy.Grant("teacher", campus.PermGradesWrite) // преподаватель ведёт журнал
+	policy.Grant("admin", tasks.PermWrite)
+	policy.Grant("teacher", tasks.PermWrite)
+	policy.Grant("accountant", tasks.PermWrite)
 
 	// Хранилище: PostgreSQL, если задан NEX_DATABASE_URL, иначе память
 	// процесса (только для быстрых локальных запусков без БД).
@@ -247,6 +256,23 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		}
 		mounts = append(mounts, files.Routes(bus, filesRepo, filesStore, cfg.Files.MaxUploadBytes))
 		searchSources = append(searchSources, filesRepo)
+	}
+	if pgDB != nil {
+		// Кампус: группы, студенты, учебный журнал.
+		campusRepo := campus.NewRepository(pgDB)
+		if err := campus.RegisterCommands(bus, campusRepo); err != nil {
+			return fmt.Errorf("register campus commands: %w", err)
+		}
+		mounts = append(mounts, campus.Routes(bus, campusRepo))
+		searchSources = append(searchSources, campusRepo)
+
+		// Задачи.
+		tasksRepo := tasks.NewRepository(pgDB)
+		if err := tasks.RegisterCommands(bus, tasksRepo); err != nil {
+			return fmt.Errorf("register tasks commands: %w", err)
+		}
+		mounts = append(mounts, tasks.Routes(bus, tasksRepo))
+		searchSources = append(searchSources, tasksRepo)
 	}
 	if len(searchSources) > 0 {
 		mounts = append(mounts, httpapi.SearchRoutes(searchSources...))
