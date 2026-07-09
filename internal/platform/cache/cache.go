@@ -51,12 +51,12 @@ type entry struct {
 // Проверка соответствия интерфейсу на этапе компиляции.
 var _ Cache = (*Memory)(nil)
 
-// NewMemory создаёт кэш не более чем на max записей (0 = 4096).
-func NewMemory(max int) *Memory {
-	if max <= 0 {
-		max = 4096
+// NewMemory создаёт кэш не более чем на maxEntries записей (0 = 4096).
+func NewMemory(maxEntries int) *Memory {
+	if maxEntries <= 0 {
+		maxEntries = 4096
 	}
-	return &Memory{max: max, now: time.Now, m: make(map[string]entry)}
+	return &Memory{max: maxEntries, now: time.Now, m: make(map[string]entry)}
 }
 
 // Get возвращает значение, если оно есть и не истекло.
