@@ -3,32 +3,36 @@ package httpapi
 import (
 	"sync"
 	"time"
+
+	"golang.org/x/time/rate"
 )
 
-// rateLimiter — счётчик с фиксированным окном: не более limit событий
-// на ключ за window. Достаточен против перебора паролей на одном
-// инстансе; распределённый лимитер появится вместе со вторым инстансом
-// (тогда же, когда и Valkey — ADR-008).
+// rateLimiter — лимитер по ключу поверх golang.org/x/time/rate:
+// token bucket на каждый ключ (IP+email для логина). Живёт в памяти
+// процесса — достаточен против перебора паролей на одном инстансе;
+// при втором инстансе счётчики переедут в Valkey (ADR-008).
 type rateLimiter struct {
-	limit  int
-	window time.Duration
-	now    func() time.Time
+	limit rate.Limit
+	burst int
+	now   func() time.Time
 
-	mu      sync.Mutex
-	buckets map[string]*bucket
+	mu       sync.Mutex
+	limiters map[string]*limiterEntry
 }
 
-type bucket struct {
-	count int
-	start time.Time
+type limiterEntry struct {
+	lim  *rate.Limiter
+	seen time.Time
 }
 
-func newRateLimiter(limit int, window time.Duration) *rateLimiter {
+// newRateLimiter создаёт лимитер: burst попыток сразу, дальше пополнение
+// со скоростью limit.
+func newRateLimiter(burst int, per time.Duration) *rateLimiter {
 	return &rateLimiter{
-		limit:   limit,
-		window:  window,
-		now:     time.Now,
-		buckets: make(map[string]*bucket),
+		limit:    rate.Every(per / time.Duration(burst)),
+		burst:    burst,
+		now:      time.Now,
+		limiters: make(map[string]*limiterEntry),
 	}
 }
 
@@ -40,13 +44,13 @@ func (l *rateLimiter) allow(key string) bool {
 	now := l.now()
 	l.sweep(now)
 
-	b := l.buckets[key]
-	if b == nil || now.Sub(b.start) >= l.window {
-		l.buckets[key] = &bucket{count: 1, start: now}
-		return true
+	e := l.limiters[key]
+	if e == nil {
+		e = &limiterEntry{lim: rate.NewLimiter(l.limit, l.burst)}
+		l.limiters[key] = e
 	}
-	b.count++
-	return b.count <= l.limit
+	e.seen = now
+	return e.lim.Allow()
 }
 
 // reset забывает ключ — вызывается после успешного входа, чтобы
@@ -54,18 +58,18 @@ func (l *rateLimiter) allow(key string) bool {
 func (l *rateLimiter) reset(key string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	delete(l.buckets, key)
+	delete(l.limiters, key)
 }
 
-// sweep удаляет истёкшие окна, не давая карте расти бесконечно.
-// Вызывается под мьютексом.
+// sweep удаляет давно не встречавшиеся ключи, не давая карте расти
+// бесконечно. Вызывается под мьютексом.
 func (l *rateLimiter) sweep(now time.Time) {
-	if len(l.buckets) < 4096 {
+	if len(l.limiters) < 4096 {
 		return
 	}
-	for k, b := range l.buckets {
-		if now.Sub(b.start) >= l.window {
-			delete(l.buckets, k)
+	for k, e := range l.limiters {
+		if now.Sub(e.seen) > time.Hour {
+			delete(l.limiters, k)
 		}
 	}
 }

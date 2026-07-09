@@ -24,8 +24,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
+	"time"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/smworklair/betakis/internal/config"
 	"github.com/smworklair/betakis/internal/kernel/audit"
@@ -34,8 +38,10 @@ import (
 	"github.com/smworklair/betakis/internal/kernel/command"
 	"github.com/smworklair/betakis/internal/kernel/tenancy"
 	"github.com/smworklair/betakis/internal/module/finance"
+	"github.com/smworklair/betakis/internal/platform/cron"
 	"github.com/smworklair/betakis/internal/platform/httpapi"
 	"github.com/smworklair/betakis/internal/platform/logging"
+	"github.com/smworklair/betakis/internal/platform/metrics"
 	"github.com/smworklair/betakis/internal/platform/postgres"
 )
 
@@ -99,6 +105,20 @@ func subcommand() string {
 func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	log.Info("starting nexd", slog.String("env", string(cfg.Env)))
 
+	// Метрики: /metrics в формате Prometheus, без внешних зависимостей.
+	reg := metrics.New()
+	reg.RegisterRuntime()
+	reg.Counter("nex_http_requests_total", "Число HTTP-запросов.", "route", "status")
+	reg.Histogram("nex_http_request_duration_seconds", "Латентность HTTP-запросов.", nil, "route", "status")
+	observe := func(route string, status int, dur time.Duration) {
+		s := strconv.Itoa(status)
+		reg.Inc("nex_http_requests_total", route, s)
+		reg.ObserveDuration("nex_http_request_duration_seconds", dur, route, s)
+	}
+
+	// Планировщик фоновых задач внутри процесса (ночные пересчёты, чистки).
+	sched := cron.New(log)
+
 	// RBAC-политика приложения: модули объявляют права, корень раздаёт их
 	// ролям. С вехой M4 раздача переедет в настраиваемую политику tenant'а.
 	policy := authz.NewPolicy()
@@ -130,6 +150,15 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 
 		financeRepo = finance.NewPostgresRepository(pg)
 		readiness = append(readiness, httpapi.ReadinessCheck{Name: "postgres", Check: pg.Ready})
+
+		// Показатели пула соединений — в /metrics.
+		reg.GaugeFunc("nex_db_pool_total_conns", func() float64 { return float64(pg.Pool().Stat().TotalConns()) })
+		reg.GaugeFunc("nex_db_pool_idle_conns", func() float64 { return float64(pg.Pool().Stat().IdleConns()) })
+
+		// Ночные регламентные задачи.
+		if err := sched.Add(cron.Job{Name: "sessions.cleanup", At: "03:15", Run: pg.CleanupSessions}); err != nil {
+			return err
+		}
 		if cfg.Env == config.EnvDevelopment {
 			// В разработке неизвестный slug создаёт tenant на лету:
 			// локальная работа не начинается с ручной регистрации.
@@ -163,12 +192,19 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		return fmt.Errorf("register finance commands: %w", err)
 	}
 
+	mounts := []func(*http.ServeMux){
+		finance.Routes(bus, financeRepo),
+		func(mux *http.ServeMux) { mux.Handle("GET /metrics", reg.Handler()) },
+	}
+
 	router := httpapi.NewRouter(log, httpapi.RouterConfig{
 		Readiness:     readiness,
 		DevAuth:       cfg.Env == config.EnvDevelopment,
+		Pprof:         cfg.Env == config.EnvDevelopment,
 		ResolveTenant: resolveTenant,
 		Auth:          authCfg,
-		Mount:         []func(*http.ServeMux){finance.Routes(bus, financeRepo)},
+		Observe:       observe,
+		Mount:         mounts,
 	})
 	server := httpapi.New(router, httpapi.Options{
 		Addr:            cfg.HTTP.Addr,
@@ -179,7 +215,11 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		Logger:          log,
 	})
 
-	if err := server.Run(ctx); err != nil {
+	// HTTP-сервер и планировщик живут до общей отмены контекста.
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error { return server.Run(gctx) })
+	g.Go(func() error { sched.Run(gctx); return nil })
+	if err := g.Wait(); err != nil {
 		return err
 	}
 

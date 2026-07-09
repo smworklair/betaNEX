@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"time"
 )
 
 // RouterConfig описывает, из чего собирается роутер NEX. Заполняется
@@ -28,6 +29,15 @@ type RouterConfig struct {
 	// Auth подключает настоящую аутентификацию: endpoints /api/v1/auth/*
 	// и session-middleware. nil — без неё (in-memory режим, dev-заголовки).
 	Auth *AuthConfig
+
+	// Observe вызывается по завершении каждого запроса — сюда композиционный
+	// корень подставляет запись метрик. route — шаблон маршрута ServeMux
+	// ("GET /api/v1/finance/accounts"), а не сырой путь: кардинальность
+	// метрик не растёт с числом ID.
+	Observe func(route string, status int, dur time.Duration)
+
+	// Pprof монтирует /debug/pprof/* (только development).
+	Pprof bool
 
 	// Mount — функции монтирования маршрутов модулей. Каждый модуль
 	// отдаёт свою функцию (например, finance.Routes), а корень передаёт
@@ -57,6 +67,9 @@ func NewRouter(log *slog.Logger, cfg RouterConfig) http.Handler {
 		authLayer = newAuthAPI(*cfg.Auth)
 		authLayer.mount(mux)
 	}
+	if cfg.Pprof {
+		mountPprof(mux)
+	}
 	for _, mount := range cfg.Mount {
 		mount(mux)
 	}
@@ -65,6 +78,11 @@ func NewRouter(log *slog.Logger, cfg RouterConfig) http.Handler {
 	// подменить актора только там, где включены; резолвер tenant'а
 	// нормализует то, что положили предыдущие слои.
 	mws := []middleware{requestID(), requestLogger(log), recoverer(log)}
+	if cfg.Observe != nil {
+		// observer — внешним слоем: recoverer ниже превращает панику в 500,
+		// и метрика честно учитывает её как 500.
+		mws = append([]middleware{observer(mux, cfg.Observe)}, mws...)
+	}
 	if authLayer != nil {
 		mws = append(mws, authLayer.sessionIdentity())
 	}
