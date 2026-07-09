@@ -15,7 +15,7 @@ const createFinanceAccount = `-- name: CreateFinanceAccount :one
 
 INSERT INTO finance_accounts (tenant_id, code, name, type, currency)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, tenant_id, code, name, type, currency, created_at
+RETURNING id, tenant_id, code, name, type, currency, created_at, search
 `
 
 type CreateFinanceAccountParams struct {
@@ -46,6 +46,7 @@ func (q *Queries) CreateFinanceAccount(ctx context.Context, arg CreateFinanceAcc
 		&i.Type,
 		&i.Currency,
 		&i.CreatedAt,
+		&i.Search,
 	)
 	return i, err
 }
@@ -53,7 +54,7 @@ func (q *Queries) CreateFinanceAccount(ctx context.Context, arg CreateFinanceAcc
 const createFinanceEntry = `-- name: CreateFinanceEntry :one
 INSERT INTO finance_entries (tenant_id, memo, posted_by)
 VALUES ($1, $2, $3)
-RETURNING id, tenant_id, memo, posted_by, posted_at
+RETURNING id, tenant_id, memo, posted_by, posted_at, search
 `
 
 type CreateFinanceEntryParams struct {
@@ -71,6 +72,7 @@ func (q *Queries) CreateFinanceEntry(ctx context.Context, arg CreateFinanceEntry
 		&i.Memo,
 		&i.PostedBy,
 		&i.PostedAt,
+		&i.Search,
 	)
 	return i, err
 }
@@ -100,7 +102,7 @@ func (q *Queries) CreateFinanceLine(ctx context.Context, arg CreateFinanceLinePa
 }
 
 const getFinanceAccount = `-- name: GetFinanceAccount :one
-SELECT id, tenant_id, code, name, type, currency, created_at FROM finance_accounts WHERE id = $1
+SELECT id, tenant_id, code, name, type, currency, created_at, search FROM finance_accounts WHERE id = $1
 `
 
 func (q *Queries) GetFinanceAccount(ctx context.Context, id pgtype.UUID) (FinanceAccount, error) {
@@ -114,12 +116,13 @@ func (q *Queries) GetFinanceAccount(ctx context.Context, id pgtype.UUID) (Financ
 		&i.Type,
 		&i.Currency,
 		&i.CreatedAt,
+		&i.Search,
 	)
 	return i, err
 }
 
 const listFinanceAccountsByIDs = `-- name: ListFinanceAccountsByIDs :many
-SELECT id, tenant_id, code, name, type, currency, created_at FROM finance_accounts WHERE id = ANY($1::uuid[])
+SELECT id, tenant_id, code, name, type, currency, created_at, search FROM finance_accounts WHERE id = ANY($1::uuid[])
 `
 
 func (q *Queries) ListFinanceAccountsByIDs(ctx context.Context, dollar_1 []pgtype.UUID) ([]FinanceAccount, error) {
@@ -139,6 +142,7 @@ func (q *Queries) ListFinanceAccountsByIDs(ctx context.Context, dollar_1 []pgtyp
 			&i.Type,
 			&i.Currency,
 			&i.CreatedAt,
+			&i.Search,
 		); err != nil {
 			return nil, err
 		}
@@ -152,7 +156,7 @@ func (q *Queries) ListFinanceAccountsByIDs(ctx context.Context, dollar_1 []pgtyp
 
 const listFinanceAccountsWithBalances = `-- name: ListFinanceAccountsWithBalances :many
 SELECT
-    a.id, a.tenant_id, a.code, a.name, a.type, a.currency, a.created_at,
+    a.id, a.tenant_id, a.code, a.name, a.type, a.currency, a.created_at, a.search,
     COALESCE(SUM(
         CASE
             WHEN a.type IN ('asset', 'expense') AND l.side = 'debit'  THEN l.amount
@@ -175,6 +179,7 @@ type ListFinanceAccountsWithBalancesRow struct {
 	Type      string
 	Currency  string
 	CreatedAt pgtype.Timestamptz
+	Search    interface{}
 	Balance   int64
 }
 
@@ -195,6 +200,7 @@ func (q *Queries) ListFinanceAccountsWithBalances(ctx context.Context) ([]ListFi
 			&i.Type,
 			&i.Currency,
 			&i.CreatedAt,
+			&i.Search,
 			&i.Balance,
 		); err != nil {
 			return nil, err
@@ -208,7 +214,7 @@ func (q *Queries) ListFinanceAccountsWithBalances(ctx context.Context) ([]ListFi
 }
 
 const listFinanceEntries = `-- name: ListFinanceEntries :many
-SELECT id, tenant_id, memo, posted_by, posted_at FROM finance_entries ORDER BY posted_at, id
+SELECT id, tenant_id, memo, posted_by, posted_at, search FROM finance_entries ORDER BY posted_at, id
 `
 
 func (q *Queries) ListFinanceEntries(ctx context.Context) ([]FinanceEntry, error) {
@@ -226,6 +232,7 @@ func (q *Queries) ListFinanceEntries(ctx context.Context) ([]FinanceEntry, error
 			&i.Memo,
 			&i.PostedBy,
 			&i.PostedAt,
+			&i.Search,
 		); err != nil {
 			return nil, err
 		}

@@ -27,6 +27,7 @@ type FinanceAccount struct {
 	Type      string
 	Currency  string
 	CreatedAt pgtype.Timestamptz
+	Search    interface{}
 }
 
 type FinanceEntry struct {
@@ -35,6 +36,7 @@ type FinanceEntry struct {
 	Memo     string
 	PostedBy string
 	PostedAt pgtype.Timestamptz
+	Search   interface{}
 }
 
 type FinanceLine struct {

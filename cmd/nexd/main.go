@@ -136,6 +136,7 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		recorder      audit.Recorder
 		busOpts       []command.Option
 		authCfg       *httpapi.AuthConfig
+		extraMounts   []func(*http.ServeMux)
 	)
 	if cfg.DB.URL != "" {
 		pg, err := postgres.Connect(ctx, cfg.DB.URL)
@@ -159,6 +160,9 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		if err := sched.Add(cron.Job{Name: "sessions.cleanup", At: "03:15", Run: pg.CleanupSessions}); err != nil {
 			return err
 		}
+
+		// Вьюер журнала аудита (только admin): кто что менял.
+		extraMounts = append(extraMounts, httpapi.AuditRoutes(postgres.NewAuditReader(pg)))
 		if cfg.Env == config.EnvDevelopment {
 			// В разработке неизвестный slug создаёт tenant на лету:
 			// локальная работа не начинается с ручной регистрации.
@@ -196,6 +200,10 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		finance.Routes(bus, financeRepo),
 		func(mux *http.ServeMux) { mux.Handle("GET /metrics", reg.Handler()) },
 	}
+	if pgRepo, ok := financeRepo.(*finance.PostgresRepository); ok {
+		mounts = append(mounts, httpapi.SearchRoutes(pgRepo))
+	}
+	mounts = append(mounts, extraMounts...)
 
 	router := httpapi.NewRouter(log, httpapi.RouterConfig{
 		Readiness:     readiness,

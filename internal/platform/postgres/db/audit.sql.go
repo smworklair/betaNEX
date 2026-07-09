@@ -74,3 +74,46 @@ func (q *Queries) ListAuditEntries(ctx context.Context, limit int32) ([]AuditLog
 	}
 	return items, nil
 }
+
+const listAuditEntriesFiltered = `-- name: ListAuditEntriesFiltered :many
+SELECT id, tenant_id, actor_id, command, outcome, detail, trace_id, occurred_at FROM audit_log
+WHERE ($2::text IS NULL OR command = $2)
+  AND ($3::text IS NULL OR actor_id = $3)
+ORDER BY occurred_at DESC, id DESC
+LIMIT $1
+`
+
+type ListAuditEntriesFilteredParams struct {
+	Limit   int32
+	Command *string
+	ActorID *string
+}
+
+func (q *Queries) ListAuditEntriesFiltered(ctx context.Context, arg ListAuditEntriesFilteredParams) ([]AuditLog, error) {
+	rows, err := q.db.Query(ctx, listAuditEntriesFiltered, arg.Limit, arg.Command, arg.ActorID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AuditLog
+	for rows.Next() {
+		var i AuditLog
+		if err := rows.Scan(
+			&i.ID,
+			&i.TenantID,
+			&i.ActorID,
+			&i.Command,
+			&i.Outcome,
+			&i.Detail,
+			&i.TraceID,
+			&i.OccurredAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
