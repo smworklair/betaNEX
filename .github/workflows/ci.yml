@@ -12,23 +12,35 @@ jobs:
     runs-on: ubuntu-latest
 
     # Postgres для интеграционных тестов (NEX_TEST_DATABASE_URL).
+    # ВАЖНО: приложение подключается НЕ суперпользователем — образ
+    # postgres делает POSTGRES_USER суперпользователем, а суперпользователь
+    # обходит RLS даже с FORCE, и тесты изоляции tenant'ов ослепнут.
+    # Поэтому суперпользователь — postgres, а роль nex создаётся шагом ниже
+    # как обычная LOGIN-роль (как в проде).
     services:
       postgres:
         image: postgres:17-alpine
         env:
-          POSTGRES_USER: nex
-          POSTGRES_PASSWORD: nex
-          POSTGRES_DB: nex
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U nex -d nex"
+          --health-cmd "pg_isready -U postgres"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Create non-superuser app role
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -c "CREATE ROLE nex LOGIN PASSWORD 'nex' NOSUPERUSER NOCREATEROLE"
+          psql -h localhost -U postgres -c "CREATE DATABASE nex OWNER nex"
 
       - uses: actions/setup-go@v5
         with:
