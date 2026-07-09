@@ -12,6 +12,14 @@ linters:
     - bodyclose     # незакрытые тела HTTP-ответов
     - noctx         # HTTP-запросы без context
     - copyloopvar   # устаревшие копии переменных цикла
+  exclusions:
+    rules:
+      # httptest.NewRequest в тестах не делает сетевого I/O — контекст
+      # там не нужен; свежий noctx (golangci-lint >= 2.6) начал его
+      # требовать, что для httptest — шум.
+      - path: _test\.go$
+        linters:
+          - noctx
 
 formatters:
   enable:

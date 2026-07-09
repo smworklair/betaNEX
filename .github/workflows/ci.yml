@@ -36,6 +36,10 @@ jobs:
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v8
+        with:
+          # Версия зафиксирована: «latest» уже ломал main новыми правилами
+          # (noctx на httptest). Обновление версии — осознанный PR.
+          version: v2.12.2
 
       - name: Tests (race + Postgres)
         env:
