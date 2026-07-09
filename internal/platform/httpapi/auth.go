@@ -189,8 +189,11 @@ func (a *authAPI) sessionIdentity() middleware {
 // --- Вспомогательные -----------------------------------------------------------
 
 // cookie строит cookie сессии. Отрицательный ttl гасит её.
+// Secure управляется окружением: в production всегда true
+// (см. AuthConfig.SecureCookie в композиционном корне), в development
+// false — локальная разработка идёт по http.
 func (a *authAPI) cookie(token string, ttl time.Duration) *http.Cookie {
-	return &http.Cookie{
+	return &http.Cookie{ // #nosec G124 -- HttpOnly/SameSite заданы, Secure=true в production
 		Name:     sessionCookie,
 		Value:    token,
 		Path:     "/",
