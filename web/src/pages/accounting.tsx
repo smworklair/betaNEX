@@ -2,10 +2,13 @@ import { useState, type ReactNode } from 'react';
 import {
   TrendingUp, Receipt, HandCoins, FileBarChart, Calculator, Banknote,
   PiggyBank, Landmark, Download, Send, CheckCircle2, Sparkles,
+  ArrowDownLeft, ArrowUpRight, CreditCard,
 } from 'lucide-react';
-import { PageHead, Chip, NexAsk, useApp } from '../ui';
-import { Donut, Bars, Legend, type Segment } from '../charts';
-import { finance, charges, payroll, budgetLines, reports } from '../data';
+import { PageHead, Chip, NexAsk, Beta, useApp } from '../ui';
+import { Donut, Bars, Legend, Line, type Segment } from '../charts';
+import { finance, charges, payroll, budgetLines, reports, students } from '../data';
+import { useCollection, type Entity } from '../beta/store';
+import { EntityManager } from '../beta/manager';
 
 const rub = (n: number) => '₽ ' + n.toLocaleString('ru');
 
@@ -20,32 +23,136 @@ function FinNote({ children, ask, tone = 'ai' }: { children: ReactNode; ask: str
   );
 }
 
-/* ============================ Обзор ============================ */
+/* ============================ Обзор (финансовый кокпит) ============================ */
+const krub = (n: number) => '₽ ' + Math.round(n / 1000) + 'K';
+
 export function FinOverview() {
-  const received = finance.payments.filter((p) => p.status === 'Оплачено').reduce((a, p) => a + p.sum, 0);
-  const segs: Segment[] = [
-    { label: 'Поступило', value: received, color: 'var(--success)' },
-    { label: 'Задолженность', value: 248000, color: 'var(--danger)' },
+  const { toast } = useApp();
+  const [period, setPeriod] = useState<'month' | 'quarter' | 'year'>('month');
+  const mult = period === 'month' ? 1 : period === 'quarter' ? 3 : 12;
+
+  const income = 1240000 * mult;                    // поступления
+  const expense = 968000 * mult;                    // расходы (ФОТ, содержание, стипендии)
+  const net = income - expense;                     // чистый денежный поток
+  const cashEnd = 3820000 + net * 0.4;              // остаток на счетах и в кассе
+  const receivable = 248000;                        // дебиторская задолженность
+  const payable = 200300;                           // кредиторская задолженность
+  const payrollFund = payroll.reduce((a, w) => a + w.base + w.bonus, 0);
+
+  /* движение денег по периодам */
+  const flowLen = period === 'month' ? 12 : period === 'quarter' ? 8 : 6;
+  const flow = Array.from({ length: flowLen }, (_, i) => 3200 + Math.round(Math.sin(i * 0.8) * 420 + i * 55));
+
+  /* доходы / расходы — структура */
+  const incomeSegs: Segment[] = [
+    { label: 'Контракты (обучение)', value: 820, color: 'var(--accent)' },
+    { label: 'Бюджетное финансирование', value: 340, color: 'var(--ai)' },
+    { label: 'Доп. услуги', value: 80, color: 'var(--success)' },
   ];
+  const expenseSegs: Segment[] = [
+    { label: 'Зарплата (ФОТ)', value: 560, color: 'var(--warn)' },
+    { label: 'Содержание', value: 261, color: 'var(--danger)' },
+    { label: 'Стипендии', value: 147, color: 'var(--accent)' },
+  ];
+
+  /* дебиторка по срокам (aging) */
+  const aging = [
+    { label: 'Текущая (0–30 дн.)', value: 96000, color: 'var(--success)' },
+    { label: 'Просрочка 31–60 дн.', value: 88000, color: 'var(--warn)' },
+    { label: 'Просрочка 60+ дн.', value: 64000, color: 'var(--danger)' },
+  ];
+  const agingMax = Math.max(...aging.map((a) => a.value));
+
+  const topDebtors = charges.filter((c) => !c.paid).sort((a, b) => b.sum - a.sum).slice(0, 4);
+  const upcoming = [
+    { label: 'Зарплата за июль', due: '5 авг', sum: payrollFund, kind: 'ФОТ' },
+    { label: 'НДФЛ и взносы', due: '15 авг', sum: 214000, kind: 'Налоги' },
+    { label: 'Оплата ООО «Техносервис»', due: '10 июл', sum: 148000, kind: 'Поставщик' },
+    { label: 'Электроэнергия, июнь', due: '15 июл', sum: 52300, kind: 'Коммуналка' },
+  ];
+
   return (
     <div className="fade content-narrow">
-      <PageHead title="Финансы · Обзор" sub="Живая картина денег за текущий месяц" />
-      <FinNote ask="Сделай финансовую сводку: поступления, долги, риски, что сделать в первую очередь">
-        Поступило <b>{rub(received)}</b>, ждём ещё <b>₽ 248 000</b> от 8 студентов до 30 июня.
-        Прогноз на месяц — около <b>₽ 512 000</b>. Три платежа помечены как аномальные — стоит проверить.
+      <PageHead title="Финансы · Обзор" sub="Финансовый кокпит: денежный поток, задолженность, бюджет и обязательства"
+        actions={<>
+          <div className="seg">
+            <button className={period === 'month' ? 'on' : ''} onClick={() => setPeriod('month')}>Месяц</button>
+            <button className={period === 'quarter' ? 'on' : ''} onClick={() => setPeriod('quarter')}>Квартал</button>
+            <button className={period === 'year' ? 'on' : ''} onClick={() => setPeriod('year')}>Год</button>
+          </div>
+          <button className="btn btn-outline" onClick={() => toast('Финансовый отчёт выгружен')}><Download size={15} />Экспорт</button>
+        </>} />
+
+      <FinNote ask="Сделай финансовую сводку: денежный поток, задолженность, риски, что сделать в первую очередь">
+        Чистый поток за период — <b style={{ color: net >= 0 ? 'var(--success)' : 'var(--danger)' }}>{net >= 0 ? '+' : ''}{rub(net)}</b>.
+        Дебиторка <b>{rub(receivable)}</b> (из них просрочено {rub(152000)}), кредиторка <b>{rub(payable)}</b>.
+        Ближайшее крупное обязательство — зарплата <b>{rub(payrollFund)}</b> до 5 августа. Три платежа помечены как аномальные.
       </FinNote>
-      <div className="grid cols-4" style={{ marginBottom: 16 }}>
-        <div className="kpi"><div className="kpi-label">Поступило</div><div className="kpi-value">{rub(received)}</div></div>
-        <div className="kpi"><div className="kpi-label">Задолженность</div><div className="kpi-value" style={{ color: 'var(--danger)' }}>₽ 248 000</div></div>
-        <div className="kpi"><div className="kpi-label">Должников</div><div className="kpi-value">8</div></div>
-        <div className="kpi"><div className="kpi-label">Прогноз</div><div className="kpi-value" style={{ color: 'var(--success)' }}>₽ 512K</div></div>
-      </div>
-      <div className="grid cols-2">
-        <div className="card"><div className="card-head"><div className="card-title">Поступления и долги</div></div>
-          <div className="card-body chart-flex"><Donut segments={segs} centerTop="₽" centerSub="месяц" /><Legend segments={segs} withValues /></div>
+
+      {/* Ключевые показатели */}
+      <div className="fin-kpis">
+        <div className="fin-kpi hero">
+          <div className="fin-kpi-l">Денежные средства</div>
+          <div className="fin-kpi-v">{rub(Math.round(cashEnd))}</div>
+          <div className="fin-kpi-spark"><Line data={flow} height={44} color="var(--success)" /></div>
+          <div className="fin-kpi-foot"><TrendingUp size={13} /> чистый поток {net >= 0 ? '+' : ''}{krub(net)}</div>
         </div>
-        <div className="card"><div className="card-head"><div className="card-title">Исполнение бюджета</div></div>
-          <div className="card-body"><Bars data={budgetLines.map((b) => ({ label: b.name.split(' ')[0], value: Math.round(b.fact / 1000) }))} /></div>
+        <div className="fin-kpi"><div className="fin-kpi-l"><ArrowDownLeft size={13} /> Поступления</div><div className="fin-kpi-v" style={{ color: 'var(--success)' }}>{rub(income)}</div><div className="fin-kpi-foot ok">+8% к плану</div></div>
+        <div className="fin-kpi"><div className="fin-kpi-l"><ArrowUpRight size={13} /> Расходы</div><div className="fin-kpi-v">{rub(expense)}</div><div className="fin-kpi-foot">исполнено 84%</div></div>
+        <div className="fin-kpi"><div className="fin-kpi-l"><HandCoins size={13} /> Дебиторка</div><div className="fin-kpi-v" style={{ color: 'var(--danger)' }}>{rub(receivable)}</div><div className="fin-kpi-foot bad">8 должников</div></div>
+        <div className="fin-kpi"><div className="fin-kpi-l"><CreditCard size={13} /> Кредиторка</div><div className="fin-kpi-v" style={{ color: 'var(--warn)' }}>{rub(payable)}</div><div className="fin-kpi-foot">2 обязательства</div></div>
+      </div>
+
+      <div className="grid cols-2" style={{ marginTop: 16 }}>
+        <div className="card"><div className="card-head"><div className="card-title">Движение денежных средств</div><NexAsk q="Разбери денежный поток и спрогнозируй остаток на конец периода" label="Прогноз" /></div>
+          <div className="card-body"><Line data={flow} min={Math.min(...flow) - 200} max={Math.max(...flow) + 200} />
+            <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>Тыс. ₽ · остаток на конец периода {rub(Math.round(cashEnd))}</div></div>
+        </div>
+        <div className="card"><div className="card-head"><div className="card-title">Структура доходов</div></div>
+          <div className="card-body chart-flex"><Donut segments={incomeSegs} centerTop={krub(income)} centerSub="доходы" /><Legend segments={incomeSegs} withValues /></div>
+        </div>
+      </div>
+
+      <div className="grid cols-2" style={{ marginTop: 16 }}>
+        <div className="card"><div className="card-head"><div className="card-title">Дебиторка по срокам</div><NexAsk q="Кого из должников уведомить в первую очередь и на какую сумму" label="Кого уведомить" /></div>
+          <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {aging.map((a) => (
+              <div key={a.label}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 6 }}>
+                  <span>{a.label}</span><span className="mono" style={{ fontWeight: 600 }}>{rub(a.value)}</span>
+                </div>
+                <div className="meter" style={{ height: 9 }}><i style={{ width: `${(a.value / agingMax) * 100}%`, background: a.color }} /></div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="card"><div className="card-head"><div className="card-title">Структура расходов</div></div>
+          <div className="card-body chart-flex"><Donut segments={expenseSegs} centerTop={krub(expense)} centerSub="расходы" /><Legend segments={expenseSegs} withValues /></div>
+        </div>
+      </div>
+
+      <div className="grid cols-2" style={{ marginTop: 16 }}>
+        <div className="card"><div className="card-head"><div className="card-title">Топ должников</div></div>
+          <div className="row-list">
+            {topDebtors.map((c) => (
+              <div className="feed-row" key={c.id}>
+                <div className="feed-ico" style={{ background: 'var(--danger-weak)', color: 'var(--danger)' }}><HandCoins size={14} /></div>
+                <div className="feed-main"><div className="t">{c.student}</div><div className="m">{c.kind} · срок {c.due}</div></div>
+                <span className="mono" style={{ fontWeight: 700 }}>{rub(c.sum)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="card"><div className="card-head"><div className="card-title">Предстоящие обязательства</div><NexAsk q="Хватит ли остатка на все ближайшие платежи и налоги" label="Проверить ликвидность" /></div>
+          <div className="row-list">
+            {upcoming.map((u) => (
+              <div className="feed-row" key={u.label}>
+                <div className="feed-ico"><Landmark size={14} /></div>
+                <div className="feed-main"><div className="t">{u.label}</div><div className="m">{u.kind} · до {u.due}</div></div>
+                <span className="mono" style={{ fontWeight: 700 }}>{rub(u.sum)}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
@@ -176,21 +283,39 @@ export function FinPayroll() {
 }
 
 /* ============================ Стипендии ============================ */
+interface Scholarship extends Entity, Record<string, unknown> { student: string; group: string; type: string; sum: number; basis: string; }
+const SCHOLARSHIP_SEED: Scholarship[] = finance.scholarships.map((s) => ({
+  id: s.id, student: s.student, group: s.group, type: s.type, sum: s.sum, basis: s.basis,
+}));
+const STUD_OPTS = students.map((s) => `${s.lastname} ${s.firstname[0]}.${s.patronymic[0]}.`);
+const GROUP_OPTS = [...new Set(students.map((s) => s.group))];
+
 export function FinScholarship() {
+  const col = useCollection<Scholarship>('fin-scholarships', SCHOLARSHIP_SEED);
+  const total = col.items.reduce((a, s) => a + s.sum, 0);
   return (
     <div className="fade content-narrow">
-      <PageHead title="Стипендии" sub="Назначения текущего семестра" />
+      <PageHead title="Стипендии" sub={`${col.items.length} назначений · фонд ${rub(total)} в месяц`} actions={<Beta />} />
       <FinNote ask="Кто претендует на повышенную стипендию и на каком основании">
-        Кандидаты подобраны по успеваемости и подтверждающим документам. Основание указано в каждой строке.
+        Назначайте, изменяйте и снимайте стипендии, выгружайте ведомость. Кандидаты подбираются по успеваемости и подтверждающим документам.
       </FinNote>
-      <div className="card"><div className="table-wrap"><table className="tbl">
-        <thead><tr><th>Студент</th><th>Группа</th><th>Тип</th><th className="right">Сумма</th><th>Основание</th></tr></thead>
-        <tbody>{finance.scholarships.map((s) => (
-          <tr key={s.id}><td style={{ fontWeight: 600 }}>{s.student}</td><td className="mono">{s.group}</td>
-            <td><Chip tone="chip-info">{s.type}</Chip></td><td className="right mono">{rub(s.sum)}</td>
-            <td className="muted" style={{ fontSize: 12.5 }}>{s.basis}</td></tr>
-        ))}</tbody>
-      </table></div></div>
+      <div className="grid cols-3" style={{ marginBottom: 16 }}>
+        <div className="kpi"><div className="kpi-label">Получателей</div><div className="kpi-value">{col.items.length}</div></div>
+        <div className="kpi"><div className="kpi-label">Фонд в месяц</div><div className="kpi-value">{rub(total)}</div></div>
+        <div className="kpi"><div className="kpi-label">Повышенных</div><div className="kpi-value">{col.items.filter((s) => /повыш/i.test(s.type)).length}</div></div>
+      </div>
+      <EntityManager title="Стипендии" col={col} empty="Стипендии ещё не назначены"
+        columns={[
+          { key: 'student', label: 'Студент' }, { key: 'group', label: 'Группа' },
+          { key: 'type', label: 'Тип', kind: 'chip' }, { key: 'sum', label: 'Сумма', kind: 'money' }, { key: 'basis', label: 'Основание' },
+        ]}
+        fields={[
+          { key: 'student', label: 'Студент', options: STUD_OPTS },
+          { key: 'group', label: 'Группа', options: GROUP_OPTS },
+          { key: 'type', label: 'Тип стипендии', options: ['Академическая', 'Повышенная', 'Социальная', 'Именная', 'Президентская'] },
+          { key: 'sum', label: 'Сумма, ₽/мес', type: 'number' },
+          { key: 'basis', label: 'Основание', type: 'textarea' },
+        ]} />
     </div>
   );
 }

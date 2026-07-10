@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Sun, Moon, ShieldCheck, KeyRound, Sparkles, LogOut, PanelLeft, PanelTop, Bot, Palette, Check, Plus, Smartphone, Search, X as XIcon, Maximize2, Minimize2 } from 'lucide-react';
+import { Sun, Moon, ShieldCheck, KeyRound, Sparkles, LogOut, PanelLeft, PanelTop, Bot, Palette, Check, Plus, Smartphone, Search, X as XIcon } from 'lucide-react';
 import { PageHead, Chip, Avatar, Soon, Beta, useApp, type Prefs } from '../ui';
 import { DOCK_CATALOG, DEFAULT_DOCK, DOCK_MIN, DOCK_MAX, TOPBAR_CATALOG, DEFAULT_TOPBAR, TOPBAR_MIN } from '../dock';
 import { roleLabel } from '../data';
@@ -150,12 +150,6 @@ export default function Settings() {
             <button className={!prefs.strip ? 'on' : ''} onClick={() => setPref('strip', false)}>Выкл</button>
           </div>
         </Row>
-        <Row title="Авто-скрытие панели" desc="Левое меню сворачивается в иконки и раскрывается при наведении">
-          <div className="seg">
-            <button className={prefs.sidebarAuto ? 'on' : ''} onClick={() => setPref('sidebarAuto', true)}>Вкл</button>
-            <button className={!prefs.sidebarAuto ? 'on' : ''} onClick={() => setPref('sidebarAuto', false)}>Выкл</button>
-          </div>
-        </Row>
         <Row title="Прозрачность интерфейса" desc="Меньше прозрачности — плотные непрозрачные поверхности, выше контраст">
           <div className="seg">
             <button className={!prefs.solid ? 'on' : ''} onClick={() => setPref('solid', false)}>Стекло</button>
@@ -166,21 +160,17 @@ export default function Settings() {
 
       {/* ---- Рабочая область и горячие клавиши (десктоп) ---- */}
       <div className="card" style={{ marginBottom: 16 }}>
-        <div className="card-head"><div className="card-title"><Maximize2 size={15} /> Рабочая область</div></div>
-        <Row title="Боковая панель раздела" desc="Закреплённая, плавающая (поверх контента) или скрытая">
+        <div className="card-head"><div className="card-title"><PanelLeft size={15} /> Рабочая область</div></div>
+        <Row title="Боковая панель раздела" desc="Развёрнутая — с подписями, свёрнутая — только иконки (больше места контенту)">
           <div className="seg">
-            <button className={prefs.sidebar === 'fixed' ? 'on' : ''} onClick={() => setPref('sidebar', 'fixed')}>Закреплена</button>
-            <button className={prefs.sidebar === 'float' ? 'on' : ''} onClick={() => setPref('sidebar', 'float')}>Плавающая</button>
-            <button className={prefs.sidebar === 'hidden' ? 'on' : ''} onClick={() => setPref('sidebar', 'hidden')}>Скрыта</button>
+            <button className={prefs.sidebar !== 'collapsed' ? 'on' : ''} onClick={() => setPref('sidebar', 'expanded')}>Развёрнута</button>
+            <button className={prefs.sidebar === 'collapsed' ? 'on' : ''} onClick={() => setPref('sidebar', 'collapsed')}>Свёрнута</button>
           </div>
-        </Row>
-        <Row title="Полноэкранный режим" desc="Скрывает верхнюю и боковую панели, оставляя только рабочую область">
-          <button className="btn btn-outline" onClick={() => setPref('zen', !prefs.zen)}>{prefs.zen ? <><Minimize2 size={15} />Выйти</> : <><Maximize2 size={15} />Включить</>}</button>
         </Row>
         <div className="card-body" style={{ borderTop: '1px solid var(--border)' }}>
           <div className="field-label" style={{ marginBottom: 8 }}>Горячие клавиши</div>
           <div className="hotkeys">
-            {[['Ctrl', 'K', 'Поиск и NEX'], ['Ctrl', 'B', 'Скрыть/показать панель'], ['Ctrl', 'J', 'Плавающая панель'], ['Ctrl', 'Shift', 'F', 'Полный экран'], ['Ctrl', 'I', 'Чат NEX'], ['Alt', '1–9', 'Разделы'], ['Esc', '', 'Выйти из полноэкранного']].map((k, i) => (
+            {[['Ctrl', 'K', 'Поиск и NEX'], ['Ctrl', 'B', 'Свернуть/развернуть панель'], ['Ctrl', 'I', 'Чат NEX'], ['Alt', '1–9', 'Разделы']].map((k, i) => (
               <div className="hotkey-row" key={i}>
                 <span className="hotkey-keys">{k.slice(0, -1).filter(Boolean).map((key) => <kbd key={key}>{key}</kbd>)}</span>
                 <span className="muted" style={{ fontSize: 13 }}>{k[k.length - 1]}</span>
