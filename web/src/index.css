@@ -1712,3 +1712,177 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
   .mini-fab { right: 16px; bottom: calc(76px + env(safe-area-inset-bottom)); }
   .mini-msgr { right: 12px; left: 12px; bottom: calc(72px + env(safe-area-inset-bottom)); width: auto; height: 66vh; }
 }
+
+/* ============================================================
+   Расширение betaNEX: бета-компоненты, конструкторы, интерфейс.
+   ============================================================ */
+
+/* ---- Плотный (непрозрачный) режим: меньше прозрачности ---- */
+[data-solid="on"] { --surface: #ffffff; --surface-2: #eceef3; --elevated: #ffffff; --border: rgba(20,22,30,0.12); --border-2: rgba(20,22,30,0.20); }
+[data-theme="dark"][data-solid="on"] { --surface: #1b1c23; --surface-2: #262832; --elevated: #23242d; --border: rgba(255,255,255,0.12); --border-2: rgba(255,255,255,0.20); }
+[data-solid="on"] .subnav.glass { backdrop-filter: none; }
+
+/* ---- Полноэкранный режим рабочей области ---- */
+.app2.zen .topbar2 { display: none; }
+.app2.zen .subnav { display: none; }
+.app2.zen .body2 { height: 100vh; }
+.zen-exit { position: fixed; top: 12px; right: 12px; z-index: 400; width: 34px; height: 34px; border-radius: 999px; border: 1px solid var(--border-2); background: var(--elevated); color: var(--text); display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: var(--shadow-sm); }
+
+/* ---- Плавающая / скрытая боковая панель ---- */
+.subnav.sidebar-float { position: absolute; z-index: 40; top: 12px; bottom: 12px; box-shadow: var(--shadow-md); border-radius: var(--r-lg); }
+.subnav-reveal { position: fixed; left: 8px; top: 78px; z-index: 45; width: 30px; height: 46px; border-radius: 0 12px 12px 0; border: 1px solid var(--border-2); border-left: none; background: var(--elevated); color: var(--text-2); cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-sm); }
+.subnav-reveal:hover { color: var(--accent); }
+
+/* ---- icon-btn маленький ---- */
+.icon-btn.sm { width: 28px; height: 28px; border-radius: 8px; }
+
+/* ---- Бета-вкладки ---- */
+.bk-tabs { display: flex; gap: 6px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
+.bk-tabs button { display: inline-flex; align-items: center; gap: 7px; padding: 9px 14px; background: transparent; border: none; border-bottom: 2px solid transparent; color: var(--text-2); font-size: 13.5px; font-weight: 600; cursor: pointer; margin-bottom: -1px; }
+.bk-tabs button.on { color: var(--accent); border-bottom-color: var(--accent); }
+.bk-tabs button:hover { color: var(--text); }
+
+/* ---- Панель инструментов ---- */
+.bk-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.bk-search { display: flex; align-items: center; gap: 8px; padding: 0 12px; height: 38px; border: 1px solid var(--border-2); border-radius: var(--r-md); background: var(--surface); flex: 1; min-width: 200px; }
+.bk-search input { border: none; background: transparent; outline: none; width: 100%; color: var(--text); font-size: 13.5px; }
+.bk-toolbar-right { display: flex; align-items: center; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+.bk-filter { width: auto; min-width: 130px; }
+
+/* ---- Массовые действия ---- */
+.bk-bulk { display: flex; align-items: center; gap: 12px; padding: 8px 14px; margin-bottom: 14px; border: 1px solid var(--accent); background: var(--accent-weak); border-radius: var(--r-md); }
+.bk-bulk-count { font-weight: 700; font-size: 13px; color: var(--accent); }
+.bk-bulk-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ---- Модальное окно ---- */
+.bk-overlay { position: fixed; inset: 0; background: rgba(10,10,11,0.5); backdrop-filter: blur(3px); z-index: 500; display: flex; align-items: flex-start; justify-content: center; padding: 6vh 16px 16px; overflow-y: auto; }
+.bk-modal { width: 100%; max-width: 480px; background: var(--elevated); border: 1px solid var(--border-2); border-radius: var(--r-lg); box-shadow: var(--shadow-md); animation: fadeIn .14s ease-out; }
+.bk-modal.wide { max-width: 620px; }
+.bk-modal-head { display: flex; align-items: flex-start; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--border); }
+.bk-modal-title { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; }
+.bk-modal-sub { font-size: 12.5px; color: var(--text-3); margin-top: 2px; }
+.bk-modal-head .icon-btn { margin-left: auto; }
+.bk-modal-body { padding: 18px; max-height: 64vh; overflow-y: auto; }
+.bk-modal-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 18px; border-top: 1px solid var(--border); }
+
+/* ---- Формы ---- */
+.bk-form-grid { display: flex; flex-direction: column; gap: 14px; }
+.bk-form-two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.bk-field { display: block; }
+.bk-hint { display: block; font-size: 11.5px; color: var(--text-3); margin-top: 4px; }
+.bk-area { height: auto; padding: 9px 12px; resize: vertical; line-height: 1.5; }
+@media (max-width: 560px) { .bk-form-two { grid-template-columns: 1fr; } }
+
+/* ---- Теги ---- */
+.bk-tags { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px; border: 1px solid var(--border-2); border-radius: var(--r-md); background: var(--surface); min-height: 38px; }
+.bk-tag { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; background: var(--accent-weak); color: var(--accent); border-radius: 999px; font-size: 12px; font-weight: 600; }
+.bk-tag button { background: none; border: none; color: inherit; cursor: pointer; display: flex; padding: 0; opacity: .7; }
+.bk-tag button:hover { opacity: 1; }
+.bk-tags input { border: none; background: transparent; outline: none; flex: 1; min-width: 100px; color: var(--text); font-size: 13px; }
+.bk-minitag { font-size: 11px; color: var(--ai); font-weight: 600; }
+
+/* ---- Мультивыбор ---- */
+.bk-multi { position: relative; }
+.bk-multi-trigger { width: 100%; height: 36px; padding: 0 12px; border: 1px solid var(--border-2); border-radius: var(--r-md); background: var(--surface); color: var(--text); font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 8px; text-align: left; }
+.bk-multi-trigger span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bk-multi-trigger .dim { color: var(--text-3); }
+.bk-multi-pop { position: absolute; top: 40px; left: 0; right: 0; z-index: 50; background: var(--elevated); border: 1px solid var(--border-2); border-radius: var(--r-md); box-shadow: var(--shadow-md); padding: 5px; max-height: 220px; overflow-y: auto; }
+.bk-multi-opt { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 9px; background: none; border: none; border-radius: 7px; cursor: pointer; font-size: 13px; color: var(--text); text-align: left; }
+.bk-multi-opt:hover { background: var(--surface-2); }
+.bk-multi-opt.on { color: var(--accent); font-weight: 600; }
+.bk-check { width: 16px; height: 16px; border: 1.5px solid var(--border-2); border-radius: 5px; display: inline-flex; align-items: center; justify-content: center; color: var(--accent); flex-shrink: 0; }
+.bk-multi-opt.on .bk-check { border-color: var(--accent); background: var(--accent-weak); }
+
+/* ---- Чекбокс строки ---- */
+.bk-rowcheck { width: 18px; height: 18px; border: 1.5px solid var(--border-2); border-radius: 5px; background: var(--surface); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; color: var(--accent-fg); flex-shrink: 0; font-size: 11px; }
+.bk-rowcheck.on { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+
+/* ---- Список задач ---- */
+.bk-list-head { display: flex; align-items: center; gap: 12px; padding: 9px 16px; border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-3); }
+.bk-task-row { display: flex; align-items: center; gap: 12px; padding: 11px 16px; border-bottom: 1px solid var(--border); }
+.bk-task-row:last-child { border-bottom: none; }
+.bk-task-toggle { background: none; border: none; cursor: pointer; display: flex; padding: 0; }
+.bk-task-main { flex: 1; min-width: 0; cursor: pointer; }
+.bk-task-title { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.bk-prio-dot { width: 8px; height: 8px; border-radius: 999px; flex-shrink: 0; }
+.bk-task-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 11.5px; color: var(--text-3); margin-top: 3px; }
+.bk-task-meta > span { display: inline-flex; align-items: center; gap: 3px; }
+.bk-task-actions { display: flex; gap: 2px; }
+@media (max-width: 720px) { .bk-task-actions { display: none; } }
+
+/* ---- Переключатель ---- */
+.bk-switch { width: 38px; height: 22px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border-2); cursor: pointer; padding: 0; position: relative; flex-shrink: 0; transition: background .15s; }
+.bk-switch span { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 999px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: transform .15s; }
+.bk-switch.on { background: var(--accent); border-color: var(--accent); }
+.bk-switch.on span { transform: translateX(16px); }
+.bk-switch-row { display: flex; align-items: center; gap: 10px; font-size: 13.5px; }
+
+/* ---- Чек-лист / подзадачи ---- */
+.bk-checklist { display: flex; flex-direction: column; gap: 7px; }
+.bk-check-row { display: flex; align-items: center; gap: 9px; font-size: 13.5px; }
+.bk-check-row > span { flex: 1; }
+.bk-check-add { display: flex; gap: 8px; margin-top: 4px; }
+.bk-check-add input { flex: 1; }
+
+/* ---- Карточка задачи ---- */
+.bk-detail { display: flex; flex-direction: column; gap: 16px; }
+.bk-detail-chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.bk-detail-note { font-size: 13.5px; line-height: 1.55; color: var(--text-2); white-space: pre-wrap; }
+.bk-detail-people { display: flex; gap: 24px; flex-wrap: wrap; font-size: 13px; }
+.bk-detail-people .field-label { display: flex; align-items: center; gap: 4px; }
+.bk-detail-sec { border-top: 1px solid var(--border); padding-top: 12px; }
+.bk-detail-h { font-size: 12.5px; font-weight: 700; color: var(--text-2); display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.bk-att { display: flex; align-items: center; gap: 7px; font-size: 13px; padding: 5px 0; color: var(--text-2); }
+.bk-comment { font-size: 13px; padding: 6px 0; }
+.bk-comment b { font-weight: 600; }
+.bk-comment > div { color: var(--text-2); margin-top: 2px; }
+
+/* ---- Подтверждение / пусто ---- */
+.bk-confirm { display: flex; gap: 12px; align-items: flex-start; }
+.bk-confirm-ico { color: var(--danger); flex-shrink: 0; }
+.bk-confirm p { font-size: 14px; line-height: 1.5; }
+.bk-empty { text-align: center; padding: 48px 20px; }
+.bk-empty-ico { color: var(--text-3); margin-bottom: 12px; display: flex; justify-content: center; }
+.bk-empty-title { font-size: 15px; font-weight: 600; }
+.bk-empty-hint { font-size: 13px; color: var(--text-3); margin-top: 4px; }
+.bk-note { font-size: 12.5px; color: var(--text-3); margin-top: 6px; }
+
+/* ---- Шаблоны / правила задач ---- */
+.bk-tpl-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.bk-tpl-list { margin: 6px 0 0; padding-left: 18px; font-size: 12.5px; color: var(--text-2); display: flex; flex-direction: column; gap: 2px; }
+
+/* ---- Конструктор отчётов ---- */
+.bk-builder { display: grid; grid-template-columns: repeat(3, 1fr) 1.4fr; gap: 12px; align-items: end; }
+.bk-builder-save { display: flex; gap: 8px; align-items: center; }
+.bk-builder-save input { flex: 1; }
+@media (max-width: 820px) { .bk-builder { grid-template-columns: 1fr 1fr; } }
+.bk-forecast-note { font-size: 12.5px; color: var(--text-2); margin-top: 10px; display: flex; align-items: center; gap: 6px; }
+
+/* ---- Тепловая карта ---- */
+.heatmap { display: inline-flex; flex-direction: column; gap: 4px; min-width: 100%; }
+.heatmap-row { display: flex; gap: 4px; align-items: center; }
+.heatmap-label { width: 66px; font-size: 11.5px; color: var(--text-2); flex-shrink: 0; }
+.heatmap-cell { flex: 1; min-width: 34px; height: 30px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 10.5px; font-weight: 600; color: #fff; }
+.heatmap-cell.head { background: transparent; color: var(--text-3); height: 18px; }
+
+/* ---- Календарь: карточка события ---- */
+.cal-ev-card { padding: 10px 12px; border-left: 3px solid var(--accent); background: var(--surface-2); border-radius: 0 var(--r-sm) var(--r-sm) 0; }
+.cal-ev-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; font-size: 13.5px; }
+.cal-ev-btns { display: flex; gap: 2px; flex-shrink: 0; }
+.cal-ev-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; font-size: 11.5px; color: var(--text-3); }
+.cal-ev-meta > span { display: inline-flex; align-items: center; gap: 3px; }
+.cal-legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 12px; font-size: 11.5px; color: var(--text-3); }
+.cal-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.cal-legend i { width: 9px; height: 9px; border-radius: 999px; }
+
+/* ---- Богатое меню выделения (контекстное меню по тексту) ---- */
+.sel-pop.rich { flex-wrap: wrap; max-width: 340px; gap: 1px; padding: 4px; }
+.sel-pop.rich button span { white-space: nowrap; }
+.sel-pop-sep { width: 100%; height: 1px; background: rgba(255,255,255,.14); margin: 2px 0; }
+
+/* ---- Горячие клавиши в настройках ---- */
+.hotkeys { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 20px; }
+.hotkey-row { display: flex; align-items: center; gap: 10px; }
+.hotkey-keys { display: inline-flex; gap: 4px; min-width: 96px; }
+.hotkey-keys kbd { font-size: 11px; padding: 2px 6px; border: 1px solid var(--border-2); border-bottom-width: 2px; border-radius: 5px; background: var(--surface-2); font-family: inherit; }
+@media (max-width: 560px) { .hotkeys { grid-template-columns: 1fr; } }

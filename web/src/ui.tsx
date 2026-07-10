@@ -25,12 +25,18 @@ export interface Prefs {
   strip: boolean;
   /** авто-скрытие левой панели: сворачивается в иконки, раскрывается при наведении */
   sidebarAuto: boolean;
+  /** плотность стекла: true — непрозрачные поверхности (меньше прозрачности) */
+  solid: boolean;
+  /** режим боковой панели раздела: закреплена / плавающая / скрыта */
+  sidebar: 'fixed' | 'float' | 'hidden';
+  /** полноэкранный режим рабочей области: прячет верхнюю панель и боковую */
+  zen: boolean;
   /** набор кнопок нижнего докбара на мобайле (id из DOCK_CATALOG, по порядку) */
   dock: string[];
   /** набор разделов верхней панели на десктопе (id из TOPBAR_CATALOG). Скрытые доступны в поиске. */
   topbar: string[];
 }
-export const DEFAULT_PREFS: Prefs = { accent: 'blue', density: 'normal', font: 'normal', corners: 'soft', strip: true, sidebarAuto: false, dock: ['feed', 'mail', 'study', 'finance', 'people'], topbar: ['feed', 'finance', 'study', 'people', 'analytics', 'security', 'beta'] };
+export const DEFAULT_PREFS: Prefs = { accent: 'blue', density: 'normal', font: 'normal', corners: 'soft', strip: true, sidebarAuto: false, solid: false, sidebar: 'fixed', zen: false, dock: ['feed', 'mail', 'study', 'finance', 'people'], topbar: ['feed', 'finance', 'study', 'people', 'analytics', 'security', 'beta'] };
 export interface ChatMsg extends Partial<NexReply> { who: 'u' | 'n'; text: string; run?: string; pending?: boolean; }
 /** Floating context-less explainer, anchored to a text selection. */
 export interface ExplainReq { x: number; y: number; text: string; }
@@ -121,6 +127,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     el.setAttribute('data-density', prefs.density);
     el.setAttribute('data-font', prefs.font);
     el.setAttribute('data-corners', prefs.corners);
+    el.setAttribute('data-solid', prefs.solid ? 'on' : 'off');
+    el.setAttribute('data-sidebar', prefs.sidebar);
+    el.setAttribute('data-zen', prefs.zen ? 'on' : 'off');
     localStorage.setItem('nex-prefs', JSON.stringify(prefs));
   }, [prefs]);
 
@@ -258,7 +267,7 @@ export function Avatar({ name }: { name: string }) {
   return <span className="avatar">{initials || '—'}</span>;
 }
 
-export function PageHead({ title, sub, actions }: { title: string; sub?: string; actions?: ReactNode }) {
+export function PageHead({ title, sub, actions }: { title: ReactNode; sub?: ReactNode; actions?: ReactNode }) {
   return (
     <div className="page-head">
       <div>
