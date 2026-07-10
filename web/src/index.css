@@ -1931,6 +1931,51 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 @media (max-width: 900px) { .deck-shortcuts { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 480px) { .deck-shortcuts { grid-template-columns: repeat(2, 1fr); } }
 
+/* --- Конструктор главного экрана --- */
+.deck-config-btn { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-3);
+  background: none; border: none; cursor: pointer; padding: 2px 0; transition: color .14s; }
+.deck-config-btn:hover { color: var(--ai); }
+.deck-config-btn svg { color: inherit; }
+
+.deck-edit-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+  padding: 12px 16px; border: 1px solid color-mix(in srgb, var(--ai) 35%, var(--border-2)); border-radius: var(--r-lg);
+  background: color-mix(in srgb, var(--ai) 7%, var(--surface)); }
+.deck-edit-title { display: flex; align-items: flex-start; gap: 11px; }
+.deck-edit-ic { width: 32px; height: 32px; border-radius: 10px; background: var(--ai); color: #fff;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.deck-edit-title > div { display: flex; flex-direction: column; }
+.deck-edit-title b { font-size: 14px; }
+.deck-edit-title span { font-size: 12px; color: var(--text-3); margin-top: 1px; }
+.deck-edit-actions { display: flex; gap: 8px; }
+
+/* блок в режиме конструктора */
+.deck-eb { border: 1px dashed color-mix(in srgb, var(--ai) 45%, var(--border-2)); border-radius: var(--r-lg);
+  background: color-mix(in srgb, var(--ai) 3%, transparent); padding: 8px; }
+.deck-grid .deck-eb { height: 100%; }
+.deck-eb-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 4px 8px; }
+.deck-eb-name { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--ai); }
+.deck-eb-tools { display: flex; gap: 4px; }
+.deck-eb-tools button { width: 26px; height: 26px; border-radius: 8px; border: 1px solid var(--border-2);
+  background: var(--surface); color: var(--text-2); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: .12s; }
+.deck-eb-tools button:hover:not(:disabled) { color: var(--ai); border-color: var(--ai); }
+.deck-eb-tools button:disabled { opacity: .35; cursor: default; }
+.deck-eb-body { position: relative; }
+.deck.editing .console:focus-within { border-color: var(--border-2); box-shadow: none; }
+.deck.editing .op-row, .deck.editing .deck-shortcut, .deck.editing .console-chip, .deck.editing .deck-log-more { cursor: default; }
+
+/* инструменты ярлыка */
+.deck-shortcut-wrap { position: relative; }
+.deck-shortcut-wrap.editing .deck-shortcut { pointer-events: none; }
+.deck-sc-tools { position: absolute; top: 4px; right: 4px; display: flex; gap: 3px; }
+.deck-sc-tools button { width: 20px; height: 20px; border-radius: 6px; border: 1px solid var(--border-2);
+  background: var(--elevated); color: var(--text-2); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.deck-sc-tools button:hover { color: var(--ai); border-color: var(--ai); }
+
+/* строки добавления скрытого */
+.deck-add-row, .deck-add-blocks { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 4px 2px; }
+.deck-add-label { font-size: 12.5px; font-weight: 600; color: var(--text-3); margin-right: 2px; }
+.deck-add-row { margin-top: 10px; }
+
 /* --- Раскладка --- */
 .deck-grid { display: grid; grid-template-columns: 1.55fr 1fr; gap: 16px; align-items: start; }
 .deck-main, .deck-side { display: flex; flex-direction: column; gap: 16px; }

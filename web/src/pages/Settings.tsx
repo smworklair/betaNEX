@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from 'react';
-import { Sun, Moon, ShieldCheck, KeyRound, Sparkles, LogOut, PanelLeft, PanelTop, Bot, Palette, Check, Plus, Smartphone, Search, X as XIcon } from 'lucide-react';
+import { Sun, Moon, ShieldCheck, KeyRound, Sparkles, LogOut, PanelLeft, PanelTop, Bot, Palette, Check, Plus, Smartphone, Search, X as XIcon, LayoutDashboard, Settings2 } from 'lucide-react';
 import { PageHead, Chip, Avatar, Soon, Beta, useApp, type Prefs } from '../ui';
 import { DOCK_CATALOG, DEFAULT_DOCK, DOCK_MIN, DOCK_MAX, TOPBAR_CATALOG, DEFAULT_TOPBAR, TOPBAR_MIN } from '../dock';
+import { HOME_BLOCK_CATALOG, DEFAULT_HOME_BLOCKS } from '../home';
 import { roleLabel } from '../data';
 import {
   getProvider, setProvider, getGeminiKey, setGeminiKey,
@@ -29,7 +30,7 @@ function Row({ title, desc, children }: { title: string; desc: string; children:
 }
 
 export default function Settings() {
-  const { theme, setTheme, user, setUser, sidebarEnabled, setSidebarEnabled, pulseEnabled, setPulseEnabled, prefs, setPref, setPage, openChat, toast } = useApp();
+  const { theme, setTheme, user, setUser, sidebarEnabled, setSidebarEnabled, pulseEnabled, setPulseEnabled, prefs, setPref, setPage, setHomeEditing, openChat, toast } = useApp();
   /* --- Интеллект: выбор провайдера + ключи --- */
   const [provider, setProviderState] = useState<LlmProvider>(getProvider());
   const [key, setKey] = useState(provider === 'custom' ? getCustomKey() : getGeminiKey());
@@ -80,6 +81,14 @@ export default function Settings() {
       setPref('topbar', TOPBAR_CATALOG.filter((t) => topbar.includes(t.id) || t.id === id).map((t) => t.id));
     }
   };
+
+  /* ---- конструктор главного экрана: какие блоки показывать ---- */
+  const homeBlocks = prefs.homeBlocks && prefs.homeBlocks.length ? prefs.homeBlocks : DEFAULT_HOME_BLOCKS;
+  const toggleHomeBlock = (id: string) => {
+    if (homeBlocks.includes(id)) setPref('homeBlocks', homeBlocks.filter((x) => x !== id));
+    else setPref('homeBlocks', HOME_BLOCK_CATALOG.filter((b) => homeBlocks.includes(b.id) || b.id === id).map((b) => b.id));
+  };
+  const openHomeBuilder = () => { setHomeEditing(true); setPage('home'); toast('Открыт конструктор главного экрана'); };
 
   return (
     <div className="fade content-narrow" style={{ maxWidth: 760 }}>
@@ -156,6 +165,30 @@ export default function Settings() {
             <button className={prefs.solid ? 'on' : ''} onClick={() => setPref('solid', true)}>Плотно</button>
           </div>
         </Row>
+      </div>
+
+      {/* ---- Конструктор главного экрана ---- */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card-head"><div className="card-title"><LayoutDashboard size={15} /> Главный экран</div><span className="dim" style={{ fontSize: 12.5 }}>{homeBlocks.length} из {HOME_BLOCK_CATALOG.length} блоков</span></div>
+        <div className="card-body">
+          <div className="muted" style={{ fontSize: 13, marginBottom: 12 }}>
+            Соберите «Главное» под себя: включайте нужные блоки и ярлыки, меняйте порядок. Нажмите <b>«Настроить экран»</b> — откроется само «Главное» в режиме конструктора, где всё меняется прямо на месте.
+          </div>
+          <button className="btn btn-primary" onClick={openHomeBuilder}><Settings2 size={15} />Настроить экран</button>
+          <div className="field-label" style={{ margin: '16px 0 8px' }}>Быстро включить/выключить блоки</div>
+          <div className="dock-pick">
+            {HOME_BLOCK_CATALOG.map((b) => {
+              const on = homeBlocks.includes(b.id);
+              return (
+                <button key={b.id} className={`dock-chip ${on ? 'on' : ''}`} title={b.desc} onClick={() => toggleHomeBlock(b.id)}>
+                  <span>{b.label}</span>
+                  {on ? <Check size={14} className="dock-chip-mark" /> : <Plus size={14} className="dock-chip-mark" />}
+                </button>
+              );
+            })}
+          </div>
+          <button className="btn btn-ghost btn-sm" style={{ marginTop: 12 }} onClick={() => setPref('homeBlocks', DEFAULT_HOME_BLOCKS)}>Сбросить блоки</button>
+        </div>
       </div>
 
       {/* ---- Рабочая область и горячие клавиши (десктоп) ---- */}
