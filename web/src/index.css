@@ -1722,16 +1722,20 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 [data-theme="dark"][data-solid="on"] { --surface: #1b1c23; --surface-2: #262832; --elevated: #23242d; --border: rgba(255,255,255,0.12); --border-2: rgba(255,255,255,0.20); }
 [data-solid="on"] .subnav.glass { backdrop-filter: none; }
 
-/* ---- Полноэкранный режим рабочей области ---- */
-.app2.zen .topbar2 { display: none; }
-.app2.zen .subnav { display: none; }
-.app2.zen .body2 { height: 100vh; }
-.zen-exit { position: fixed; top: 12px; right: 12px; z-index: 400; width: 34px; height: 34px; border-radius: 999px; border: 1px solid var(--border-2); background: var(--elevated); color: var(--text); display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: var(--shadow-sm); }
+/* ---- Боковая панель: шапка со сворачиванием ---- */
+.subnav-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 2px 4px 8px 0; }
+.subnav-collapse { width: 26px; height: 26px; border-radius: 7px; border: none; background: transparent; color: var(--text-3); cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.subnav-collapse:hover { background: var(--surface-2); color: var(--text); }
 
-/* ---- Плавающая / скрытая боковая панель ---- */
-.subnav.sidebar-float { position: absolute; z-index: 40; top: 12px; bottom: 12px; box-shadow: var(--shadow-md); border-radius: var(--r-lg); }
-.subnav-reveal { position: fixed; left: 8px; top: 78px; z-index: 45; width: 30px; height: 46px; border-radius: 0 12px 12px 0; border: 1px solid var(--border-2); border-left: none; background: var(--elevated); color: var(--text-2); cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: var(--shadow-sm); }
-.subnav-reveal:hover { color: var(--accent); }
+/* ---- Свёрнутая панель: аккуратный рельс из иконок (в потоке, без наложений) ---- */
+.subnav.collapsed { width: 60px; padding: 12px 8px; align-items: center; }
+.subnav.collapsed .subnav-head { justify-content: center; padding: 2px 0 8px; }
+.subnav.collapsed .subnav-title { display: none; }
+.subnav.collapsed .subnav-item { justify-content: center; padding: 0; width: 44px; }
+.subnav.collapsed .subnav-item span { display: none; }
+.subnav.collapsed .subnav-item .beta-badge { display: none; }
+.subnav.collapsed .subnav-item .nav-badge { position: absolute; top: 4px; right: 6px; margin: 0; }
+.subnav.collapsed .subnav-item { position: relative; }
 
 /* ---- icon-btn маленький ---- */
 .icon-btn.sm { width: 28px; height: 28px; border-radius: 8px; }
@@ -2020,3 +2024,19 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
   .deck-top-right { align-items: flex-start; flex-direction: row; align-items: center; }
   .deck-clock { font-size: 22px; }
 }
+
+/* ============================================================
+   Финансы · кокпит (обзор)
+   ============================================================ */
+.fin-kpis { display: grid; grid-template-columns: 1.5fr repeat(4, 1fr); gap: 12px; }
+.fin-kpi { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); padding: 14px 16px; display: flex; flex-direction: column; }
+.fin-kpi-l { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-3); display: flex; align-items: center; gap: 5px; }
+.fin-kpi-v { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 22px; font-weight: 700; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; margin-top: 8px; }
+.fin-kpi-foot { font-size: 11.5px; color: var(--text-3); margin-top: 6px; display: flex; align-items: center; gap: 4px; }
+.fin-kpi-foot.ok { color: var(--success); }
+.fin-kpi-foot.bad { color: var(--danger); }
+.fin-kpi.hero { grid-row: span 1; background: linear-gradient(180deg, color-mix(in srgb, var(--success) 8%, var(--surface)), var(--surface)); border-color: color-mix(in srgb, var(--success) 25%, var(--border)); }
+.fin-kpi.hero .fin-kpi-v { font-size: 30px; }
+.fin-kpi-spark { margin-top: 10px; }
+@media (max-width: 1000px) { .fin-kpis { grid-template-columns: 1fr 1fr; } .fin-kpi.hero { grid-column: span 2; } }
+@media (max-width: 560px) { .fin-kpis { grid-template-columns: 1fr; } .fin-kpi.hero { grid-column: span 1; } }

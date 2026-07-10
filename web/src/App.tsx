@@ -11,7 +11,7 @@ import {
   Building2, BookOpenCheck, ReceiptText, FileCheck2, FileSignature, CreditCard,
   BookMarked, NotebookPen, FileSpreadsheet, ScrollText, Building, UserCog,
   LayoutDashboard, KeyRound, Activity, Monitor, BadgeCheck, DatabaseBackup,
-  Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen,
+  PanelLeftClose, PanelLeftOpen,
   type LucideIcon,
 } from 'lucide-react';
 import { useApp, Beta, useIsMobile, type User } from './ui';
@@ -451,39 +451,22 @@ function NexOmni() {
   );
 }
 
-/* Полноэкранный режим: пробуем настоящий Fullscreen API, но не зависим от него. */
-function toggleBrowserFullscreen(on: boolean) {
-  try {
-    if (on && !document.fullscreenElement) document.documentElement.requestFullscreen?.();
-    else if (!on && document.fullscreenElement) document.exitFullscreen?.();
-  } catch { /* некоторые окружения запрещают fullscreen — режим всё равно работает как раскладка */ }
-}
-
 /* ===================== Shell (двухуровневая навигация) ===================== */
 function Shell() {
-  const { user, page, setPage, navOpen, setNavOpen, prefs, setPref, openChat, toast } = useApp();
+  const { user, page, setPage, navOpen, setNavOpen, prefs, setPref, openChat } = useApp();
+  const collapsed = prefs.sidebar === 'collapsed';
 
-  /* --- Горячие клавиши Windows --- */
+  /* --- Горячие клавиши --- */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
       const typing = tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable;
-      // Ctrl+B — скрыть/показать боковую панель
+      // Ctrl+B — свернуть/развернуть боковую панель
       if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'b') {
-        e.preventDefault(); setPref('sidebar', prefs.sidebar === 'hidden' ? 'fixed' : 'hidden'); return;
-      }
-      // Ctrl+Shift+F — полноэкранный режим рабочей области
-      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'f') {
-        e.preventDefault(); const next = !prefs.zen; setPref('zen', next); toggleBrowserFullscreen(next); return;
-      }
-      // Ctrl+J — плавающая/закреплённая панель
-      if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'j') {
-        e.preventDefault(); setPref('sidebar', prefs.sidebar === 'float' ? 'fixed' : 'float'); return;
+        e.preventDefault(); setPref('sidebar', prefs.sidebar === 'collapsed' ? 'expanded' : 'collapsed'); return;
       }
       // Ctrl+I — открыть чат NEX
       if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'i') { e.preventDefault(); openChat(); return; }
-      // Esc — выйти из полноэкранного режима
-      if (e.key === 'Escape' && prefs.zen) { setPref('zen', false); toggleBrowserFullscreen(false); return; }
       // Alt+1..9 — перейти к разделу верхней панели
       if (e.altKey && !typing && /^[1-9]$/.test(e.key)) {
         const ids = prefs.topbar && prefs.topbar.length ? prefs.topbar : DEFAULT_TOPBAR;
@@ -493,7 +476,7 @@ function Shell() {
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [prefs.sidebar, prefs.zen, prefs.topbar, setPref, setPage, openChat]);
+  }, [prefs.sidebar, prefs.topbar, setPref, setPage, openChat]);
 
   if (!user) return null;
 
@@ -506,11 +489,9 @@ function Shell() {
   /* верхняя панель настраивается — скрытые разделы остаются доступны в поиске */
   const topIds = prefs.topbar && prefs.topbar.length ? prefs.topbar : DEFAULT_TOPBAR;
   const topSections = topIds.map((id) => SECTIONS.find((s) => s.id === id)).filter(Boolean) as Section[];
-  const showSubnav = !special && section && prefs.sidebar !== 'hidden';
 
   return (
-    <div className={`app2 ${navOpen ? 'subnav-open' : ''} ${prefs.zen ? 'zen' : ''} sidebar-${prefs.sidebar}`}>
-      {prefs.zen && <button className="zen-exit" onClick={() => { setPref('zen', false); toggleBrowserFullscreen(false); }} title="Выйти из полноэкранного режима (Esc)"><Minimize2 size={16} /></button>}
+    <div className={`app2 ${navOpen ? 'subnav-open' : ''}`}>
       {/* верхняя панель: бренд + разделы + поиск/ИИ + профиль */}
       <header className="topbar2">
         <div className="brand2" onClick={() => nav('home')}>
@@ -527,22 +508,26 @@ function Shell() {
           })}
         </nav>
         <NexOmni />
-        <button className="icon-btn" onClick={() => setPref('sidebar', prefs.sidebar === 'hidden' ? 'fixed' : 'hidden')} aria-label="Боковая панель" title="Скрыть/показать панель (Ctrl+B)"><PanelLeftClose size={19} /></button>
-        <button className="icon-btn" onClick={() => { setPref('zen', true); toggleBrowserFullscreen(true); }} aria-label="Полный экран" title="Полноэкранный режим (Ctrl+Shift+F)"><Maximize2 size={19} /></button>
         <button className="icon-btn" onClick={() => nav('settings')} aria-label="Настройки"><SettingsIcon size={19} /></button>
         <div className="avatar" title={`${user.name} · ${roleLabel[user.role]}`}>{(user.name[0] || 'U').toUpperCase()}</div>
       </header>
 
       {/* тело: слева подстраницы раздела, справа контент */}
       <div className="body2">
-        {showSubnav && section && (
+        {!special && section && (
           <>
-            <aside className={`subnav glass sidebar-${prefs.sidebar}`}>
-              <div className="subnav-title">{section.label}</div>
+            <aside className={`subnav glass ${collapsed ? 'collapsed' : ''}`}>
+              <div className="subnav-head">
+                <span className="subnav-title">{section.label}</span>
+                <button className="subnav-collapse" onClick={() => setPref('sidebar', collapsed ? 'expanded' : 'collapsed')}
+                  title={collapsed ? 'Развернуть панель (Ctrl+B)' : 'Свернуть панель (Ctrl+B)'} aria-label="Свернуть панель">
+                  {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+                </button>
+              </div>
               {section.items.map((it) => {
                 const Icon = it.icon;
                 return (
-                  <button key={it.id} className={`subnav-item ${page === it.id ? 'on' : ''}`} onClick={() => nav(it.id)}>
+                  <button key={it.id} className={`subnav-item ${page === it.id ? 'on' : ''}`} onClick={() => nav(it.id)} title={collapsed ? it.label : undefined}>
                     <Icon size={17} /><span>{it.label}</span>
                     {it.beta && <Beta />}
                     {it.id === 'security' && <span className="nav-badge">2</span>}
@@ -552,9 +537,6 @@ function Shell() {
             </aside>
             {navOpen && <div className="nav-backdrop" onClick={() => setNavOpen(false)} />}
           </>
-        )}
-        {!special && prefs.sidebar === 'hidden' && (
-          <button className="subnav-reveal" onClick={() => setPref('sidebar', 'fixed')} title="Показать панель (Ctrl+B)"><PanelLeftOpen size={18} /></button>
         )}
         <main className={`stage2 ${special ? 'full' : ''} ${page === 'chat' ? 'content-flush' : ''}`}>
           {renderSub(page)}
