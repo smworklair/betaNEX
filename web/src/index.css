@@ -1934,7 +1934,7 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 /* --- Приборы --- */
 .deck-vitals { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 .vital { position: relative; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); overflow: hidden; animation: deckIn .5s cubic-bezier(.2,.7,.2,1) both; animation-delay: var(--d); }
-.vital::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--accent); opacity: .5; }
+.vital::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: var(--tone, var(--accent)); opacity: .6; }
 .vital-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .vital-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); }
 .vital-value { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 28px; font-weight: 700; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; margin-top: 8px; line-height: 1; }
@@ -2040,3 +2040,15 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .fin-kpi-spark { margin-top: 10px; }
 @media (max-width: 1000px) { .fin-kpis { grid-template-columns: 1fr 1fr; } .fin-kpi.hero { grid-column: span 2; } }
 @media (max-width: 560px) { .fin-kpis { grid-template-columns: 1fr; } .fin-kpi.hero { grid-column: span 1; } }
+
+/* ---- Композиция «Главного»: командная строка на всю ширину + единая правая панель ---- */
+.deck .console { width: 100%; }
+.deck-grid { align-items: start; }
+.deck-status-sec { border-top: 1px solid var(--border); padding: 10px 0 12px; }
+.deck-status-sec:first-of-type { border-top: none; }
+.deck-sub-h { display: flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-3); padding: 4px 16px 8px; }
+.deck-status .deck-svc-row { border-bottom: none; padding: 6px 16px; }
+.deck-status .deck-log { padding: 0 16px 4px; }
+.deck-status .deck-log-row { border-bottom: none; padding: 6px 0; }
+.deck-status .deck-log-more { border-top: none; padding: 6px 16px 2px; justify-content: flex-start; }
+.deck-status .deck-insight { border-bottom: none; padding: 8px 16px; }

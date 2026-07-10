@@ -57,7 +57,7 @@ function VitalTile({ v, booting, i }: { v: Vital; booting: boolean; i: number })
   const n = useCountUp(v.value, booting);
   const shown = v.fmt ? v.fmt(n) : Math.round(n).toLocaleString('ru');
   return (
-    <div className="vital" style={{ '--d': `${i * 70}ms` } as CSSProperties}>
+    <div className="vital" style={{ '--d': `${i * 70}ms`, '--tone': v.tone || 'var(--accent)' } as CSSProperties}>
       <div className="vital-top">
         <span className="vital-label">{v.label}</span>
         {v.spark && <Sparkline data={v.spark} color={v.tone || 'var(--accent)'} width={64} height={20} />}
@@ -146,56 +146,56 @@ function CommandDeck() {
         {vitals.map((v, i) => <Fragment key={v.id}><VitalTile v={v} booting={booting} i={i} /></Fragment>)}
       </div>
 
-      <div className="deck-grid">
-        {/* --- Левая колонна: консоль NEX + доска решений --- */}
-        <div className="deck-main">
-          <form className="console" onSubmit={submit} style={{ '--d': '120ms' } as CSSProperties} onClick={() => inputRef.current?.focus()}>
-            <div className="console-head">
-              <Sparkles size={15} className="console-spark" />
-              <span className="console-tag">NEX · командная строка</span>
-              <span className="console-kbd"><kbd>⌘</kbd><kbd>K</kbd> в любой момент</span>
-            </div>
-            <div className="console-line">
-              <span className="console-prompt">⟩</span>
-              <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)}
-                placeholder="Отдайте команду или спросите — например, «сколько соберём, если все должники заплатят»" />
-              <button className="console-send" type="submit" aria-label="Выполнить"><CornerDownLeft size={15} /></button>
-            </div>
-            <div className="console-chips">
-              {commands.map((c) => (
-                <button type="button" key={c.label} className="console-chip" onClick={(e) => { e.stopPropagation(); openChat(c.q); }}>
-                  <Sparkles size={11} />{c.label}
-                </button>
-              ))}
-            </div>
-          </form>
-
-          <section className="panel ops" style={{ '--d': '200ms' } as CSSProperties}>
-            <div className="panel-h"><Gauge size={15} /> Требует решения<span className="panel-h-count">{board.length}</span></div>
-            <div className="ops-list">
-              {board.map((b) => {
-                const Icon = b.ic; const s = SEV[b.sev];
-                return (
-                  <button key={b.id} className="op-row" onClick={() => setPage(b.go)}>
-                    <span className="op-sev" style={{ background: s.color }} />
-                    <span className="op-ic" style={{ color: s.color, background: `color-mix(in srgb, ${s.color} 14%, transparent)` }}><Icon size={17} /></span>
-                    <span className="op-main">
-                      <span className="op-title">{b.title}</span>
-                      <span className="op-meta">{b.meta}</span>
-                    </span>
-                    <span className="op-sev-label" style={{ color: s.color }}>{s.label}</span>
-                    <ChevronRight size={16} className="op-arrow" />
-                  </button>
-                );
-              })}
-            </div>
-          </section>
+      {/* --- Командная строка NEX (на всю ширину) --- */}
+      <form className="console" onSubmit={submit} style={{ '--d': '120ms' } as CSSProperties} onClick={() => inputRef.current?.focus()}>
+        <div className="console-head">
+          <Sparkles size={15} className="console-spark" />
+          <span className="console-tag">NEX · командная строка</span>
+          <span className="console-kbd"><kbd>⌘</kbd><kbd>K</kbd> в любой момент</span>
         </div>
+        <div className="console-line">
+          <span className="console-prompt">⟩</span>
+          <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)}
+            placeholder="Отдайте команду или спросите — например, «сколько соберём, если все должники заплатят»" />
+          <button className="console-send" type="submit" aria-label="Выполнить"><CornerDownLeft size={15} /></button>
+        </div>
+        <div className="console-chips">
+          {commands.map((c) => (
+            <button type="button" key={c.label} className="console-chip" onClick={(e) => { e.stopPropagation(); openChat(c.q); }}>
+              <Sparkles size={11} />{c.label}
+            </button>
+          ))}
+        </div>
+      </form>
 
-        {/* --- Правая колонна: целостность систем, журнал NEX --- */}
-        <div className="deck-side">
-          <section className="panel" style={{ '--d': '260ms' } as CSSProperties}>
-            <div className="panel-h"><ShieldCheck size={15} /> Целостность систем</div>
+      {/* --- Рабочая зона: слева приоритеты, справа состояние системы --- */}
+      <div className="deck-grid">
+        <section className="panel ops" style={{ '--d': '180ms' } as CSSProperties}>
+          <div className="panel-h"><Gauge size={15} /> Требует решения<span className="panel-h-count">{board.length}</span></div>
+          <div className="ops-list">
+            {board.map((b) => {
+              const Icon = b.ic; const s = SEV[b.sev];
+              return (
+                <button key={b.id} className="op-row" onClick={() => setPage(b.go)}>
+                  <span className="op-sev" style={{ background: s.color }} />
+                  <span className="op-ic" style={{ color: s.color, background: `color-mix(in srgb, ${s.color} 14%, transparent)` }}><Icon size={17} /></span>
+                  <span className="op-main">
+                    <span className="op-title">{b.title}</span>
+                    <span className="op-meta">{b.meta}</span>
+                  </span>
+                  <span className="op-sev-label" style={{ color: s.color }}>{s.label}</span>
+                  <ChevronRight size={16} className="op-arrow" />
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        <aside className="panel deck-status" style={{ '--d': '240ms' } as CSSProperties}>
+          <div className="panel-h"><ShieldCheck size={15} /> Состояние системы</div>
+
+          <div className="deck-status-sec">
+            <div className="deck-sub-h">Целостность подсистем</div>
             <div className="deck-svc">
               {services.map((s) => (
                 <div className="deck-svc-row" key={s.name}>
@@ -205,12 +205,12 @@ function CommandDeck() {
                 </div>
               ))}
             </div>
-          </section>
+          </div>
 
-          <section className="panel" style={{ '--d': '320ms' } as CSSProperties}>
-            <div className="panel-h"><Radio size={15} /> Журнал NEX<span className="deck-live"><span className="deck-dot" />live</span></div>
+          <div className="deck-status-sec">
+            <div className="deck-sub-h"><Radio size={12} /> Журнал NEX <span className="deck-live"><span className="deck-dot" />live</span></div>
             <div className="deck-log">
-              {nexLog.slice(0, 4).map((l) => (
+              {nexLog.slice(0, 3).map((l) => (
                 <div className="deck-log-row" key={l.id}>
                   <span className="deck-log-dot" />
                   <div><div className="deck-log-t">{l.text}</div><div className="deck-log-time">{l.time}</div></div>
@@ -218,10 +218,10 @@ function CommandDeck() {
               ))}
             </div>
             <button className="deck-log-more" onClick={() => setPage('nexlog')}>Вся история NEX <ArrowRight size={13} /></button>
-          </section>
+          </div>
 
-          <section className="panel deck-ai" style={{ '--d': '380ms' } as CSSProperties}>
-            <div className="panel-h"><Activity size={15} /> Наблюдения ИИ<span className="panel-h-count">{aiInsights.length}</span></div>
+          <div className="deck-status-sec">
+            <div className="deck-sub-h"><Activity size={12} /> Наблюдения ИИ <span className="panel-h-count">{aiInsights.length}</span></div>
             <div className="deck-insights">
               {aiInsights.slice(0, 2).map((it) => (
                 <button key={it.id} className="deck-insight" onClick={() => setPage(it.page)}>
@@ -231,8 +231,8 @@ function CommandDeck() {
                 </button>
               ))}
             </div>
-          </section>
-        </div>
+          </div>
+        </aside>
       </div>
     </div>
   );
