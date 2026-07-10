@@ -29,129 +29,114 @@ const krub = (n: number) => '₽ ' + Math.round(n / 1000) + 'K';
 export function FinOverview() {
   const { toast } = useApp();
   const [period, setPeriod] = useState<'month' | 'quarter' | 'year'>('month');
+  const [done, setDone] = useState<string[]>([]);
   const mult = period === 'month' ? 1 : period === 'quarter' ? 3 : 12;
-
-  const income = 1240000 * mult;                    // поступления
-  const expense = 968000 * mult;                    // расходы (ФОТ, содержание, стипендии)
-  const net = income - expense;                     // чистый денежный поток
-  const cashEnd = 3820000 + net * 0.4;              // остаток на счетах и в кассе
-  const receivable = 248000;                        // дебиторская задолженность
-  const payable = 200300;                           // кредиторская задолженность
+  const income = 1240000 * mult;
+  const expense = 968000 * mult;
+  const net = income - expense;
+  const openingCash = 3820000;
+  const cashEnd = openingCash + net * 0.4;
   const payrollFund = payroll.reduce((a, w) => a + w.base + w.bonus, 0);
-
-  /* движение денег по периодам */
+  const dueThisWeek = payrollFund + 214000 + 148000 + 52300;
+  const freeCash = cashEnd - dueThisWeek;
   const flowLen = period === 'month' ? 12 : period === 'quarter' ? 8 : 6;
   const flow = Array.from({ length: flowLen }, (_, i) => 3200 + Math.round(Math.sin(i * 0.8) * 420 + i * 55));
-
-  /* доходы / расходы — структура */
   const incomeSegs: Segment[] = [
     { label: 'Контракты (обучение)', value: 820, color: 'var(--accent)' },
     { label: 'Бюджетное финансирование', value: 340, color: 'var(--ai)' },
     { label: 'Доп. услуги', value: 80, color: 'var(--success)' },
   ];
-  const expenseSegs: Segment[] = [
-    { label: 'Зарплата (ФОТ)', value: 560, color: 'var(--warn)' },
-    { label: 'Содержание', value: 261, color: 'var(--danger)' },
-    { label: 'Стипендии', value: 147, color: 'var(--accent)' },
-  ];
-
-  /* дебиторка по срокам (aging) */
   const aging = [
-    { label: 'Текущая (0–30 дн.)', value: 96000, color: 'var(--success)' },
-    { label: 'Просрочка 31–60 дн.', value: 88000, color: 'var(--warn)' },
-    { label: 'Просрочка 60+ дн.', value: 64000, color: 'var(--danger)' },
+    { label: '0–30 дней', value: 96000, color: 'var(--success)' },
+    { label: '31–60 дней', value: 88000, color: 'var(--warn)' },
+    { label: '60+ дней', value: 64000, color: 'var(--danger)' },
   ];
-  const agingMax = Math.max(...aging.map((a) => a.value));
-
-  const topDebtors = charges.filter((c) => !c.paid).sort((a, b) => b.sum - a.sum).slice(0, 4);
-  const upcoming = [
-    { label: 'Зарплата за июль', due: '5 авг', sum: payrollFund, kind: 'ФОТ' },
-    { label: 'НДФЛ и взносы', due: '15 авг', sum: 214000, kind: 'Налоги' },
-    { label: 'Оплата ООО «Техносервис»', due: '10 июл', sum: 148000, kind: 'Поставщик' },
-    { label: 'Электроэнергия, июнь', due: '15 июл', sum: 52300, kind: 'Коммуналка' },
+  const actions = [
+    { id: 'bank', priority: 'Сейчас', title: 'Сверить выписку банка', note: '3 операции на ₽ 184 700 без сопоставления', tone: 'var(--danger)', cta: 'Открыть сверку' },
+    { id: 'payroll', priority: 'Сегодня', title: 'Подготовить зарплатную ведомость', note: `ФОТ ${rub(payrollFund)} · выплата 5 августа`, tone: 'var(--warn)', cta: 'Проверить ведомость' },
+    { id: 'debt', priority: 'До 15:00', title: 'Запустить взыскание просрочки 60+', note: '4 контрагента · ₽ 64 000', tone: 'var(--danger)', cta: 'Сформировать письма' },
+    { id: 'close', priority: 'На этой неделе', title: 'Закрыть июнь', note: '8 из 11 контрольных процедур выполнены', tone: 'var(--ai)', cta: 'Открыть чек-лист' },
   ];
+  const incomplete = actions.filter((a) => !done.includes(a.id));
+  const complete = (id: string, label: string) => {
+    setDone((items) => [...items, id]);
+    toast(`${label}: задача отмечена выполненной`);
+  };
 
   return (
     <div className="fade content-narrow">
-      <PageHead title="Финансы · Обзор" sub="Финансовый кокпит: денежный поток, задолженность, бюджет и обязательства"
+      <PageHead title="Финансы" sub="Живая финансовая картина и следующие действия"
         actions={<>
           <div className="seg">
             <button className={period === 'month' ? 'on' : ''} onClick={() => setPeriod('month')}>Месяц</button>
             <button className={period === 'quarter' ? 'on' : ''} onClick={() => setPeriod('quarter')}>Квартал</button>
             <button className={period === 'year' ? 'on' : ''} onClick={() => setPeriod('year')}>Год</button>
           </div>
-          <button className="btn btn-outline" onClick={() => toast('Финансовый отчёт выгружен')}><Download size={15} />Экспорт</button>
+          <button className="btn btn-outline" onClick={() => toast('Собран пакет для финансового директора')}><Download size={15} />Пакет отчётов</button>
         </>} />
 
-      <FinNote ask="Сделай финансовую сводку: денежный поток, задолженность, риски, что сделать в первую очередь">
-        Чистый поток за период — <b style={{ color: net >= 0 ? 'var(--success)' : 'var(--danger)' }}>{net >= 0 ? '+' : ''}{rub(net)}</b>.
-        Дебиторка <b>{rub(receivable)}</b> (из них просрочено {rub(152000)}), кредиторка <b>{rub(payable)}</b>.
-        Ближайшее крупное обязательство — зарплата <b>{rub(payrollFund)}</b> до 5 августа. Три платежа помечены как аномальные.
+      <FinNote ask="Составь план работы финансового отдела на сегодня: приоритизируй риски, платежи и закрытие периода">
+        <b>Деньги под контролем:</b> после обязательств этой недели останется <b style={{ color: freeCash >= 0 ? 'var(--success)' : 'var(--danger)' }}>{rub(freeCash)}</b>.
+        Но три банковские операции ещё не сверены, а <b>{rub(64000)}</b> дебиторки перешло в 60+ дней. Ниже — очередь, которую стоит разобрать первой.
       </FinNote>
 
-      {/* Ключевые показатели */}
       <div className="fin-kpis">
         <div className="fin-kpi hero">
-          <div className="fin-kpi-l">Денежные средства</div>
-          <div className="fin-kpi-v">{rub(Math.round(cashEnd))}</div>
+          <div className="fin-kpi-l">Доступно после обязательств</div>
+          <div className="fin-kpi-v">{rub(Math.round(freeCash))}</div>
           <div className="fin-kpi-spark"><Line data={flow} height={44} color="var(--success)" /></div>
-          <div className="fin-kpi-foot"><TrendingUp size={13} /> чистый поток {net >= 0 ? '+' : ''}{krub(net)}</div>
+          <div className="fin-kpi-foot"><TrendingUp size={13} /> прогноз на конец периода {rub(Math.round(cashEnd))}</div>
         </div>
         <div className="fin-kpi"><div className="fin-kpi-l"><ArrowDownLeft size={13} /> Поступления</div><div className="fin-kpi-v" style={{ color: 'var(--success)' }}>{rub(income)}</div><div className="fin-kpi-foot ok">+8% к плану</div></div>
-        <div className="fin-kpi"><div className="fin-kpi-l"><ArrowUpRight size={13} /> Расходы</div><div className="fin-kpi-v">{rub(expense)}</div><div className="fin-kpi-foot">исполнено 84%</div></div>
-        <div className="fin-kpi"><div className="fin-kpi-l"><HandCoins size={13} /> Дебиторка</div><div className="fin-kpi-v" style={{ color: 'var(--danger)' }}>{rub(receivable)}</div><div className="fin-kpi-foot bad">8 должников</div></div>
-        <div className="fin-kpi"><div className="fin-kpi-l"><CreditCard size={13} /> Кредиторка</div><div className="fin-kpi-v" style={{ color: 'var(--warn)' }}>{rub(payable)}</div><div className="fin-kpi-foot">2 обязательства</div></div>
+        <div className="fin-kpi"><div className="fin-kpi-l"><ArrowUpRight size={13} /> Обязательства недели</div><div className="fin-kpi-v">{rub(dueThisWeek)}</div><div className="fin-kpi-foot">ФОТ, налоги, поставщики</div></div>
+        <div className="fin-kpi"><div className="fin-kpi-l"><Receipt size={13} /> Несверенные операции</div><div className="fin-kpi-v" style={{ color: 'var(--danger)' }}>3</div><div className="fin-kpi-foot bad">₽ 184 700 требуют решения</div></div>
+        <div className="fin-kpi"><div className="fin-kpi-l"><CheckCircle2 size={13} /> Закрытие июня</div><div className="fin-kpi-v">8 / 11</div><div className="fin-kpi-foot">3 контрольные точки</div></div>
+      </div>
+
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="card-head"><div><div className="card-title">Что требует вашего решения</div><div className="muted" style={{ fontSize: 12, marginTop: 3 }}>{incomplete.length ? `${incomplete.length} задачи до безопасного состояния` : 'Очередь разобрана — можно переходить к плановым задачам'}</div></div><NexAsk q="Объясни риски в финансовой очереди и предложи порядок действий" label="Разобрать приоритеты" /></div>
+        <div className="row-list">
+          {incomplete.map((a) => (
+            <div className="feed-row" key={a.id}>
+              <div className="feed-ico" style={{ background: 'var(--surface-2)', color: a.tone }}><Sparkles size={14} /></div>
+              <div className="feed-main"><div className="t"><span style={{ color: a.tone, fontSize: 11, fontWeight: 700, marginRight: 8 }}>{a.priority.toUpperCase()}</span>{a.title}</div><div className="m">{a.note}</div></div>
+              <button className="btn btn-sm btn-outline" onClick={() => complete(a.id, a.title)}>{a.cta}</button>
+            </div>
+          ))}
+          {!incomplete.length && <div className="card-body muted">Критичная очередь пуста. NEX продолжает отслеживать новые операции и сроки.</div>}
+        </div>
       </div>
 
       <div className="grid cols-2" style={{ marginTop: 16 }}>
-        <div className="card"><div className="card-head"><div className="card-title">Движение денежных средств</div><NexAsk q="Разбери денежный поток и спрогнозируй остаток на конец периода" label="Прогноз" /></div>
-          <div className="card-body"><Line data={flow} min={Math.min(...flow) - 200} max={Math.max(...flow) + 200} />
-            <div className="muted" style={{ fontSize: 12, marginTop: 8 }}>Тыс. ₽ · остаток на конец периода {rub(Math.round(cashEnd))}</div></div>
+        <div className="card"><div className="card-head"><div className="card-title">Ликвидность: ближайшие 14 дней</div><NexAsk q="Построй консервативный прогноз ликвидности на 14 дней с учётом обязательств и дебиторки" label="Сценарии" /></div>
+          <div className="card-body">
+            <Line data={flow} min={Math.min(...flow) - 200} max={Math.max(...flow) + 200} />
+            <div className="grid cols-2" style={{ marginTop: 14 }}>
+              <div><div className="kpi-label">На счетах сейчас</div><div className="kpi-value" style={{ fontSize: 21 }}>{rub(openingCash)}</div></div>
+              <div><div className="kpi-label">Запас после платежей</div><div className="kpi-value" style={{ fontSize: 21, color: 'var(--success)' }}>{rub(Math.round(freeCash))}</div></div>
+            </div>
+          </div>
         </div>
-        <div className="card"><div className="card-head"><div className="card-title">Структура доходов</div></div>
-          <div className="card-body chart-flex"><Donut segments={incomeSegs} centerTop={krub(income)} centerSub="доходы" /><Legend segments={incomeSegs} withValues /></div>
+        <div className="card"><div className="card-head"><div className="card-title">Доходы: факт против источников</div></div>
+          <div className="card-body chart-flex"><Donut segments={incomeSegs} centerTop={krub(income)} centerSub="поступления" /><Legend segments={incomeSegs} withValues /></div>
         </div>
       </div>
 
       <div className="grid cols-2" style={{ marginTop: 16 }}>
-        <div className="card"><div className="card-head"><div className="card-title">Дебиторка по срокам</div><NexAsk q="Кого из должников уведомить в первую очередь и на какую сумму" label="Кого уведомить" /></div>
+        <div className="card"><div className="card-head"><div className="card-title">Дебиторка — не просто сумма</div><NexAsk q="Кого из должников уведомить сегодня: приоритет, текст и ожидаемый эффект" label="Подготовить взыскание" /></div>
           <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             {aging.map((a) => (
-              <div key={a.label}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 6 }}>
-                  <span>{a.label}</span><span className="mono" style={{ fontWeight: 600 }}>{rub(a.value)}</span>
-                </div>
-                <div className="meter" style={{ height: 9 }}><i style={{ width: `${(a.value / agingMax) * 100}%`, background: a.color }} /></div>
-              </div>
+              <div key={a.label}><div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 6 }}><span>{a.label}</span><span className="mono" style={{ fontWeight: 600 }}>{rub(a.value)}</span></div><div className="meter" style={{ height: 9 }}><i style={{ width: `${(a.value / 96000) * 100}%`, background: a.color }} /></div></div>
             ))}
+            <div className="muted" style={{ fontSize: 12 }}>Цель на сегодня: вернуть в работу все 4 долга 60+ и зафиксировать результат коммуникации.</div>
           </div>
         </div>
-        <div className="card"><div className="card-head"><div className="card-title">Структура расходов</div></div>
-          <div className="card-body chart-flex"><Donut segments={expenseSegs} centerTop={krub(expense)} centerSub="расходы" /><Legend segments={expenseSegs} withValues /></div>
-        </div>
-      </div>
-
-      <div className="grid cols-2" style={{ marginTop: 16 }}>
-        <div className="card"><div className="card-head"><div className="card-title">Топ должников</div></div>
-          <div className="row-list">
-            {topDebtors.map((c) => (
-              <div className="feed-row" key={c.id}>
-                <div className="feed-ico" style={{ background: 'var(--danger-weak)', color: 'var(--danger)' }}><HandCoins size={14} /></div>
-                <div className="feed-main"><div className="t">{c.student}</div><div className="m">{c.kind} · срок {c.due}</div></div>
-                <span className="mono" style={{ fontWeight: 700 }}>{rub(c.sum)}</span>
-              </div>
+        <div className="card"><div className="card-head"><div className="card-title">Закрытие периода</div><NexAsk q="Проверь готовность закрытия июня и перечисли отсутствующие первичные документы" label="Проверить закрытие" /></div>
+          <div className="card-body" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {[['Банк и касса', 'Сверить 3 операции', 'var(--danger)'], ['Расчёты с поставщиками', '2 акта ожидают проведения', 'var(--warn)'], ['Налоги и ФОТ', 'Контроль выполнен', 'var(--success)']].map(([title, note, tone]) => (
+              <div key={title} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}><div><div style={{ fontSize: 13, fontWeight: 600 }}>{title}</div><div className="muted" style={{ fontSize: 12 }}>{note}</div></div><span style={{ width: 9, height: 9, borderRadius: 9, background: tone, flex: '0 0 auto' }} /></div>
             ))}
-          </div>
-        </div>
-        <div className="card"><div className="card-head"><div className="card-title">Предстоящие обязательства</div><NexAsk q="Хватит ли остатка на все ближайшие платежи и налоги" label="Проверить ликвидность" /></div>
-          <div className="row-list">
-            {upcoming.map((u) => (
-              <div className="feed-row" key={u.label}>
-                <div className="feed-ico"><Landmark size={14} /></div>
-                <div className="feed-main"><div className="t">{u.label}</div><div className="m">{u.kind} · до {u.due}</div></div>
-                <span className="mono" style={{ fontWeight: 700 }}>{rub(u.sum)}</span>
-              </div>
-            ))}
+            <button className="btn btn-outline" onClick={() => toast('Открыт чек-лист закрытия периода')}><CheckCircle2 size={14} />Открыть полный чек-лист</button>
           </div>
         </div>
       </div>
