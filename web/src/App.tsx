@@ -8,6 +8,10 @@ import {
   MessageSquare, FileText, Cloud as CloudIcon, Compass, Bot, Rss, FlaskConical, Megaphone,
   Wand2, PenLine, Languages, ListChecks, UserSearch, CornerDownLeft, Search as SearchIcon,
   AlertTriangle,
+  Building2, BookOpenCheck, ReceiptText, FileCheck2, FileSignature, CreditCard,
+  BookMarked, NotebookPen, FileSpreadsheet, ScrollText, Building, UserCog,
+  LayoutDashboard, KeyRound, Activity, Monitor, BadgeCheck, DatabaseBackup,
+  Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen,
   type LucideIcon,
 } from 'lucide-react';
 import { useApp, Beta, useIsMobile, type User } from './ui';
@@ -28,11 +32,20 @@ import { Schedule, Journal, Attendance } from './pages/academic';
 import { Admissions } from './pages/operations';
 import { Analytics, Graduation } from './pages/insights';
 import Settings from './pages/Settings';
-import { Tasks, NexHistory, Exams, MonthCalendar } from './pages/extra';
+import { NexHistory, Exams } from './pages/extra';
+import { Tasks } from './pages/tasks';
+import { CalendarPage } from './pages/calendar';
 import { Community, Mail, Broadcast, MiniMessenger } from './pages/social';
 import {
   FinOverview, FinPayments, FinDebts, FinCharges, FinCalc, FinPayroll, FinScholarship, FinBudget, FinReports,
 } from './pages/accounting';
+import {
+  FinInvoices, FinVat, FinActs, FinContracts, FinReceivables, FinPayables, FinCashbook, FinBank, FinJournal,
+} from './pages/finance-beta';
+import { Disciplines, Homeworks, GradeSheets, Curricula, Orders } from './pages/academic-beta';
+import { Departments, Employees, Curators } from './pages/people-beta';
+import { AnalyticsPro } from './pages/analytics-beta';
+import { SecUsers, SecRoles, SecAudit, SecSessions, SecKeys, SecPolicies, SecBackup } from './pages/security-beta';
 
 /* ---- Двухуровневая навигация: разделы сверху → подстраницы слева ---- */
 interface SubItem { id: string; label: string; icon: LucideIcon; node: ReactNode; beta?: boolean; }
@@ -46,14 +59,23 @@ const SECTIONS: Section[] = [
     { id: 'broadcast', label: 'Рассылка', icon: Megaphone, node: <Broadcast /> },
     { id: 'tasks', label: 'Задачи', icon: CheckSquare, node: <Tasks /> },
     { id: 'notifications', label: 'Уведомления', icon: Bell, node: <NotificationsPage /> },
-    { id: 'calendar', label: 'Календарь', icon: CalendarDays, node: <MonthCalendar /> },
+    { id: 'calendar', label: 'Календарь', icon: CalendarDays, node: <CalendarPage /> },
     { id: 'nexlog', label: 'История NEX', icon: Sparkles, node: <NexHistory /> },
   ] },
   { id: 'finance', label: 'Финансы', icon: Wallet, items: [
     { id: 'fin-overview', label: 'Обзор', icon: TrendingUp, node: <FinOverview /> },
     { id: 'fin-payments', label: 'Платежи', icon: Receipt, node: <FinPayments /> },
+    { id: 'fin-invoices', label: 'Счета', icon: FileText, node: <FinInvoices />, beta: true },
+    { id: 'fin-vat', label: 'Счета-фактуры', icon: ReceiptText, node: <FinVat />, beta: true },
+    { id: 'fin-acts', label: 'Акты', icon: FileCheck2, node: <FinActs />, beta: true },
+    { id: 'fin-contracts', label: 'Договоры', icon: FileSignature, node: <FinContracts />, beta: true },
     { id: 'fin-debts', label: 'Задолженности', icon: HandCoins, node: <FinDebts /> },
+    { id: 'fin-receivables', label: 'Дебиторка', icon: HandCoins, node: <FinReceivables />, beta: true },
+    { id: 'fin-payables', label: 'Кредиторка', icon: CreditCard, node: <FinPayables />, beta: true },
     { id: 'fin-charges', label: 'Начисления', icon: FileBarChart, node: <FinCharges /> },
+    { id: 'fin-cash', label: 'Касса', icon: Wallet, node: <FinCashbook />, beta: true },
+    { id: 'fin-bank', label: 'Банк', icon: Building2, node: <FinBank />, beta: true },
+    { id: 'fin-journal', label: 'Журнал операций', icon: BookOpenCheck, node: <FinJournal />, beta: true },
     { id: 'fin-calc', label: 'Расчёты', icon: Calculator, node: <FinCalc /> },
     { id: 'fin-payroll', label: 'Зарплата', icon: Banknote, node: <FinPayroll /> },
     { id: 'fin-scholarship', label: 'Стипендии', icon: Award, node: <FinScholarship /> },
@@ -65,19 +87,35 @@ const SECTIONS: Section[] = [
     { id: 'schedule', label: 'Расписание', icon: Calendar, node: <Schedule /> },
     { id: 'attendance', label: 'Посещаемость', icon: UserCheck, node: <Attendance /> },
     { id: 'exams', label: 'Сессия', icon: ClipboardCheck, node: <Exams /> },
+    { id: 'disciplines', label: 'Дисциплины', icon: BookMarked, node: <Disciplines />, beta: true },
+    { id: 'homework', label: 'Домашние задания', icon: NotebookPen, node: <Homeworks />, beta: true },
+    { id: 'sheets', label: 'Ведомости', icon: FileSpreadsheet, node: <GradeSheets />, beta: true },
+    { id: 'curricula', label: 'Учебные планы', icon: GraduationCap, node: <Curricula />, beta: true },
+    { id: 'orders', label: 'Приказы', icon: ScrollText, node: <Orders />, beta: true },
   ] },
   { id: 'people', label: 'Люди', icon: Users, items: [
     { id: 'students', label: 'Студенты', icon: Users, node: <Students /> },
     { id: 'groups', label: 'Группы', icon: School, node: <Groups /> },
     { id: 'staff', label: 'Сотрудники', icon: Briefcase, node: <Staff /> },
+    { id: 'employees', label: 'Кадры', icon: UserCog, node: <Employees />, beta: true },
+    { id: 'departments', label: 'Отделения', icon: Building, node: <Departments />, beta: true },
+    { id: 'curators', label: 'Кураторы', icon: UserCheck, node: <Curators />, beta: true },
     { id: 'admissions', label: 'Приём', icon: ClipboardList, node: <Admissions /> },
   ] },
   { id: 'analytics', label: 'Аналитика', icon: BarChart3, items: [
     { id: 'analytics', label: 'Обзор', icon: BarChart3, node: <Analytics /> },
+    { id: 'dashboards', label: 'Дашборды', icon: LayoutDashboard, node: <AnalyticsPro />, beta: true },
     { id: 'graduation', label: 'Выпуск', icon: GraduationCap, node: <Graduation /> },
   ] },
   { id: 'security', label: 'Безопасность', icon: ShieldCheck, items: [
     { id: 'security', label: 'Обзор', icon: ShieldCheck, node: <SecurityConsole /> },
+    { id: 'sec-users', label: 'Пользователи', icon: Users, node: <SecUsers />, beta: true },
+    { id: 'sec-roles', label: 'Роли и права', icon: BadgeCheck, node: <SecRoles />, beta: true },
+    { id: 'sec-audit', label: 'Аудит', icon: Activity, node: <SecAudit />, beta: true },
+    { id: 'sec-sessions', label: 'Сессии и устройства', icon: Monitor, node: <SecSessions />, beta: true },
+    { id: 'sec-keys', label: 'Ключи и доступ', icon: KeyRound, node: <SecKeys />, beta: true },
+    { id: 'sec-policies', label: 'Политики', icon: Lock, node: <SecPolicies />, beta: true },
+    { id: 'sec-backup', label: 'Копии и мониторинг', icon: DatabaseBackup, node: <SecBackup />, beta: true },
   ] },
   { id: 'beta', label: 'Бета', icon: FlaskConical, items: [
     { id: 'documents', label: 'Документы', icon: FileText, node: <Documents />, beta: true },
@@ -413,9 +451,50 @@ function NexOmni() {
   );
 }
 
+/* Полноэкранный режим: пробуем настоящий Fullscreen API, но не зависим от него. */
+function toggleBrowserFullscreen(on: boolean) {
+  try {
+    if (on && !document.fullscreenElement) document.documentElement.requestFullscreen?.();
+    else if (!on && document.fullscreenElement) document.exitFullscreen?.();
+  } catch { /* некоторые окружения запрещают fullscreen — режим всё равно работает как раскладка */ }
+}
+
 /* ===================== Shell (двухуровневая навигация) ===================== */
 function Shell() {
-  const { user, page, setPage, navOpen, setNavOpen, prefs } = useApp();
+  const { user, page, setPage, navOpen, setNavOpen, prefs, setPref, openChat, toast } = useApp();
+
+  /* --- Горячие клавиши Windows --- */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      const typing = tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable;
+      // Ctrl+B — скрыть/показать боковую панель
+      if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'b') {
+        e.preventDefault(); setPref('sidebar', prefs.sidebar === 'hidden' ? 'fixed' : 'hidden'); return;
+      }
+      // Ctrl+Shift+F — полноэкранный режим рабочей области
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault(); const next = !prefs.zen; setPref('zen', next); toggleBrowserFullscreen(next); return;
+      }
+      // Ctrl+J — плавающая/закреплённая панель
+      if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'j') {
+        e.preventDefault(); setPref('sidebar', prefs.sidebar === 'float' ? 'fixed' : 'float'); return;
+      }
+      // Ctrl+I — открыть чат NEX
+      if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'i') { e.preventDefault(); openChat(); return; }
+      // Esc — выйти из полноэкранного режима
+      if (e.key === 'Escape' && prefs.zen) { setPref('zen', false); toggleBrowserFullscreen(false); return; }
+      // Alt+1..9 — перейти к разделу верхней панели
+      if (e.altKey && !typing && /^[1-9]$/.test(e.key)) {
+        const ids = prefs.topbar && prefs.topbar.length ? prefs.topbar : DEFAULT_TOPBAR;
+        const s = SECTIONS.find((x) => x.id === ids[+e.key - 1]);
+        if (s) { e.preventDefault(); setPage(s.items[0].id); }
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [prefs.sidebar, prefs.zen, prefs.topbar, setPref, setPage, openChat]);
+
   if (!user) return null;
 
   const special = page === 'settings' || page === 'chat';
@@ -427,9 +506,11 @@ function Shell() {
   /* верхняя панель настраивается — скрытые разделы остаются доступны в поиске */
   const topIds = prefs.topbar && prefs.topbar.length ? prefs.topbar : DEFAULT_TOPBAR;
   const topSections = topIds.map((id) => SECTIONS.find((s) => s.id === id)).filter(Boolean) as Section[];
+  const showSubnav = !special && section && prefs.sidebar !== 'hidden';
 
   return (
-    <div className={`app2 ${navOpen ? 'subnav-open' : ''}`}>
+    <div className={`app2 ${navOpen ? 'subnav-open' : ''} ${prefs.zen ? 'zen' : ''} sidebar-${prefs.sidebar}`}>
+      {prefs.zen && <button className="zen-exit" onClick={() => { setPref('zen', false); toggleBrowserFullscreen(false); }} title="Выйти из полноэкранного режима (Esc)"><Minimize2 size={16} /></button>}
       {/* верхняя панель: бренд + разделы + поиск/ИИ + профиль */}
       <header className="topbar2">
         <div className="brand2" onClick={() => nav('home')}>
@@ -446,15 +527,17 @@ function Shell() {
           })}
         </nav>
         <NexOmni />
+        <button className="icon-btn" onClick={() => setPref('sidebar', prefs.sidebar === 'hidden' ? 'fixed' : 'hidden')} aria-label="Боковая панель" title="Скрыть/показать панель (Ctrl+B)"><PanelLeftClose size={19} /></button>
+        <button className="icon-btn" onClick={() => { setPref('zen', true); toggleBrowserFullscreen(true); }} aria-label="Полный экран" title="Полноэкранный режим (Ctrl+Shift+F)"><Maximize2 size={19} /></button>
         <button className="icon-btn" onClick={() => nav('settings')} aria-label="Настройки"><SettingsIcon size={19} /></button>
         <div className="avatar" title={`${user.name} · ${roleLabel[user.role]}`}>{(user.name[0] || 'U').toUpperCase()}</div>
       </header>
 
       {/* тело: слева подстраницы раздела, справа контент */}
       <div className="body2">
-        {!special && section && (
+        {showSubnav && section && (
           <>
-            <aside className="subnav glass">
+            <aside className={`subnav glass sidebar-${prefs.sidebar}`}>
               <div className="subnav-title">{section.label}</div>
               {section.items.map((it) => {
                 const Icon = it.icon;
@@ -469,6 +552,9 @@ function Shell() {
             </aside>
             {navOpen && <div className="nav-backdrop" onClick={() => setNavOpen(false)} />}
           </>
+        )}
+        {!special && prefs.sidebar === 'hidden' && (
+          <button className="subnav-reveal" onClick={() => setPref('sidebar', 'fixed')} title="Показать панель (Ctrl+B)"><PanelLeftOpen size={18} /></button>
         )}
         <main className={`stage2 ${special ? 'full' : ''} ${page === 'chat' ? 'content-flush' : ''}`}>
           {renderSub(page)}

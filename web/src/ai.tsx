@@ -1,11 +1,15 @@
-import { useState, useEffect, useRef, type FormEvent } from 'react';
+import { useState, useEffect, useRef, type FormEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Sparkles, X, ArrowUp, ArrowRight, Quote, ExternalLink } from 'lucide-react';
+import {
+  Sparkles, X, ArrowUp, ArrowRight, Quote, ExternalLink,
+  MessageSquare, Mail, CheckSquare, StickyNote, CalendarPlus, Wand2, Copy, Languages, ScrollText,
+} from 'lucide-react';
 import { useApp, Chip, NexAsk } from './ui';
 import { students, finance } from './data';
 import { nexReply, attendanceRate, avgGrade, pageInsight, PAGE_TITLES } from './nexbrain';
 import { llmReady, llmAsk } from './llm';
 import { Md } from './md';
+import { useCollection, uid, nowIso, type Entity } from './beta/store';
 
 /* ---------- Proactive strip: NEX speaks first on every screen ---------- */
 export function ProactiveStrip() {
@@ -162,10 +166,17 @@ export function InlinePanelHost() {
   return createPortal(<InlinePanel />, inlineHost);
 }
 
-/* ---------- 2) Selection popover → floating context-less explainer ---------- */
+/* ---------- 2) Selection context menu — действия по выделенному тексту ---------- */
+type QTask = Entity & Record<string, unknown>;
+type QNote = Entity & { text: string };
+type QEvent = Entity & Record<string, unknown>;
+
 function SelectionPopover() {
-  const { openExplain, inlineHost, explain } = useApp();
+  const { openExplain, openChat, setPage, toast, inlineHost, explain } = useApp();
   const [pos, setPos] = useState<{ x: number; y: number; text: string } | null>(null);
+  const tasks = useCollection<QTask>('tasks', []);
+  const notes = useCollection<QNote>('notes', []);
+  const events = useCollection<QEvent>('calendar', []);
 
   useEffect(() => {
     const onUp = () => {
@@ -173,7 +184,7 @@ function SelectionPopover() {
       const text = sel?.toString().trim() || '';
       if (!sel || text.length < 3 || explain) { setPos(null); return; }
       const node = sel.anchorNode as HTMLElement | null;
-      const host = node?.parentElement?.closest('.nex-inline, .sel-pop, .sel-explain, input, textarea, .chat-page');
+      const host = node?.parentElement?.closest('.nex-inline, .sel-pop, .sel-explain, .bk-overlay, input, textarea, .chat-page');
       if (host) { setPos(null); return; }
       const rect = sel.getRangeAt(0).getBoundingClientRect();
       if (!rect.width) { setPos(null); return; }
@@ -186,11 +197,47 @@ function SelectionPopover() {
   }, [inlineHost, explain]);
 
   if (!pos) return null;
-  const open = () => { openExplain({ x: pos.x, y: pos.y + 24, text: pos.text }); setPos(null); };
+  const text = pos.text;
+  const short = text.length > 60 ? text.slice(0, 57) + '…' : text;
+  const close = () => setPos(null);
+
+  const createTask = () => {
+    tasks.add({
+      title: short, note: text, status: 'open', priority: 'normal', category: 'Общее', tags: [], due: '',
+      assignees: [], watchers: [], recurrence: 'none', subtasks: [], checklist: [], comments: [],
+      history: [{ id: uid('h'), text: 'Создана из выделенного текста', at: nowIso() }], attachments: [],
+    });
+    toast('Задача создана из выделения');
+  };
+  const createNote = () => { notes.add({ text }); toast('Заметка сохранена'); };
+  const createEvent = () => {
+    events.add({
+      day: new Date().getDate(), title: short, kind: 'personal', time: '12:00', location: '',
+      participants: [], groups: [], recurrence: 'none', reminder: '1h', linkTask: false, attachments: [], note: text,
+    });
+    toast('Событие добавлено в календарь');
+  };
+  const copy = () => { navigator.clipboard?.writeText(text).then(() => toast('Скопировано'), () => toast('Не удалось скопировать')); };
+
+  const A = ({ icon, label, on }: { icon: ReactNode; label: string; on: () => void }) => (
+    <button onMouseDown={(e) => { e.preventDefault(); on(); close(); }} title={label}>{icon}<span>{label}</span></button>
+  );
+
   return (
-    <div className="sel-pop" style={{ left: pos.x, top: pos.y }}>
-      <button onMouseDown={(e) => { e.preventDefault(); open(); }}><Sparkles size={13} />Спросить NEX</button>
-      <button onMouseDown={(e) => { e.preventDefault(); open(); }}><Quote size={13} />Объяснить</button>
+    <div className="sel-pop rich" style={{ left: pos.x, top: pos.y }}>
+      <A icon={<Sparkles size={13} />} label="Спросить NEX" on={() => openChat(`${text}`)} />
+      <A icon={<Wand2 size={13} />} label="Передать ИИ" on={() => openChat(`Разбери и предложи, что делать с этим: «${text}»`)} />
+      <A icon={<ScrollText size={13} />} label="Резюме" on={() => openChat(`Сделай краткое резюме: «${text}»`)} />
+      <A icon={<Languages size={13} />} label="Перевести" on={() => openChat(`Переведи на английский: «${text}»`)} />
+      <A icon={<Quote size={13} />} label="Объяснить" on={() => openExplain({ x: pos.x, y: pos.y + 24, text })} />
+      <div className="sel-pop-sep" />
+      <A icon={<CheckSquare size={13} />} label="В задачу" on={createTask} />
+      <A icon={<StickyNote size={13} />} label="В заметку" on={createNote} />
+      <A icon={<CalendarPlus size={13} />} label="В календарь" on={createEvent} />
+      <A icon={<MessageSquare size={13} />} label="Сообщение" on={() => { setPage('mail'); toast('Открыты сообщения — вставьте текст'); }} />
+      <A icon={<Mail size={13} />} label="Письмо" on={() => { setPage('mail'); toast('Откройте письмо и вставьте текст'); }} />
+      <div className="sel-pop-sep" />
+      <A icon={<Copy size={13} />} label="Копировать" on={copy} />
     </div>
   );
 }
