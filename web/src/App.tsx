@@ -11,7 +11,7 @@ import {
   Building2, BookOpenCheck, ReceiptText, FileCheck2, FileSignature, CreditCard,
   BookMarked, NotebookPen, FileSpreadsheet, ScrollText, Building, UserCog,
   LayoutDashboard, KeyRound, Activity, Monitor, BadgeCheck, DatabaseBackup,
-  PanelLeftClose, PanelLeftOpen,
+  PanelLeftClose, PanelLeftOpen, ArrowLeftRight, LineChart,
   type LucideIcon,
 } from 'lucide-react';
 import { useApp, Beta, useIsMobile, type User } from './ui';
@@ -37,11 +37,12 @@ import { Tasks } from './pages/tasks';
 import { CalendarPage } from './pages/calendar';
 import { Community, Mail, Broadcast, MiniMessenger } from './pages/social';
 import {
-  FinOverview, FinPayments, FinDebts, FinCharges, FinCalc, FinPayroll, FinScholarship, FinBudget, FinReports,
+  FinPayments, FinDebts, FinCharges, FinCalc, FinPayroll, FinScholarship, FinBudget, FinReports,
 } from './pages/accounting';
 import {
   FinInvoices, FinVat, FinActs, FinContracts, FinReceivables, FinPayables, FinCashbook, FinBank, FinJournal,
 } from './pages/finance-beta';
+import { FinCockpit, FinReconcile, FinClose, FinStudio } from './pages/finance-pro';
 import { Disciplines, Homeworks, GradeSheets, Curricula, Orders } from './pages/academic-beta';
 import { Departments, Employees, Curators } from './pages/people-beta';
 import { AnalyticsPro } from './pages/analytics-beta';
@@ -63,7 +64,10 @@ const SECTIONS: Section[] = [
     { id: 'nexlog', label: 'История NEX', icon: Sparkles, node: <NexHistory /> },
   ] },
   { id: 'finance', label: 'Финансы', icon: Wallet, items: [
-    { id: 'fin-overview', label: 'Обзор', icon: TrendingUp, node: <FinOverview /> },
+    { id: 'fin-overview', label: 'Финансовый центр', icon: TrendingUp, node: <FinCockpit /> },
+    { id: 'fin-reconcile', label: 'Сверка банка', icon: ArrowLeftRight, node: <FinReconcile /> },
+    { id: 'fin-close', label: 'Закрытие периода', icon: ClipboardCheck, node: <FinClose /> },
+    { id: 'fin-studio', label: 'Экономика и сценарии', icon: LineChart, node: <FinStudio /> },
     { id: 'fin-payments', label: 'Платежи', icon: Receipt, node: <FinPayments /> },
     { id: 'fin-invoices', label: 'Счета', icon: FileText, node: <FinInvoices />, beta: true },
     { id: 'fin-vat', label: 'Счета-фактуры', icon: ReceiptText, node: <FinVat />, beta: true },

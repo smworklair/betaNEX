@@ -2052,3 +2052,99 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .deck-status .deck-log-row { border-bottom: none; padding: 6px 0; }
 .deck-status .deck-log-more { border-top: none; padding: 6px 16px 2px; justify-content: flex-start; }
 .deck-status .deck-insight { border-bottom: none; padding: 8px 16px; }
+
+/* ============================================================
+   Финансовый центр «Про»: копайлот, сверка, закрытие, сценарии
+   ============================================================ */
+
+/* --- NEX-копайлот финансов --- */
+.fin-copilot { border: 1px solid var(--border-2); border-radius: var(--r-lg); background:
+  radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--ai) 9%, transparent), transparent 55%),
+  var(--surface); padding: 14px 16px; box-shadow: var(--shadow-sm); }
+.fin-copilot-head { display: flex; align-items: center; gap: 11px; }
+.fin-copilot-head > div { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.fin-copilot-head b { font-size: 14.5px; letter-spacing: -0.01em; }
+.fin-copilot-head span { font-size: 12px; color: var(--text-3); }
+.fin-copilot-orb { width: 32px; height: 32px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+  background: var(--ai); color: #fff; box-shadow: 0 4px 14px color-mix(in srgb, var(--ai) 45%, transparent); flex-shrink: 0; }
+.fin-live { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--success); }
+.fin-live i { width: 6px; height: 6px; border-radius: 999px; background: var(--success); box-shadow: 0 0 0 0 var(--success);
+  animation: finPulse 1.8s infinite; }
+@keyframes finPulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 60%, transparent); } 70% { box-shadow: 0 0 0 6px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+.fin-copilot-log { margin: 14px 0 6px; display: flex; flex-direction: column; gap: 14px; max-height: 420px; overflow-y: auto; }
+.fin-co-turn { display: flex; flex-direction: column; gap: 8px; }
+.fin-co-q { align-self: flex-end; background: var(--accent); color: var(--accent-fg); font-size: 13px; font-weight: 500;
+  padding: 8px 13px; border-radius: 14px 14px 3px 14px; max-width: 84%; }
+.fin-co-a { display: flex; gap: 9px; align-items: flex-start; max-width: 94%; }
+.fin-co-a .ic { width: 22px; height: 22px; border-radius: 7px; background: var(--ai-weak); color: var(--ai);
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+.fin-co-a .bd { font-size: 13.5px; line-height: 1.55; background: var(--surface-2); padding: 10px 13px; border-radius: 3px 14px 14px 14px; }
+.fin-co-chart { margin-top: 10px; padding: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); }
+.fin-copilot-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+.fin-co-chip { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border: 1px solid var(--border-2);
+  border-radius: 999px; background: var(--surface); color: var(--text-2); font-size: 12.5px; font-weight: 500; cursor: pointer; transition: .14s; }
+.fin-co-chip:hover { border-color: var(--ai); color: var(--ai); background: var(--ai-weak); }
+.fin-co-chip svg { color: var(--ai); }
+.fin-copilot-box { display: flex; align-items: center; gap: 8px; margin-top: 12px; padding: 4px 6px 4px 14px;
+  border: 1px solid var(--border-2); border-radius: 999px; background: var(--surface); }
+.fin-copilot-box:focus-within { border-color: var(--ai); box-shadow: 0 0 0 3px var(--ai-weak); }
+.fin-copilot-box .lead { color: var(--ai); flex-shrink: 0; }
+.fin-copilot-box input { flex: 1; border: none; background: transparent; outline: none; color: var(--text); font-size: 13.5px; height: 34px; }
+
+/* --- индикатор уверенности ИИ --- */
+.fin-conf { position: relative; font-size: 11px; font-weight: 700; color: var(--text-2); padding: 3px 8px 3px 9px;
+  border-radius: 999px; background: var(--surface-2); overflow: hidden; white-space: nowrap; }
+.fin-conf i { position: absolute; left: 0; top: 0; bottom: 0; background: color-mix(in srgb, var(--ai) 22%, transparent); z-index: 0; }
+.fin-conf { z-index: 0; }
+
+/* --- статистика со шкалой (сверка/закрытие) --- */
+.fin-stat { display: flex; align-items: center; gap: 14px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg); padding: 14px 16px; }
+
+/* --- строки сверки --- */
+.fin-recon-row { display: grid; grid-template-columns: 1fr 40px 1fr; align-items: center; gap: 6px; padding: 11px 16px; border-bottom: 1px solid var(--border); }
+.fin-recon-row:last-child { border-bottom: none; }
+.fin-recon-bank, .fin-recon-book { display: flex; align-items: center; gap: 10px; }
+.fin-recon-book { justify-content: flex-end; text-align: right; }
+.fin-recon-bank .t, .fin-recon-book .t { font-size: 13px; font-weight: 600; }
+.fin-recon-bank .m, .fin-recon-book .m { font-size: 11px; color: var(--text-3); margin-top: 1px; }
+.fin-recon-bank > div, .fin-recon-book > div { min-width: 0; }
+.fin-recon-book > div { flex: 1; }
+.fin-recon-sum { margin-left: auto; font-weight: 700; font-size: 13.5px; }
+.fin-dir { width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.fin-dir.in { background: var(--success-weak); color: var(--success); }
+.fin-dir.out { background: var(--danger-weak); color: var(--danger); }
+.fin-recon-mid { display: flex; align-items: center; justify-content: center; }
+.fin-link { width: 26px; height: 26px; border-radius: 999px; display: flex; align-items: center; justify-content: center; }
+.fin-link.ok { background: var(--success-weak); color: var(--success); }
+.fin-link.sug { background: var(--ai-weak); color: var(--ai); }
+.fin-link.none { background: var(--danger-weak); color: var(--danger); }
+@media (max-width: 640px) { .fin-recon-row { grid-template-columns: 1fr; } .fin-recon-book { justify-content: flex-start; text-align: left; } .fin-recon-mid { display: none; } }
+
+/* --- закрытие периода --- */
+.fin-close-hero { display: flex; align-items: center; gap: 24px; padding: 20px 22px; }
+.fin-close-hero-body { flex: 1; min-width: 0; }
+.fin-close-blockers { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+.fin-check-row { display: flex; align-items: center; gap: 11px; padding: 11px 16px; cursor: pointer; }
+.fin-check-row input { position: absolute; opacity: 0; width: 0; height: 0; }
+.fin-check-box { width: 22px; height: 22px; border-radius: 7px; border: 1.5px solid var(--border-2); flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; color: #fff; transition: .14s; }
+.fin-check-row.on .fin-check-box { background: var(--success); border-color: var(--success); }
+.fin-check-row:hover .fin-check-box { border-color: var(--accent); }
+@media (max-width: 640px) { .fin-close-hero { flex-direction: column; text-align: center; } }
+
+/* --- сценарии / экономика --- */
+.fin-slider-top { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; margin-bottom: 7px; }
+.fin-slider-top b { font-size: 14px; }
+.fin-slider input[type="range"] { width: 100%; accent-color: var(--accent); }
+.fin-pl { display: flex; flex-direction: column; }
+.fin-pl-row { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; font-size: 13.5px; border-bottom: 1px dashed var(--border); }
+.fin-pl-row.sub { color: var(--text-2); font-size: 12.5px; }
+.fin-pl-row.total { border-bottom: none; border-top: 2px solid var(--border-2); margin-top: 4px; padding-top: 11px; font-weight: 700; font-size: 15px; }
+.fin-ratios { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 16px; }
+.fin-ratio { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 14px 15px; }
+.fin-ratio-ic { width: 34px; height: 34px; border-radius: 10px; background: var(--accent-weak); color: var(--accent);
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+@media (max-width: 900px) { .fin-ratios { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 500px) { .fin-ratios { grid-template-columns: 1fr; } }
