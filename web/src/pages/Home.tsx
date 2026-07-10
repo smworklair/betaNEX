@@ -1,19 +1,23 @@
-import { useState, useEffect, useRef, Fragment, type FormEvent, type CSSProperties } from 'react';
+import { useState, useEffect, useRef, Fragment, type FormEvent, type ReactNode } from 'react';
 import {
-  ArrowUp, ArrowRight, ShieldAlert, ShieldCheck, Wallet, Users, FileSignature, Sun, Sunrise, Moon,
-  Activity, Radio, Gauge, Sparkles, CornerDownLeft, ChevronRight, ListChecks, TrendingUp, TrendingDown,
+  ArrowUp, ArrowRight, Wallet, Users, Sun, Sunrise, Moon,
+  Sparkles, CornerDownLeft, ChevronRight, ChevronLeft, ChevronUp, ChevronDown,
+  ListChecks, Settings2, Check, RotateCcw, EyeOff, Plus, X,
 } from 'lucide-react';
-import { useApp, Sparkline } from '../ui';
-import {
-  finance, aiInsights, sessions, failedLogins, failedLoginTrend, services, nexLog, students,
-} from '../data';
+import { useApp } from '../ui';
+import { finance, aiInsights, failedLogins, nexLog, students } from '../data';
 import { attendanceRate } from '../nexbrain';
+import {
+  HOME_BLOCK_CATALOG, HOME_BLOCK_BY_ID, DEFAULT_HOME_BLOCKS,
+  HOME_SHORTCUT_CATALOG, HOME_SHORTCUT_BY_ID, DEFAULT_HOME_SHORTCUTS, moveInArray,
+} from '../home';
 
 /* ============================================================
-   Главное для администратора — «оперативный центр».
-   Вход в систему ощущается как запуск командного пункта:
-   приборы оживают, NEX докладывает обстановку, всё под рукой.
-   Для остальных ролей — спокойная сводка дня (CalmHome ниже).
+   Главное для администратора — спокойный вход в работу.
+   Не пульт с тревогами, а тихое рабочее место: приветствие,
+   часы, командная строка NEX и мягкий список того, чем стоит
+   заняться. Ничего не мигает и не кричит.
+   Для остальных ролей — сводка дня (CalmHome ниже).
    ============================================================ */
 
 function greeting() {
@@ -22,24 +26,6 @@ function greeting() {
   if (h < 12) return { hi: 'Доброе утро', icon: Sunrise };
   if (h < 18) return { hi: 'Добрый день', icon: Sun };
   return { hi: 'Добрый вечер', icon: Moon };
-}
-
-/* число «оживает» при запуске — приборы выходят на режим */
-function useCountUp(target: number, run: boolean, ms = 700) {
-  const [v, setV] = useState(0);
-  useEffect(() => {
-    if (!run) { setV(target); return; }
-    let raf = 0; const t0 = performance.now();
-    const tick = (t: number) => {
-      const p = Math.min((t - t0) / ms, 1);
-      const eased = 1 - Math.pow(1 - p, 3);
-      setV(target * eased);
-      if (p < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [target, run, ms]);
-  return v;
 }
 
 function LiveClock() {
@@ -51,103 +37,57 @@ function LiveClock() {
   return <span className="deck-clock">{hh}<i>:</i>{mm}<i>:</i><small>{ss}</small></span>;
 }
 
-type Vital = { id: string; label: string; value: number; fmt?: (n: number) => string; delta?: string; up?: boolean; tone?: string; spark?: number[]; ring?: number };
-
-function VitalTile({ v, booting, i }: { v: Vital; booting: boolean; i: number }) {
-  const n = useCountUp(v.value, booting);
-  const shown = v.fmt ? v.fmt(n) : Math.round(n).toLocaleString('ru');
-  return (
-    <div className="vital" style={{ '--d': `${i * 70}ms`, '--tone': v.tone || 'var(--accent)' } as CSSProperties}>
-      <div className="vital-top">
-        <span className="vital-label">{v.label}</span>
-        {v.spark && <Sparkline data={v.spark} color={v.tone || 'var(--accent)'} width={64} height={20} />}
-      </div>
-      <div className="vital-value" style={{ color: v.tone }}>{shown}</div>
-      {v.delta && (
-        <div className="vital-foot" style={{ color: v.up ? 'var(--success)' : 'var(--danger)' }}>
-          {v.up ? <TrendingUp size={12} /> : <TrendingDown size={12} />}{v.delta}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function CommandDeck() {
-  const { user, setPage, openChat } = useApp();
+  const { user, setPage, openChat, prefs, setPref, homeEditing, setHomeEditing, toast } = useApp();
   const [q, setQ] = useState('');
-  const [booting, setBooting] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
-  useEffect(() => { const t = setTimeout(() => setBooting(false), 900); return () => clearTimeout(t); }, []);
+  /* уходя с главного, выходим из режима конструктора */
+  useEffect(() => () => setHomeEditing(false), [setHomeEditing]);
 
-  const name = user?.name?.split(' ')[0] || 'командир';
+  const name = user?.name?.split(' ')[0] || 'коллега';
   const g = greeting();
   const GIcon = g.icon;
   const today = new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
 
   const threats = failedLogins.filter((f) => f.flagged).length;
-  const received = finance.payments.filter((p) => p.status === 'Оплачено').reduce((a, p) => a + p.sum, 0);
-  const attendance = Math.round(students.reduce((a, s) => a + attendanceRate(s.id), 0) / students.length);
+  const unpaid = finance.payments.filter((p) => p.status !== 'Оплачено').length;
   const risk = students.filter((s) => attendanceRate(s.id) < 78).length;
-  const degraded = services.filter((s) => s.status !== 'ok').length;
 
-  const vitals: Vital[] = [
-    { id: 'sess', label: 'Активные сессии', value: sessions.length, delta: 'штатно', up: true, spark: [3, 4, 3, 5, 4, 4, sessions.length], tone: 'var(--accent)' },
-    { id: 'threat', label: 'Угрозы входа', value: threats, delta: 'за ночь', up: false, spark: failedLoginTrend, tone: threats ? 'var(--danger)' : 'var(--success)' },
-    { id: 'fin', label: 'Поступления, ₽', value: received, fmt: (n) => Math.round(n).toLocaleString('ru'), delta: '+5% к плану', up: true, spark: [40, 52, 48, 61, 55, 70, 62], tone: 'var(--success)' },
-    { id: 'att', label: 'Посещаемость', value: attendance, fmt: (n) => Math.round(n) + '%', delta: '−2%', up: false, spark: [88, 86, 90, 84, 87, 85, attendance], tone: 'var(--ai)' },
-  ];
+  /* --- Конструктор: видимые блоки и ярлыки из настроек --- */
+  const blocks = (prefs.homeBlocks?.length ? prefs.homeBlocks : DEFAULT_HOME_BLOCKS).filter((id) => HOME_BLOCK_BY_ID[id]);
+  const hiddenBlocks = HOME_BLOCK_CATALOG.filter((b) => !blocks.includes(b.id));
+  const shortcutIds = (prefs.homeShortcuts?.length ? prefs.homeShortcuts : DEFAULT_HOME_SHORTCUTS).filter((id) => HOME_SHORTCUT_BY_ID[id]);
+  const hiddenShortcuts = HOME_SHORTCUT_CATALOG.filter((s) => !shortcutIds.includes(s.id));
+  const setBlocks = (v: string[]) => setPref('homeBlocks', v);
+  const setSc = (v: string[]) => setPref('homeShortcuts', v);
+  const resetHome = () => { setBlocks(DEFAULT_HOME_BLOCKS); setSc(DEFAULT_HOME_SHORTCUTS); toast('Главный экран сброшен к стандартному виду'); };
 
-  const board = [
-    { id: 'security', sev: 'critical', ic: ShieldAlert, title: 'Подбор пароля ночью', meta: `12 неудачных входов · 1 адрес помечен`, go: 'security' },
-    { id: 'finance', sev: 'high', ic: Wallet, title: `${finance.payments.filter((p) => p.status !== 'Оплачено').length} студента не оплатили обучение`, meta: 'Срок по договору — до 30 июня', go: 'fin-overview' },
-    { id: 'risk', sev: 'medium', ic: Users, title: `${risk} студента в зоне риска`, meta: 'Посещаемость ниже нормы, оценки падают', go: 'students' },
-    { id: 'docs', sev: 'low', ic: FileSignature, title: '2 приказа ждут подписи', meta: 'NEX собрал документы и проверил данные', go: 'tasks' },
-  ] as const;
-
-  const SEV: Record<string, { label: string; color: string }> = {
-    critical: { label: 'критично', color: 'var(--danger)' },
-    high: { label: 'важно', color: 'var(--warn)' },
-    medium: { label: 'внимание', color: 'var(--accent)' },
-    low: { label: 'плановое', color: 'var(--text-3)' },
-  };
+  const today_items = [
+    threats ? { id: 'security', dot: 'var(--danger)', title: `${threats} подозрительных входа за ночь`, meta: 'Стоит проверить и при необходимости закрыть доступ', go: 'security' } : null,
+    { id: 'finance', dot: 'var(--warn)', title: `${unpaid} студента ещё не оплатили обучение`, meta: 'Срок по договору — до 30 июня', go: 'fin-overview' },
+    { id: 'risk', dot: 'var(--accent)', title: `${risk} студента реже ходят на занятия`, meta: 'Посещаемость понемногу снижается', go: 'students' },
+    { id: 'docs', dot: 'var(--text-3)', title: '2 приказа ждут подписи', meta: 'NEX собрал документы и проверил данные', go: 'tasks' },
+  ].filter(Boolean) as { id: string; dot: string; title: string; meta: string; go: string }[];
 
   const commands = [
-    { label: 'Сводка обстановки', q: 'Дай полную сводку по колледжу: что важно прямо сейчас.' },
+    { label: 'Сводка дня', q: 'Дай короткую и спокойную сводку по колледжу: что важно сегодня.' },
     { label: 'Зона риска', q: 'Покажи студентов в зоне риска и объясни причины.' },
     { label: 'Финансы', q: 'Что с деньгами и задолженностью? Дай прогноз.' },
     { label: 'Безопасность', q: 'Оцени состояние безопасности: входы, аномалии, что закрыть.' },
   ];
 
-  const submit = (e: FormEvent) => { e.preventDefault(); openChat(q.trim() || undefined); };
-  const statusOk = threats === 0 && degraded === 0;
+  const submit = (e: FormEvent) => { e.preventDefault(); if (!homeEditing) openChat(q.trim() || undefined); };
+  const nav = (p: string) => { if (!homeEditing) setPage(p); };
 
-  return (
-    <div className={`deck ${booting ? 'booting' : ''}`}>
-      {/* --- Верх: приветствие, часы, статус системы --- */}
-      <header className="deck-top" style={{ '--d': '0ms' } as CSSProperties}>
-        <div className="deck-hello">
-          <span className="deck-hello-ic"><GIcon size={18} /></span>
-          <div>
-            <h1>{g.hi}, {name}</h1>
-            <div className="deck-sub">{today} · система готова к работе</div>
-          </div>
-        </div>
-        <div className="deck-top-right">
-          <LiveClock />
-          <div className={`deck-online ${statusOk ? 'ok' : 'warn'}`}>
-            <span className="deck-dot" />
-            {statusOk ? 'Все системы в норме' : `${threats + degraded} требует внимания`}
-          </div>
-        </div>
-      </header>
-
-      {/* --- Приборы --- */}
-      <div className="deck-vitals">
-        {vitals.map((v, i) => <Fragment key={v.id}><VitalTile v={v} booting={booting} i={i} /></Fragment>)}
-      </div>
-
-      {/* --- Командная строка NEX (на всю ширину) --- */}
-      <form className="console" onSubmit={submit} style={{ '--d': '120ms' } as CSSProperties} onClick={() => inputRef.current?.focus()}>
+  /* --- Рендер отдельного блока (без обвязки редактирования) --- */
+  const renderBlock = (id: string): ReactNode => {
+    if (id === 'brief') return (
+      <p className="deck-brief">
+        Пока вас не было, NEX присмотрел за колледжем. Сегодня стоит обратить внимание на <b>{unpaid} неоплаченных договора</b> и <b>{risk} студентов</b> с падающей посещаемостью. Ничего срочного — можно спокойно разобрать по порядку.
+      </p>
+    );
+    if (id === 'console') return (
+      <form className="console" onSubmit={submit} onClick={() => !homeEditing && inputRef.current?.focus()}>
         <div className="console-head">
           <Sparkles size={15} className="console-spark" />
           <span className="console-tag">NEX · командная строка</span>
@@ -155,85 +95,173 @@ function CommandDeck() {
         </div>
         <div className="console-line">
           <span className="console-prompt">⟩</span>
-          <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)}
+          <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)} disabled={homeEditing}
             placeholder="Отдайте команду или спросите — например, «сколько соберём, если все должники заплатят»" />
           <button className="console-send" type="submit" aria-label="Выполнить"><CornerDownLeft size={15} /></button>
         </div>
         <div className="console-chips">
           {commands.map((c) => (
-            <button type="button" key={c.label} className="console-chip" onClick={(e) => { e.stopPropagation(); openChat(c.q); }}>
+            <button type="button" key={c.label} className="console-chip" onClick={(e) => { e.stopPropagation(); if (!homeEditing) openChat(c.q); }}>
               <Sparkles size={11} />{c.label}
             </button>
           ))}
         </div>
       </form>
-
-      {/* --- Рабочая зона: слева приоритеты, справа состояние системы --- */}
-      <div className="deck-grid">
-        <section className="panel ops" style={{ '--d': '180ms' } as CSSProperties}>
-          <div className="panel-h"><Gauge size={15} /> Требует решения<span className="panel-h-count">{board.length}</span></div>
-          <div className="ops-list">
-            {board.map((b) => {
-              const Icon = b.ic; const s = SEV[b.sev];
-              return (
-                <button key={b.id} className="op-row" onClick={() => setPage(b.go)}>
-                  <span className="op-sev" style={{ background: s.color }} />
-                  <span className="op-ic" style={{ color: s.color, background: `color-mix(in srgb, ${s.color} 14%, transparent)` }}><Icon size={17} /></span>
-                  <span className="op-main">
-                    <span className="op-title">{b.title}</span>
-                    <span className="op-meta">{b.meta}</span>
-                  </span>
-                  <span className="op-sev-label" style={{ color: s.color }}>{s.label}</span>
-                  <ChevronRight size={16} className="op-arrow" />
+    );
+    if (id === 'shortcuts') return (
+      <>
+        <div className="deck-shortcuts">
+          {shortcutIds.map((sid) => {
+            const s = HOME_SHORTCUT_BY_ID[sid]; if (!s) return null; const Icon = s.icon;
+            return (
+              <div className={`deck-shortcut-wrap ${homeEditing ? 'editing' : ''}`} key={sid}>
+                <button className="deck-shortcut" onClick={() => nav(s.page)}>
+                  <span className="deck-shortcut-ic"><Icon size={18} /></span>
+                  <span>{s.label}</span>
                 </button>
-              );
-            })}
+                {homeEditing && (
+                  <div className="deck-sc-tools">
+                    <button title="Левее" onClick={() => setSc(moveInArray(shortcutIds, sid, -1))}><ChevronLeft size={13} /></button>
+                    <button title="Правее" onClick={() => setSc(moveInArray(shortcutIds, sid, 1))}><ChevronRight size={13} /></button>
+                    <button title="Убрать" onClick={() => setSc(shortcutIds.filter((x) => x !== sid))}><X size={13} /></button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {shortcutIds.length === 0 && <div className="muted" style={{ fontSize: 13, padding: '10px 2px' }}>Ярлыки скрыты — добавьте нужные ниже.</div>}
+        </div>
+        {homeEditing && hiddenShortcuts.length > 0 && (
+          <div className="deck-add-row">
+            <span className="deck-add-label">Добавить ярлык:</span>
+            {hiddenShortcuts.map((s) => { const Icon = s.icon; return (
+              <button key={s.id} className="dock-chip" onClick={() => setSc([...shortcutIds, s.id])}>
+                <Icon size={15} /><span>{s.label}</span><Plus size={13} className="dock-chip-mark" />
+              </button>
+            ); })}
           </div>
-        </section>
-
-        <aside className="panel deck-status" style={{ '--d': '240ms' } as CSSProperties}>
-          <div className="panel-h"><ShieldCheck size={15} /> Состояние системы</div>
-
-          <div className="deck-status-sec">
-            <div className="deck-sub-h">Целостность подсистем</div>
-            <div className="deck-svc">
-              {services.map((s) => (
-                <div className="deck-svc-row" key={s.name}>
-                  <span className={`svc-dot ${s.status}`} />
-                  <span className="deck-svc-name">{s.name}</span>
-                  <span className="deck-svc-val">{s.value}</span>
-                </div>
-              ))}
+        )}
+      </>
+    );
+    if (id === 'today') return (
+      <section className="panel soft">
+        <div className="panel-h soft-h">На сегодня<span className="panel-h-count">{today_items.length}</span></div>
+        <div className="ops-list">
+          {today_items.map((b) => (
+            <button key={b.id} className="op-row soft" onClick={() => nav(b.go)}>
+              <span className="op-dot" style={{ background: b.dot }} />
+              <span className="op-main">
+                <span className="op-title">{b.title}</span>
+                <span className="op-meta">{b.meta}</span>
+              </span>
+              <ChevronRight size={16} className="op-arrow" />
+            </button>
+          ))}
+        </div>
+      </section>
+    );
+    if (id === 'recent') return (
+      <aside className="panel soft">
+        <div className="panel-h soft-h"><Sparkles size={14} style={{ color: 'var(--ai)' }} /> Недавнее у NEX</div>
+        <div className="deck-log soft-log">
+          {nexLog.slice(0, 4).map((l) => (
+            <div className="deck-log-row" key={l.id}>
+              <span className="deck-log-dot" />
+              <div><div className="deck-log-t">{l.text}</div><div className="deck-log-time">{l.time}</div></div>
             </div>
-          </div>
+          ))}
+        </div>
+        <button className="deck-log-more" onClick={() => nav('nexlog')}>Вся история NEX <ArrowRight size={13} /></button>
+      </aside>
+    );
+    return null;
+  };
 
-          <div className="deck-status-sec">
-            <div className="deck-sub-h"><Radio size={12} /> Журнал NEX <span className="deck-live"><span className="deck-dot" />live</span></div>
-            <div className="deck-log">
-              {nexLog.slice(0, 3).map((l) => (
-                <div className="deck-log-row" key={l.id}>
-                  <span className="deck-log-dot" />
-                  <div><div className="deck-log-t">{l.text}</div><div className="deck-log-time">{l.time}</div></div>
-                </div>
-              ))}
-            </div>
-            <button className="deck-log-more" onClick={() => setPage('nexlog')}>Вся история NEX <ArrowRight size={13} /></button>
+  /* обвязка блока в режиме конструктора: имя + переместить/скрыть */
+  const renderShell = (id: string): ReactNode => {
+    const content = renderBlock(id);
+    if (!homeEditing) return <Fragment key={id}>{content}</Fragment>;
+    const meta = HOME_BLOCK_BY_ID[id]; const i = blocks.indexOf(id);
+    return (
+      <div className="deck-eb" key={id}>
+        <div className="deck-eb-bar">
+          <span className="deck-eb-name">{meta?.label}</span>
+          <div className="deck-eb-tools">
+            <button title="Выше" disabled={i <= 0} onClick={() => setBlocks(moveInArray(blocks, id, -1))}><ChevronUp size={15} /></button>
+            <button title="Ниже" disabled={i >= blocks.length - 1} onClick={() => setBlocks(moveInArray(blocks, id, 1))}><ChevronDown size={15} /></button>
+            <button title="Скрыть блок" onClick={() => setBlocks(blocks.filter((x) => x !== id))}><EyeOff size={15} /></button>
           </div>
-
-          <div className="deck-status-sec">
-            <div className="deck-sub-h"><Activity size={12} /> Наблюдения ИИ <span className="panel-h-count">{aiInsights.length}</span></div>
-            <div className="deck-insights">
-              {aiInsights.slice(0, 2).map((it) => (
-                <button key={it.id} className="deck-insight" onClick={() => setPage(it.page)}>
-                  <span className="deck-insight-pct">{Math.round(it.confidence * 100)}%</span>
-                  <span className="deck-insight-tx">{it.title}</span>
-                  <ChevronRight size={14} />
-                </button>
-              ))}
-            </div>
-          </div>
-        </aside>
+        </div>
+        <div className="deck-eb-body">{content}</div>
       </div>
+    );
+  };
+
+  /* группируем соседние колоночные блоки (today/recent) в двухколоночную сетку */
+  const groups: { col: boolean; ids: string[] }[] = [];
+  blocks.forEach((id) => {
+    const col = !!HOME_BLOCK_BY_ID[id]?.col;
+    const last = groups[groups.length - 1];
+    if (col && last && last.col) last.ids.push(id);
+    else groups.push({ col, ids: [id] });
+  });
+
+  return (
+    <div className={`deck calm ${homeEditing ? 'editing' : ''}`}>
+      {/* --- Приветствие и часы --- */}
+      <header className="deck-top">
+        <div className="deck-hello">
+          <span className="deck-hello-ic"><GIcon size={18} /></span>
+          <div>
+            <h1>{g.hi}, {name}</h1>
+            <div className="deck-sub">{today}</div>
+          </div>
+        </div>
+        <div className="deck-top-right">
+          <LiveClock />
+          {homeEditing
+            ? <div className="deck-quiet">Режим настройки экрана</div>
+            : <button className="deck-config-btn" onClick={() => setHomeEditing(true)}><Settings2 size={13} />Настроить экран</button>}
+        </div>
+      </header>
+
+      {/* --- Панель режима конструктора --- */}
+      {homeEditing && (
+        <div className="deck-edit-toolbar">
+          <div className="deck-edit-title">
+            <span className="deck-edit-ic"><Settings2 size={15} /></span>
+            <div>
+              <b>Настройка главного экрана</b>
+              <span>Стрелки — порядок, «глаз» — скрыть блок. Ярлыки добавляются и переставляются на своей плитке.</span>
+            </div>
+          </div>
+          <div className="deck-edit-actions">
+            <button className="btn btn-ghost btn-sm" onClick={resetHome}><RotateCcw size={14} />Сбросить</button>
+            <button className="btn btn-primary btn-sm" onClick={() => setHomeEditing(false)}><Check size={14} />Готово</button>
+          </div>
+        </div>
+      )}
+
+      {/* --- Блоки в выбранном порядке --- */}
+      {groups.map((grp, gi) => grp.col ? (
+        <div className="deck-grid" key={gi}>
+          {grp.ids.map((id) => renderShell(id))}
+        </div>
+      ) : (
+        <Fragment key={gi}>{grp.ids.map((id) => renderShell(id))}</Fragment>
+      ))}
+
+      {/* --- Скрытые блоки: вернуть на экран --- */}
+      {homeEditing && hiddenBlocks.length > 0 && (
+        <div className="deck-add-blocks">
+          <span className="deck-add-label">Скрытые блоки:</span>
+          {hiddenBlocks.map((b) => (
+            <button key={b.id} className="dock-chip" title={b.desc} onClick={() => setBlocks([...blocks, b.id])}>
+              <Plus size={14} /><span>{b.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

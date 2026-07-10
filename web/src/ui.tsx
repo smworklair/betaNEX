@@ -3,6 +3,7 @@ import { Sparkles, ArrowUp, AlertTriangle, Wallet, ShieldCheck } from 'lucide-re
 import type { Role, Severity } from './data';
 import type { NexReply } from './nexbrain';
 import { apiMe, primaryRole } from './api/auth';
+import { DEFAULT_HOME_BLOCKS, DEFAULT_HOME_SHORTCUTS } from './home';
 
 export type Theme = 'light' | 'dark';
 export interface User {
@@ -33,8 +34,12 @@ export interface Prefs {
   dock: string[];
   /** набор разделов верхней панели на десктопе (id из TOPBAR_CATALOG). Скрытые доступны в поиске. */
   topbar: string[];
+  /** конструктор главного экрана: видимые блоки по порядку (id из HOME_BLOCK_CATALOG) */
+  homeBlocks: string[];
+  /** конструктор главного экрана: ярлыки разделов по порядку (id из HOME_SHORTCUT_CATALOG) */
+  homeShortcuts: string[];
 }
-export const DEFAULT_PREFS: Prefs = { accent: 'blue', density: 'normal', font: 'normal', corners: 'soft', strip: true, sidebarAuto: false, solid: false, sidebar: 'expanded', dock: ['feed', 'mail', 'study', 'finance', 'people'], topbar: ['feed', 'finance', 'study', 'people', 'analytics', 'security', 'beta'] };
+export const DEFAULT_PREFS: Prefs = { accent: 'blue', density: 'normal', font: 'normal', corners: 'soft', strip: true, sidebarAuto: false, solid: false, sidebar: 'expanded', dock: ['feed', 'mail', 'study', 'finance', 'people'], topbar: ['feed', 'finance', 'study', 'people', 'analytics', 'security', 'beta'], homeBlocks: DEFAULT_HOME_BLOCKS, homeShortcuts: DEFAULT_HOME_SHORTCUTS };
 export interface ChatMsg extends Partial<NexReply> { who: 'u' | 'n'; text: string; run?: string; pending?: boolean; }
 /** Floating context-less explainer, anchored to a text selection. */
 export interface ExplainReq { x: number; y: number; text: string; }
@@ -68,6 +73,9 @@ interface AppCtx {
   /** Персонализация: цвет, плотность, шрифт, углы, полоса NEX. */
   prefs: Prefs;
   setPref: <K extends keyof Prefs>(k: K, v: Prefs[K]) => void;
+  /** Режим конструктора главного экрана — включается из настроек. */
+  homeEditing: boolean;
+  setHomeEditing: (v: boolean) => void;
   /** Transient: slide-over nav open (mobile, or when sidebar disabled). */
   navOpen: boolean;
   setNavOpen: (v: boolean) => void;
@@ -108,6 +116,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     catch { return DEFAULT_PREFS; }
   });
   const [navOpen, setNavOpen] = useState(false);
+  const [homeEditing, setHomeEditing] = useState(false);
   const [explain, setExplain] = useState<ExplainReq | null>(null);
   const [chatLog, setChatLog] = useState<ChatMsg[]>([]);
   const [pendingAsk, setPendingAsk] = useState<string | null>(null);
@@ -170,7 +179,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <Ctx.Provider value={{ theme, setTheme, user, setUser, page, setPage, objStudent, openStudent, closeObject, cmdOpen, setCmdOpen, inlineHost, inlineSeed, inlineTitle, openInlineAt, closeInline, sidebarEnabled, setSidebarEnabled, pulseEnabled, setPulseEnabled, prefs, setPref, navOpen, setNavOpen, explain, openExplain, closeExplain, chatLog, setChatLog, openChat, pendingAsk, clearPendingAsk, toast }}>
+    <Ctx.Provider value={{ theme, setTheme, user, setUser, page, setPage, objStudent, openStudent, closeObject, cmdOpen, setCmdOpen, inlineHost, inlineSeed, inlineTitle, openInlineAt, closeInline, sidebarEnabled, setSidebarEnabled, pulseEnabled, setPulseEnabled, prefs, setPref, homeEditing, setHomeEditing, navOpen, setNavOpen, explain, openExplain, closeExplain, chatLog, setChatLog, openChat, pendingAsk, clearPendingAsk, toast }}>
       {children}
       {toastMsg && <div className="toast fade"><Sparkles size={15} style={{ color: 'var(--ai)' }} />{toastMsg}</div>}
     </Ctx.Provider>
