@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"time"
+	"unicode/utf8"
 )
 
 // Права модуля.
@@ -64,7 +65,8 @@ func (c Attach) Validate() error {
 	if c.FileName == "" {
 		return errors.New("files: name is required")
 	}
-	if len(c.FileName) > 255 {
+	// Лимит в символах, не в байтах: имена файлов бывают кириллическими.
+	if utf8.RuneCountInString(c.FileName) > 255 {
 		return errors.New("files: name is too long")
 	}
 	if c.Size <= 0 {

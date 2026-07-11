@@ -13,10 +13,10 @@ import {
 } from '../home';
 
 /* ============================================================
-   Главное для администратора — спокойный вход в работу.
+   Главное для администратора — стол, за который приятно сесть.
    Не пульт с тревогами, а тихое рабочее место: приветствие,
-   часы, командная строка NEX и мягкий список того, чем стоит
-   заняться. Ничего не мигает и не кричит.
+   спокойные часы, поле «Спросить NEX» и мягкий список того,
+   с чего можно начать. Ничего не мигает, не тикает и не кричит.
    Для остальных ролей — сводка дня (CalmHome ниже).
    ============================================================ */
 
@@ -28,13 +28,13 @@ function greeting() {
   return { hi: 'Добрый вечер', icon: Moon };
 }
 
+/* Тихие часы: минуты без секунд и мигания — время как фон, а не таймер. */
 function LiveClock() {
   const [now, setNow] = useState(() => new Date());
-  useEffect(() => { const id = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(id); }, []);
+  useEffect(() => { const id = setInterval(() => setNow(new Date()), 30_000); return () => clearInterval(id); }, []);
   const hh = String(now.getHours()).padStart(2, '0');
   const mm = String(now.getMinutes()).padStart(2, '0');
-  const ss = String(now.getSeconds()).padStart(2, '0');
-  return <span className="deck-clock">{hh}<i>:</i>{mm}<i>:</i><small>{ss}</small></span>;
+  return <span className="deck-clock">{hh}:{mm}</span>;
 }
 
 function CommandDeck() {
@@ -69,11 +69,12 @@ function CommandDeck() {
     { id: 'docs', dot: 'var(--text-3)', title: '2 приказа ждут подписи', meta: 'NEX собрал документы и проверил данные', go: 'tasks' },
   ].filter(Boolean) as { id: string; dot: string; title: string; meta: string; go: string }[];
 
+  /* Подсказки — вопросы, а не приказы: приглашают начать разговор. */
   const commands = [
-    { label: 'Сводка дня', q: 'Дай короткую и спокойную сводку по колледжу: что важно сегодня.' },
-    { label: 'Зона риска', q: 'Покажи студентов в зоне риска и объясни причины.' },
-    { label: 'Финансы', q: 'Что с деньгами и задолженностью? Дай прогноз.' },
-    { label: 'Безопасность', q: 'Оцени состояние безопасности: входы, аномалии, что закрыть.' },
+    { label: 'Что важно сегодня?', q: 'Дай короткую и спокойную сводку по колледжу: что важно сегодня.' },
+    { label: 'Как дела с деньгами?', q: 'Что с деньгами и задолженностью? Дай прогноз.' },
+    { label: 'Кому нужно внимание?', q: 'Покажи студентов в зоне риска и объясни причины.' },
+    { label: 'Всё ли спокойно?', q: 'Оцени состояние безопасности: входы, аномалии, что закрыть.' },
   ];
 
   const submit = (e: FormEvent) => { e.preventDefault(); if (!homeEditing) openChat(q.trim() || undefined); };
@@ -90,19 +91,18 @@ function CommandDeck() {
       <form className="console" onSubmit={submit} onClick={() => !homeEditing && inputRef.current?.focus()}>
         <div className="console-head">
           <Sparkles size={15} className="console-spark" />
-          <span className="console-tag">NEX · командная строка</span>
-          <span className="console-kbd"><kbd>⌘</kbd><kbd>K</kbd> в любой момент</span>
+          <span className="console-tag">Спросить NEX</span>
+          <span className="console-kbd"><kbd>⌘</kbd><kbd>K</kbd> из любого места</span>
         </div>
         <div className="console-line">
-          <span className="console-prompt">⟩</span>
           <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)} disabled={homeEditing}
-            placeholder="Отдайте команду или спросите — например, «сколько соберём, если все должники заплатят»" />
-          <button className="console-send" type="submit" aria-label="Выполнить"><CornerDownLeft size={15} /></button>
+            placeholder="С чего начнём? Спросите своими словами — например, «сколько соберём, если должники заплатят»" />
+          <button className="console-send" type="submit" aria-label="Спросить"><CornerDownLeft size={15} /></button>
         </div>
         <div className="console-chips">
           {commands.map((c) => (
             <button type="button" key={c.label} className="console-chip" onClick={(e) => { e.stopPropagation(); if (!homeEditing) openChat(c.q); }}>
-              <Sparkles size={11} />{c.label}
+              {c.label}
             </button>
           ))}
         </div>
@@ -145,7 +145,7 @@ function CommandDeck() {
     );
     if (id === 'today') return (
       <section className="panel soft">
-        <div className="panel-h soft-h">На сегодня<span className="panel-h-count">{today_items.length}</span></div>
+        <div className="panel-h soft-h">Можно начать с этого</div>
         <div className="ops-list">
           {today_items.map((b) => (
             <button key={b.id} className="op-row soft" onClick={() => nav(b.go)}>
@@ -158,6 +158,7 @@ function CommandDeck() {
             </button>
           ))}
         </div>
+        <div className="soft-foot">Ничего не горит — разберёте в своём темпе.</div>
       </section>
     );
     if (id === 'recent') return (

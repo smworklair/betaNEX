@@ -12,3 +12,4 @@ coverage/
 /bin/
 /tmp/
 *.test
+__pycache__/

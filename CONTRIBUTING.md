@@ -31,4 +31,5 @@ Hot-reload: `make watch` (требуется установленный air).
 | SQL-запросы | `internal/platform/postgres/queries` (+ `make sqlc`) |
 | Миграции | `migrations/` |
 | Контракт API | `api/openapi.yaml` |
+| Dev-скрипты (Python: смоук API, демо-данные) | `tools/` |
 | Документация решений | `docs/decision-log.md` (новый ADR на каждое существенное решение) |
