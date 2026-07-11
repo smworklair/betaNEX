@@ -9,16 +9,13 @@ import {
    выбор хранится в prefs (localStorage), как док и верхняя панель.
    ============================================================ */
 
-export interface HomeBlock { id: string; label: string; desc: string; col?: boolean; }
+export interface HomeBlock { id: string; label: string; desc: string; }
 
-/* col: true — блок живёт в правой/левой колонке двухколоночной сетки
-   (соседние col-блоки встают рядом). Остальные — на всю ширину. */
 export const HOME_BLOCK_CATALOG: HomeBlock[] = [
   { id: 'brief', label: 'Сводка дня', desc: 'Короткий человеческий текст: что важно сегодня' },
-  { id: 'console', label: 'Спросить NEX', desc: 'Поле вопроса и мягкие подсказки ассистенту' },
+  { id: 'console', label: 'Терминал NEX', desc: 'Встроенная командная строка: вопросы, команды и переходы — не покидая экран' },
   { id: 'shortcuts', label: 'Ярлыки разделов', desc: 'Плитки быстрого перехода в разделы' },
-  { id: 'today', label: 'На сегодня', desc: 'Мягкий список приоритетов дня', col: true },
-  { id: 'recent', label: 'Недавнее у NEX', desc: 'Последние действия ассистента', col: true },
+  { id: 'today', label: 'На сегодня', desc: 'Мягкий список приоритетов дня' },
 ];
 export const DEFAULT_HOME_BLOCKS = HOME_BLOCK_CATALOG.map((b) => b.id);
 export const HOME_BLOCK_BY_ID: Record<string, HomeBlock> = {};
