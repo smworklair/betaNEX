@@ -246,7 +246,7 @@ function MailClient({ mode, setMode }: { mode: 'chat' | 'mail'; setMode: (m: 'ch
   const list = emails
     .filter((e) => e.folder === folder)
     .filter((e) => (e.subject + e.from + e.preview).toLowerCase().includes(q.toLowerCase()));
-  const open = openId ? emails.find((e) => e.id === openId) : null;
+  const open = (openId ? emails.find((e) => e.id === openId) : null) ?? null;
   const unreadInbox = emails.filter((e) => e.folder === 'inbox' && e.unread).length;
 
   const toggleStar = (id: string) => setStarred((s) => ({ ...s, [id]: !s[id] }));
