@@ -42,7 +42,7 @@ jobs:
           psql -h localhost -U postgres -c "CREATE ROLE nex LOGIN PASSWORD 'nex' NOSUPERUSER NOCREATEROLE"
           psql -h localhost -U postgres -c "CREATE DATABASE nex OWNER nex"
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
