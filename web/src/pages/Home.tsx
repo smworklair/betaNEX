@@ -1,12 +1,14 @@
-import { useState, useEffect, useRef, Fragment, type FormEvent, type ReactNode } from 'react';
+import { useState, useEffect, useRef, Fragment, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import {
   ArrowUp, ArrowRight, Wallet, Users, Sun, Sunrise, Moon,
   Sparkles, CornerDownLeft, ChevronRight, ChevronLeft, ChevronUp, ChevronDown,
-  ListChecks, Settings2, Check, RotateCcw, EyeOff, Plus, X,
+  ListChecks, Settings2, Check, RotateCcw, EyeOff, Plus, X, Eraser, ExternalLink,
 } from 'lucide-react';
 import { useApp } from '../ui';
-import { finance, aiInsights, failedLogins, nexLog, students } from '../data';
-import { attendanceRate } from '../nexbrain';
+import { finance, aiInsights, failedLogins, students } from '../data';
+import { attendanceRate, nexReply, PAGE_TITLES, type NavLink } from '../nexbrain';
+import { llmReady, llmAsk } from '../llm';
+import { Md } from '../md';
 import {
   HOME_BLOCK_CATALOG, HOME_BLOCK_BY_ID, DEFAULT_HOME_BLOCKS,
   HOME_SHORTCUT_CATALOG, HOME_SHORTCUT_BY_ID, DEFAULT_HOME_SHORTCUTS, moveInArray,
@@ -14,9 +16,9 @@ import {
 
 /* ============================================================
    Главное для администратора — стол, за который приятно сесть.
-   Не пульт с тревогами, а тихое рабочее место: приветствие,
-   спокойные часы, поле «Спросить NEX» и мягкий список того,
-   с чего можно начать. Ничего не мигает, не тикает и не кричит.
+   Тихое рабочее место: приветствие, спокойные часы, встроенный
+   терминал NEX (запрос и ответ живут прямо здесь, без ухода в
+   отдельный чат) и мягкий список того, с чего можно начать.
    Для остальных ролей — сводка дня (CalmHome ниже).
    ============================================================ */
 
@@ -37,10 +39,168 @@ function LiveClock() {
   return <span className="deck-clock">{hh}:{mm}</span>;
 }
 
-function CommandDeck() {
-  const { user, setPage, openChat, prefs, setPref, homeEditing, setHomeEditing, toast } = useApp();
+/* ============================================================
+   Терминал NEX — командная строка сисадмина прямо на «Главном».
+   Запрос и ответ живут в блоке: журнал сессии (переживает
+   переходы по разделам через sessionStorage), история команд
+   по ↑/↓, встроенные команды help / clear / open <раздел>,
+   остальное — вопрос к NEX тем же движком, что и полный чат
+   (LLM при подключённом ключе, иначе локальный nexbrain).
+   ============================================================ */
+
+interface TermMsg { who: 'u' | 'n'; text: string; nav?: NavLink[]; action?: string; }
+
+const TERM_KEY = 'nex-terminal-log';
+const TERM_LIMIT = 60; // строк журнала храним не больше этого
+
+const TERM_HELP = [
+  '**Команды терминала:**',
+  '- `help` — эта справка;',
+  '- `clear` — очистить экран;',
+  '- `open <раздел>` — открыть раздел, например `open финансы`;',
+  '- стрелки ↑/↓ — история команд.',
+  '',
+  'Всё остальное — вопрос к NEX своими словами: «кто в зоне риска», «что с деньгами», «сводка дня».',
+].join('\n');
+
+/* Сессия терминала (журнал + история команд) живёт в sessionStorage
+   и переживает переходы по разделам в рамках вкладки. */
+function loadTermSession(): { log: TermMsg[]; hist: string[] } {
+  try {
+    const raw = JSON.parse(sessionStorage.getItem(TERM_KEY) || '{}');
+    return { log: raw.log || [], hist: raw.hist || [] };
+  } catch { return { log: [], hist: [] }; }
+}
+
+function NexTerminal({ disabled, chips }: { disabled: boolean; chips: { label: string; q: string }[] }) {
+  const { setPage, openChat, toast } = useApp();
+  const [session] = useState(loadTermSession);
+  const [log, setLog] = useState<TermMsg[]>(session.log);
   const [q, setQ] = useState('');
+  const [hist, setHist] = useState<string[]>(session.hist);
+  const [hIdx, setHIdx] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    try { sessionStorage.setItem(TERM_KEY, JSON.stringify({ log, hist: hist.slice(-30) })); } catch { /* квота — не критично */ }
+    const el = bodyRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [log, hist]);
+
+  const push = (...ms: TermMsg[]) => setLog((l) => [...l, ...ms].slice(-TERM_LIMIT));
+
+  /* open <раздел>: ищем по ярлыкам главного и известным страницам */
+  const openSection = (name: string): TermMsg => {
+    const n = name.trim().toLowerCase();
+    const targets = [
+      ...HOME_SHORTCUT_CATALOG.map((s) => ({ label: s.label, page: s.page })),
+      ...Object.entries(PAGE_TITLES).map(([page, label]) => ({ label, page })),
+    ];
+    const hit = targets.find((t) => t.label.toLowerCase() === n) || targets.find((t) => t.label.toLowerCase().includes(n));
+    // Переход с задержкой: даём журналу зафиксироваться в sessionStorage
+    // до того, как «Главное» размонтируется.
+    if (hit) { window.setTimeout(() => setPage(hit.page), 200); return { who: 'n', text: `Открываю «${hit.label}».` }; }
+    return { who: 'n', text: `Раздел «${name}» не нашёл. Например: ${targets.slice(0, 6).map((t) => t.label.toLowerCase()).join(', ')}…` };
+  };
+
+  const run = async (raw: string) => {
+    const cmd = raw.trim();
+    if (!cmd || busy || disabled) return;
+    setQ(''); setHIdx(null);
+    setHist((h) => (h[h.length - 1] === cmd ? h : [...h, cmd]));
+
+    const low = cmd.toLowerCase();
+    if (low === 'clear' || low === 'очистить') { setLog([]); return; }
+    push({ who: 'u', text: cmd });
+    if (low === 'help' || low === '?' || low === 'помощь') { push({ who: 'n', text: TERM_HELP }); return; }
+    const open = low.match(/^(?:open|открой|открыть)\s+(.+)$/);
+    if (open) { push(openSection(open[1])); return; }
+
+    if (llmReady()) {
+      setBusy(true);
+      push({ who: 'n', text: '…' });
+      try {
+        const text = await llmAsk(cmd, { system: 'Ты — NEX, терминал информационной системы колледжа. Отвечаешь администратору системы: коротко, по делу, по-русски.' });
+        setLog((l) => [...l.slice(0, -1), { who: 'n', text }]);
+        return;
+      } catch {
+        setLog((l) => l.slice(0, -1)); // LLM недоступен — локальный мозг ниже
+      } finally { setBusy(false); }
+    }
+    const a = nexReply(cmd, { page: 'home' });
+    push({ who: 'n', text: a.text, nav: a.nav, action: a.action });
+  };
+
+  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowUp') {
+      if (!hist.length) return;
+      e.preventDefault();
+      const i = hIdx === null ? hist.length - 1 : Math.max(0, hIdx - 1);
+      setHIdx(i); setQ(hist[i]);
+    } else if (e.key === 'ArrowDown') {
+      if (hIdx === null) return;
+      e.preventDefault();
+      const i = hIdx + 1;
+      if (i >= hist.length) { setHIdx(null); setQ(''); } else { setHIdx(i); setQ(hist[i]); }
+    }
+  };
+
+  return (
+    <form className="console term" onSubmit={(e) => { e.preventDefault(); run(q); }} onClick={() => !disabled && inputRef.current?.focus()}>
+      <div className="console-head">
+        <Sparkles size={15} className="console-spark" />
+        <span className="console-tag">Терминал NEX</span>
+        <span className="console-kbd"><kbd>⌘</kbd><kbd>K</kbd> из любого места</span>
+        <div className="term-tools">
+          {log.length > 0 && (
+            <button type="button" className="icon-btn" title="Очистить экран (clear)" onClick={(e) => { e.stopPropagation(); setLog([]); }}><Eraser size={15} /></button>
+          )}
+          <button type="button" className="icon-btn" title="Открыть полный чат" onClick={(e) => { e.stopPropagation(); if (!disabled) openChat(); }}><ExternalLink size={15} /></button>
+        </div>
+      </div>
+
+      {log.length > 0 && (
+        <div className="term-body" ref={bodyRef}>
+          {log.map((m, i) => m.who === 'u' ? (
+            <div className="term-u" key={i}><span className="term-prompt">›</span>{m.text}</div>
+          ) : (
+            <div className="term-n" key={i}>
+              <Md text={m.text} />
+              {(m.nav?.length || m.action) ? (
+                <div className="term-nav">
+                  {m.nav?.map((n) => (
+                    <button type="button" key={n.page + n.label} className="chip-btn" onClick={() => setPage(n.page)}>{n.label} <ArrowRight size={12} /></button>
+                  ))}
+                  {m.action && <button type="button" className="btn btn-sm btn-primary" onClick={() => toast(m.action + ' — выполнено')}>{m.action}</button>}
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="console-line">
+        <span className="term-prompt">›</span>
+        <input ref={inputRef} value={q} onChange={(e) => { setQ(e.target.value); setHIdx(null); }} onKeyDown={onKeyDown} disabled={disabled || busy}
+          placeholder={log.length ? 'Следующая команда — или help' : 'Спросите или скомандуйте: «кто в зоне риска», «что с деньгами», open финансы, help'} />
+        <button className="console-send" type="submit" aria-label="Выполнить"><CornerDownLeft size={15} /></button>
+      </div>
+
+      {chips.length > 0 && (
+        <div className="console-chips">
+          {chips.map((c) => (
+            <button type="button" key={c.label} className="console-chip" onClick={(e) => { e.stopPropagation(); run(c.q); }}>{c.label}</button>
+          ))}
+        </div>
+      )}
+    </form>
+  );
+}
+
+function CommandDeck() {
+  const { user, setPage, prefs, setPref, homeEditing, setHomeEditing, toast } = useApp();
   /* уходя с главного, выходим из режима конструктора */
   useEffect(() => () => setHomeEditing(false), [setHomeEditing]);
 
@@ -82,7 +242,6 @@ function CommandDeck() {
     { label: 'Всё ли спокойно?', q: 'Оцени состояние безопасности: входы, аномалии, что закрыть.' },
   ];
 
-  const submit = (e: FormEvent) => { e.preventDefault(); if (!homeEditing) openChat(q.trim() || undefined); };
   const nav = (p: string) => { if (!homeEditing) setPage(p); };
 
   /* --- Рендер отдельного блока (без обвязки редактирования) --- */
@@ -92,29 +251,7 @@ function CommandDeck() {
         Пока вас не было, NEX присмотрел за колледжем. Сегодня стоит обратить внимание на <b>{unpaid} неоплаченных договора</b> и <b>{risk} студентов</b> с падающей посещаемостью. Ничего срочного — можно спокойно разобрать по порядку.
       </p>
     );
-    if (id === 'console') return (
-      <form className="console" onSubmit={submit} onClick={() => !homeEditing && inputRef.current?.focus()}>
-        <div className="console-head">
-          <Sparkles size={15} className="console-spark" />
-          <span className="console-tag">Спросить NEX</span>
-          <span className="console-kbd"><kbd>⌘</kbd><kbd>K</kbd> из любого места</span>
-        </div>
-        <div className="console-line">
-          <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)} disabled={homeEditing}
-            placeholder="С чего начнём? Спросите своими словами — например, «сколько соберём, если должники заплатят»" />
-          <button className="console-send" type="submit" aria-label="Спросить"><CornerDownLeft size={15} /></button>
-        </div>
-        {prefs.homeChips && (
-          <div className="console-chips">
-            {commands.map((c) => (
-              <button type="button" key={c.label} className="console-chip" onClick={(e) => { e.stopPropagation(); if (!homeEditing) openChat(c.q); }}>
-                {c.label}
-              </button>
-            ))}
-          </div>
-        )}
-      </form>
-    );
+    if (id === 'console') return <NexTerminal disabled={homeEditing} chips={prefs.homeChips ? commands : []} />;
     if (id === 'shortcuts') return (
       <>
         <div className={`deck-shortcuts ${prefs.homeShortcutStyle === 'tiles' ? 'tiles' : 'columns'}`}>
@@ -168,20 +305,6 @@ function CommandDeck() {
         <div className="soft-foot">Ничего не горит — разберёте в своём темпе.</div>
       </section>
     );
-    if (id === 'recent') return (
-      <aside className="panel soft">
-        <div className="panel-h soft-h"><Sparkles size={14} style={{ color: 'var(--ai)' }} /> Недавнее у NEX</div>
-        <div className="deck-log soft-log">
-          {nexLog.slice(0, 4).map((l) => (
-            <div className="deck-log-row" key={l.id}>
-              <span className="deck-log-dot" />
-              <div><div className="deck-log-t">{l.text}</div><div className="deck-log-time">{l.time}</div></div>
-            </div>
-          ))}
-        </div>
-        <button className="deck-log-more" onClick={() => nav('nexlog')}>Вся история NEX <ArrowRight size={13} /></button>
-      </aside>
-    );
     return null;
   };
 
@@ -204,15 +327,6 @@ function CommandDeck() {
       </div>
     );
   };
-
-  /* группируем соседние колоночные блоки (today/recent) в двухколоночную сетку */
-  const groups: { col: boolean; ids: string[] }[] = [];
-  blocks.forEach((id) => {
-    const col = !!HOME_BLOCK_BY_ID[id]?.col;
-    const last = groups[groups.length - 1];
-    if (col && last && last.col) last.ids.push(id);
-    else groups.push({ col, ids: [id] });
-  });
 
   return (
     <div className={`deck calm ${homeEditing ? 'editing' : ''}`}>
@@ -284,13 +398,7 @@ function CommandDeck() {
       )}
 
       {/* --- Блоки в выбранном порядке --- */}
-      {groups.map((grp, gi) => grp.col ? (
-        <div className="deck-grid" key={gi}>
-          {grp.ids.map((id) => renderShell(id))}
-        </div>
-      ) : (
-        <Fragment key={gi}>{grp.ids.map((id) => renderShell(id))}</Fragment>
-      ))}
+      {blocks.map((id) => renderShell(id))}
 
       {/* --- Скрытые блоки: вернуть на экран --- */}
       {homeEditing && hiddenBlocks.length > 0 && (
