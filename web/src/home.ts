@@ -15,7 +15,7 @@ export interface HomeBlock { id: string; label: string; desc: string; col?: bool
    (соседние col-блоки встают рядом). Остальные — на всю ширину. */
 export const HOME_BLOCK_CATALOG: HomeBlock[] = [
   { id: 'brief', label: 'Сводка дня', desc: 'Короткий человеческий текст: что важно сегодня' },
-  { id: 'console', label: 'Командная строка NEX', desc: 'Строка команд и быстрые запросы к ассистенту' },
+  { id: 'console', label: 'Спросить NEX', desc: 'Поле вопроса и мягкие подсказки ассистенту' },
   { id: 'shortcuts', label: 'Ярлыки разделов', desc: 'Плитки быстрого перехода в разделы' },
   { id: 'today', label: 'На сегодня', desc: 'Мягкий список приоритетов дня', col: true },
   { id: 'recent', label: 'Недавнее у NEX', desc: 'Последние действия ассистента', col: true },
