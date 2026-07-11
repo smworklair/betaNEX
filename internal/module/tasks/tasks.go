@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -68,7 +69,9 @@ func (c Create) Validate() error {
 	if c.Title == "" {
 		return errors.New("tasks: title is required")
 	}
-	if len(c.Title) > 500 {
+	// Считаем символы, а не байты: кириллица в UTF-8 занимает два байта,
+	// и лимит в байтах вдвое урезал бы русские заголовки.
+	if utf8.RuneCountInString(c.Title) > 500 {
 		return errors.New("tasks: title is too long")
 	}
 	return nil

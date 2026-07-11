@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"time"
+	"unicode/utf8"
 )
 
 // Права модуля.
@@ -104,7 +105,8 @@ func (c CreateGroup) Validate() error {
 	if c.Code == "" {
 		return errors.New("campus: group code is required")
 	}
-	if len(c.Code) > 32 || len(c.Title) > 255 {
+	// Лимиты в символах, не в байтах: кириллица в UTF-8 двухбайтовая.
+	if utf8.RuneCountInString(c.Code) > 32 || utf8.RuneCountInString(c.Title) > 255 {
 		return errors.New("campus: group code/name is too long")
 	}
 	return nil
@@ -128,7 +130,7 @@ func (c EnrollStudent) Validate() error {
 	if c.FullName == "" {
 		return errors.New("campus: full name is required")
 	}
-	if len(c.FullName) > 255 || len(c.Email) > 255 {
+	if utf8.RuneCountInString(c.FullName) > 255 || utf8.RuneCountInString(c.Email) > 255 {
 		return errors.New("campus: name/email is too long")
 	}
 	return nil
