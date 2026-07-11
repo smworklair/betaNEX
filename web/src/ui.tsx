@@ -38,8 +38,16 @@ export interface Prefs {
   homeBlocks: string[];
   /** конструктор главного экрана: ярлыки разделов по порядку (id из HOME_SHORTCUT_CATALOG) */
   homeShortcuts: string[];
+  /** главный экран: ярлыки колонками одной панели или отдельными плитками */
+  homeShortcutStyle: 'columns' | 'tiles';
+  /** главный экран: показывать часы в шапке */
+  homeClock: boolean;
+  /** главный экран: показывать подсказки-вопросы под полем «Спросить NEX» */
+  homeChips: boolean;
+  /** главный экран: как обращаться в приветствии (пусто — имя из профиля) */
+  homeName: string;
 }
-export const DEFAULT_PREFS: Prefs = { accent: 'blue', density: 'normal', font: 'normal', corners: 'soft', strip: true, sidebarAuto: false, solid: false, sidebar: 'expanded', dock: ['feed', 'mail', 'study', 'finance', 'people'], topbar: ['feed', 'finance', 'study', 'people', 'analytics', 'security', 'beta'], homeBlocks: DEFAULT_HOME_BLOCKS, homeShortcuts: DEFAULT_HOME_SHORTCUTS };
+export const DEFAULT_PREFS: Prefs = { accent: 'blue', density: 'normal', font: 'normal', corners: 'soft', strip: true, sidebarAuto: false, solid: false, sidebar: 'expanded', dock: ['feed', 'mail', 'study', 'finance', 'people'], topbar: ['feed', 'finance', 'study', 'people', 'analytics', 'security', 'beta'], homeBlocks: DEFAULT_HOME_BLOCKS, homeShortcuts: DEFAULT_HOME_SHORTCUTS, homeShortcutStyle: 'columns', homeClock: true, homeChips: true, homeName: '' };
 export interface ChatMsg extends Partial<NexReply> { who: 'u' | 'n'; text: string; run?: string; pending?: boolean; }
 /** Floating context-less explainer, anchored to a text selection. */
 export interface ExplainReq { x: number; y: number; text: string; }

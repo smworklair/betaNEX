@@ -189,6 +189,29 @@ export default function Settings() {
           </div>
           <button className="btn btn-ghost btn-sm" style={{ marginTop: 12 }} onClick={() => setPref('homeBlocks', DEFAULT_HOME_BLOCKS)}>Сбросить блоки</button>
         </div>
+        <Row title="Вид ярлыков" desc="Колонки — одна панель с разделителями, плитки — отдельные карточки">
+          <div className="seg">
+            <button className={prefs.homeShortcutStyle !== 'tiles' ? 'on' : ''} onClick={() => setPref('homeShortcutStyle', 'columns')}>Колонки</button>
+            <button className={prefs.homeShortcutStyle === 'tiles' ? 'on' : ''} onClick={() => setPref('homeShortcutStyle', 'tiles')}>Плитки</button>
+          </div>
+        </Row>
+        <Row title="Часы в шапке" desc="Тихие часы рядом с приветствием">
+          <div className="seg">
+            <button className={prefs.homeClock ? 'on' : ''} onClick={() => setPref('homeClock', true)}>Показать</button>
+            <button className={!prefs.homeClock ? 'on' : ''} onClick={() => setPref('homeClock', false)}>Скрыть</button>
+          </div>
+        </Row>
+        <Row title="Подсказки под полем NEX" desc="Готовые вопросы вроде «Что важно сегодня?»">
+          <div className="seg">
+            <button className={prefs.homeChips ? 'on' : ''} onClick={() => setPref('homeChips', true)}>Показать</button>
+            <button className={!prefs.homeChips ? 'on' : ''} onClick={() => setPref('homeChips', false)}>Скрыть</button>
+          </div>
+        </Row>
+        <Row title="Обращение в приветствии" desc="Как здороваться на «Главном»; пусто — имя из профиля">
+          <input className="input" style={{ width: 200 }} value={prefs.homeName} maxLength={40}
+            placeholder={user?.name?.split(' ')[0] || 'Например, Анна Сергеевна'}
+            onChange={(e) => setPref('homeName', e.target.value)} />
+        </Row>
       </div>
 
       {/* ---- Рабочая область и горячие клавиши (десктоп) ---- */}

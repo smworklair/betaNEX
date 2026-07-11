@@ -44,7 +44,7 @@ function CommandDeck() {
   /* уходя с главного, выходим из режима конструктора */
   useEffect(() => () => setHomeEditing(false), [setHomeEditing]);
 
-  const name = user?.name?.split(' ')[0] || 'коллега';
+  const name = prefs.homeName.trim() || user?.name?.split(' ')[0] || 'коллега';
   const g = greeting();
   const GIcon = g.icon;
   const today = new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -60,7 +60,12 @@ function CommandDeck() {
   const hiddenShortcuts = HOME_SHORTCUT_CATALOG.filter((s) => !shortcutIds.includes(s.id));
   const setBlocks = (v: string[]) => setPref('homeBlocks', v);
   const setSc = (v: string[]) => setPref('homeShortcuts', v);
-  const resetHome = () => { setBlocks(DEFAULT_HOME_BLOCKS); setSc(DEFAULT_HOME_SHORTCUTS); toast('Главный экран сброшен к стандартному виду'); };
+  const resetHome = () => {
+    setBlocks(DEFAULT_HOME_BLOCKS); setSc(DEFAULT_HOME_SHORTCUTS);
+    setPref('homeShortcutStyle', 'columns'); setPref('homeClock', true);
+    setPref('homeChips', true); setPref('homeName', '');
+    toast('Главный экран сброшен к стандартному виду');
+  };
 
   const today_items = [
     threats ? { id: 'security', dot: 'var(--danger)', title: `${threats} подозрительных входа за ночь`, meta: 'Стоит проверить и при необходимости закрыть доступ', go: 'security' } : null,
@@ -99,18 +104,20 @@ function CommandDeck() {
             placeholder="С чего начнём? Спросите своими словами — например, «сколько соберём, если должники заплатят»" />
           <button className="console-send" type="submit" aria-label="Спросить"><CornerDownLeft size={15} /></button>
         </div>
-        <div className="console-chips">
-          {commands.map((c) => (
-            <button type="button" key={c.label} className="console-chip" onClick={(e) => { e.stopPropagation(); if (!homeEditing) openChat(c.q); }}>
-              {c.label}
-            </button>
-          ))}
-        </div>
+        {prefs.homeChips && (
+          <div className="console-chips">
+            {commands.map((c) => (
+              <button type="button" key={c.label} className="console-chip" onClick={(e) => { e.stopPropagation(); if (!homeEditing) openChat(c.q); }}>
+                {c.label}
+              </button>
+            ))}
+          </div>
+        )}
       </form>
     );
     if (id === 'shortcuts') return (
       <>
-        <div className="deck-shortcuts">
+        <div className={`deck-shortcuts ${prefs.homeShortcutStyle === 'tiles' ? 'tiles' : 'columns'}`}>
           {shortcutIds.map((sid) => {
             const s = HOME_SHORTCUT_BY_ID[sid]; if (!s) return null; const Icon = s.icon;
             return (
@@ -219,7 +226,7 @@ function CommandDeck() {
           </div>
         </div>
         <div className="deck-top-right">
-          <LiveClock />
+          {prefs.homeClock && <LiveClock />}
           {homeEditing
             ? <div className="deck-quiet">Режим настройки экрана</div>
             : <button className="deck-config-btn" onClick={() => setHomeEditing(true)}><Settings2 size={13} />Настроить экран</button>}
@@ -240,6 +247,39 @@ function CommandDeck() {
             <button className="btn btn-ghost btn-sm" onClick={resetHome}><RotateCcw size={14} />Сбросить</button>
             <button className="btn btn-primary btn-sm" onClick={() => setHomeEditing(false)}><Check size={14} />Готово</button>
           </div>
+        </div>
+      )}
+
+      {/* --- Быстрые настройки вида (только в конструкторе) --- */}
+      {homeEditing && (
+        <div className="deck-edit-prefs">
+          <div className="deck-edit-pref">
+            <span>Ярлыки</span>
+            <div className="seg seg-sm">
+              <button className={prefs.homeShortcutStyle !== 'tiles' ? 'on' : ''} onClick={() => setPref('homeShortcutStyle', 'columns')}>Колонки</button>
+              <button className={prefs.homeShortcutStyle === 'tiles' ? 'on' : ''} onClick={() => setPref('homeShortcutStyle', 'tiles')}>Плитки</button>
+            </div>
+          </div>
+          <div className="deck-edit-pref">
+            <span>Часы</span>
+            <div className="seg seg-sm">
+              <button className={prefs.homeClock ? 'on' : ''} onClick={() => setPref('homeClock', true)}>Показать</button>
+              <button className={!prefs.homeClock ? 'on' : ''} onClick={() => setPref('homeClock', false)}>Скрыть</button>
+            </div>
+          </div>
+          <div className="deck-edit-pref">
+            <span>Подсказки NEX</span>
+            <div className="seg seg-sm">
+              <button className={prefs.homeChips ? 'on' : ''} onClick={() => setPref('homeChips', true)}>Показать</button>
+              <button className={!prefs.homeChips ? 'on' : ''} onClick={() => setPref('homeChips', false)}>Скрыть</button>
+            </div>
+          </div>
+          <label className="deck-edit-pref">
+            <span>Обращение</span>
+            <input className="input deck-edit-name" value={prefs.homeName} maxLength={40}
+              placeholder={user?.name?.split(' ')[0] || 'Как к вам обращаться'}
+              onChange={(e) => setPref('homeName', e.target.value)} />
+          </label>
         </div>
       )}
 
