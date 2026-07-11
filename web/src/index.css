@@ -2081,10 +2081,51 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
   .deck-grid { grid-template-columns: 1fr; }
   .deck-vitals { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* --- Телефон: одна колонка, плотнее, крупные зоны нажатия --- */
 @media (max-width: 620px) {
-  .deck-top { flex-direction: column; align-items: flex-start; gap: 12px; }
-  .deck-top-right { align-items: flex-start; flex-direction: row; align-items: center; }
-  .deck-clock { font-size: 22px; }
+  .deck { gap: 12px; }
+
+  /* Шапка: приветствие и часы в одну строку, компактнее */
+  .deck-top { padding: 14px 16px; gap: 10px; }
+  .deck-hello { gap: 11px; }
+  .deck-hello-ic { width: 34px; height: 34px; border-radius: 10px; }
+  .deck-hello h1 { font-size: 18px; }
+  .deck-sub { font-size: 12px; }
+  .deck-top-right { flex-direction: column; align-items: flex-end; gap: 4px; }
+  .deck-clock { font-size: 15px; }
+
+  .deck-brief { font-size: 14px; line-height: 1.55; padding: 0 2px; }
+
+  /* Поле NEX: без подсказки про ⌘K (на телефоне её нет), 16px во
+     вводе — чтобы мобильные браузеры не приближали страницу */
+  .console { padding: 13px 14px; }
+  .console-kbd { display: none; }
+  .console-line input { font-size: 16px; }
+  .console-send { width: 32px; height: 32px; }
+
+  /* Подсказки-вопросы — одной прокручиваемой строкой без переносов */
+  .console-chips { flex-wrap: nowrap; overflow-x: auto; margin: 12px -14px 0; padding: 0 14px; scrollbar-width: none; }
+  .console-chips::-webkit-scrollbar { display: none; }
+  .console-chip { flex-shrink: 0; }
+
+  /* Ярлыки: колонки чуть уже, плитки компактнее */
+  .deck-shortcuts.columns .deck-shortcut-wrap { min-width: 86px; }
+  .deck-shortcut { padding: 13px 6px; gap: 7px; font-size: 12px; }
+  .deck-shortcut-ic { width: 34px; height: 34px; border-radius: 10px; }
+
+  /* Списки: компактнее, стрелка не нужна — вся строка нажимается */
+  .op-row.soft { padding: 12px 14px; gap: 11px; }
+  .op-title { font-size: 13.5px; }
+  .op-row .op-arrow { display: none; }
+  .soft-foot { padding: 9px 14px 11px; }
+
+  /* Конструктор: тулбар и настройки вида складываются в столбик */
+  .deck-edit-toolbar { flex-direction: column; align-items: stretch; }
+  .deck-edit-actions { justify-content: flex-end; }
+  .deck-edit-prefs { gap: 10px 16px; padding: 10px 12px; }
+  .deck-edit-pref:last-child { flex: 1 1 100%; }
+  .deck-edit-name { flex: 1; width: auto; min-width: 0; }
 }
 
 /* ============================================================
