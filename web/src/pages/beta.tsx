@@ -140,7 +140,12 @@ export function NotificationsPage() {
           <div className="feed-row" key={n.id} style={{ background: n.unread ? 'var(--ai-weak)' : undefined }}>
             <div className="feed-ico"><Icon size={14} /></div>
             <div className="feed-main"><div className="t">{n.title}</div><div className="m">{n.desc} · {n.time}</div></div>
-            <Chip tone={n.tone}>{n.unread ? 'новое' : 'прочитано'}</Chip>
+            {/* Цвет тона (danger/warn/ai/info) значим только для «новое» —
+                он должен привлекать внимание к непрочитанному. Для уже
+                прочитанного тот же цвет читается как ложная тревога
+                («опять что-то важное/AI»), поэтому бейдж гасится до
+                нейтрального серого. */}
+            <Chip tone={n.unread ? n.tone : 'chip-neutral'}>{n.unread ? 'новое' : 'прочитано'}</Chip>
           </div>
         ); })}
       </div></div>
