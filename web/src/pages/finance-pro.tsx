@@ -128,7 +128,7 @@ function FinCopilot() {
         <span className="fin-copilot-orb"><Sparkles size={15} /></span>
         <div>
           <b>NEX для финансов</b>
-          <span>спросите числами — отвечу числами и покажу график</span>
+          <span className="fin-copilot-sub">спросите числами — отвечу числами и покажу график</span>
         </div>
         <span className="fin-live"><i />live</span>
       </div>

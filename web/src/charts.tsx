@@ -147,32 +147,67 @@ export function HBars({ data, format }: { data: { label: string; value: number; 
   );
 }
 
-/* Водопад (bridge): как из начального значения складывается итог по вкладам «+/−». */
+/* Водопад (bridge): как из начального значения складывается итог по вкладам «+/−».
+   Столбцы стоят на общей числовой оси (0 = низ), поэтому верхний край
+   каждого ровно совпадает с уровнем, откуда начинается следующий —
+   это подчёркивают пунктирные соединители между колонками. Подпись
+   категории — под графиком (как ось X): у неё фиксированное место,
+   поэтому она не наезжает на короткие столбцы и не «улетает» от
+   высоких. Значение показывается отдельной подписью прямо над своим
+   столбцом, на его фактической высоте. */
 export function Waterfall({ steps, height = 190, format }: {
   steps: { label: string; delta: number; kind?: 'start' | 'end' | 'delta' }[]; height?: number; format?: (n: number) => string;
 }) {
   let running = 0;
   const bars = steps.map((s) => {
-    if (s.kind === 'start' || s.kind === 'end') { const base = 0; const top = s.delta; running = s.delta; return { ...s, base, top, total: s.delta }; }
-    const base = running; running += s.delta; return { ...s, base, top: running, total: running };
+    if (s.kind === 'start' || s.kind === 'end') { running = s.delta; return { ...s, base: 0, top: s.delta, cum: running }; }
+    const base = running; running += s.delta; return { ...s, base, top: running, cum: running };
   });
-  const hi = Math.max(...bars.map((b) => Math.max(b.base, b.top)), 1);
-  const w = 100 / bars.length;
+  // Домен растянут на 25% сверх максимума: столбцы занимают не больше
+  // 80% высоты, оставшееся — воздух под подписи значений, чтобы они не
+  // упирались в край карточки.
+  const hi = (Math.max(...bars.map((b) => Math.max(b.base, b.top)), 1)) / 0.8;
+  const n = bars.length;
+  const w = 100 / n;
+  const barL = 19, barR = 81; // столбец занимает 62% ширины колонки, отступ по 19% с боков
+
   return (
-    <div style={{ position: 'relative', height, display: 'flex', alignItems: 'flex-end', gap: 0 }}>
-      {bars.map((b, i) => {
-        const y0 = Math.min(b.base, b.top); const y1 = Math.max(b.base, b.top);
-        const isMarker = b.kind === 'start' || b.kind === 'end';
-        const up = b.top >= b.base;
-        const color = isMarker ? 'var(--accent)' : up ? 'var(--success)' : 'var(--danger)';
-        const bottomPct = (y0 / hi) * 100; const hPct = ((y1 - y0) / hi) * 100;
-        return (
-          <div key={i} style={{ width: `${w}%`, height: '100%', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end' }} title={`${b.label}: ${format ? format(b.delta) : b.delta}`}>
-            <div style={{ position: 'absolute', bottom: `${Math.max(bottomPct, 0)}%`, height: `${Math.max(hPct, 1.5)}%`, width: '62%', background: color, borderRadius: 4, minHeight: 3 }} />
-            <span style={{ position: 'absolute', bottom: 'calc(100% - 12px)', fontSize: 9.5, color: 'var(--text-3)', textAlign: 'center', width: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '0 2px' }}>{b.label}</span>
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      <div style={{ position: 'relative', height }}>
+        {bars.slice(0, -1).map((b, i) => (
+          <div key={`c${i}`} aria-hidden style={{
+            position: 'absolute',
+            left: `${(i + barR / 100) * w}%`,
+            width: `${(i + 1 + barL / 100) * w - (i + barR / 100) * w}%`,
+            bottom: `${(b.cum / hi) * 100}%`,
+            borderTop: '1px dashed var(--border-2)',
+          }} />
+        ))}
+        {bars.map((b, i) => {
+          const y0 = Math.min(b.base, b.top); const y1 = Math.max(b.base, b.top);
+          const isMarker = b.kind === 'start' || b.kind === 'end';
+          const up = b.top >= b.base;
+          const color = isMarker ? 'var(--accent)' : up ? 'var(--success)' : 'var(--danger)';
+          const bottomPct = Math.max((y0 / hi) * 100, 0);
+          const hPct = Math.max(((y1 - y0) / hi) * 100, 1.5);
+          return (
+            <div key={i} style={{ position: 'absolute', left: `${i * w}%`, width: `${w}%`, height: '100%' }}
+              title={`${b.label}: ${format ? format(b.delta) : b.delta}`}>
+              <div style={{ position: 'absolute', left: `${barL}%`, width: `${barR - barL}%`, bottom: `${bottomPct}%`, height: `${hPct}%`, background: color, borderRadius: 4, minHeight: 3 }} />
+              <span className="mono" style={{ position: 'absolute', left: 0, right: 0, textAlign: 'center', bottom: `calc(${bottomPct + hPct}% + 6px)`, fontSize: 11, fontWeight: 700, color: 'var(--text-2)', whiteSpace: 'nowrap' }}>
+                {format ? format(b.delta) : b.delta}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ display: 'flex', marginTop: 8 }}>
+        {bars.map((b, i) => (
+          <div key={i} style={{ width: `${w}%`, textAlign: 'center', fontSize: 10.5, color: 'var(--text-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '0 2px' }}>
+            {b.label}
           </div>
-        );
-      })}
+        ))}
+      </div>
     </div>
   );
 }
