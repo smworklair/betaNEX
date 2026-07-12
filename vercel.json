@@ -1,12 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "pnpm -C web build",
+  "buildCommand": "pnpm build",
   "installCommand": "pnpm install",
-  "outputDirectory": "web/dist",
+  "outputDirectory": "dist",
   "rewrites": [
     {
       "source": "/((?!assets/|api/).*)",
-      "destination": "/index.html"
+      "destination": "/index.*tml"
     }
   ]
 }
