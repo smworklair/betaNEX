@@ -713,7 +713,10 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .inline-head .spark { color: var(--ai); }
 .inline-head b { font-size: 13.5px; }
 .inline-head .icon-btn { width: 28px; height: 28px; }
-.inline-badge { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--ai); background: var(--ai-weak); padding: 2px 7px; border-radius: 999px; margin-right: auto; }
+/* Нейтральный тон вместо акцентного: это подпись состояния
+   («в странице», «ИИ»/«без контекста»), а не декоративный акцент —
+   не должна конкурировать за внимание с самим содержимым панели. */
+.inline-badge { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); background: var(--surface-2); padding: 2px 7px; border-radius: 999px; margin-right: auto; }
 .inline-body { flex: 1; overflow-y: auto; padding: 12px 13px; display: flex; flex-direction: column; gap: 11px; }
 .inline-msg.u { align-self: flex-end; background: var(--accent); color: var(--accent-fg); padding: 7px 11px; border-radius: 11px 11px 3px 11px; max-width: 85%; font-size: 13px; line-height: 1.45; }
 .inline-msg.n { display: flex; gap: 8px; align-items: flex-start; }
@@ -734,8 +737,10 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
    In-page inline panel: opens in the page flow, under the clicked
    block, and pushes the rest of the content down.
    ============================================================ */
+/* Обычная граница карточки, не акцентная: панель встраивается в
+   поток страницы, а не «прилетает» отдельным ИИ-виджетом поверх неё. */
 .nex-inline { display: flex; flex-direction: column; max-height: 440px; overflow: hidden;
-  margin: 14px 0 4px; border: 1px solid color-mix(in srgb, var(--ai) 26%, var(--border-2)); border-radius: var(--r-lg);
+  margin: 14px 0 4px; border: 1px solid var(--border); border-radius: var(--r-lg);
   background: var(--surface); box-shadow: var(--shadow-sm); animation: inlineGrow .2s cubic-bezier(.2,0,0,1); }
 @keyframes inlineGrow { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 .nex-inline-head { display: flex; align-items: center; gap: 8px; padding: 10px 8px 10px 13px; border-bottom: 1px solid var(--border); }
@@ -747,10 +752,11 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .nex-inline-quick { display: flex; flex-wrap: wrap; gap: 7px; padding: 0 13px 10px; }
 .nex-inline-quick .chip-btn .ic { color: var(--ai); }
 
-/* floating context-LESS explainer (selection only) */
+/* floating context-LESS explainer (selection only); нейтральная
+   граница — тот же довод, что у .nex-inline выше. */
 .sel-explain { position: fixed; z-index: 501; display: flex; flex-direction: column; border-radius: 14px;
   background: color-mix(in srgb, var(--surface) 82%, transparent); backdrop-filter: blur(16px) saturate(1.4); -webkit-backdrop-filter: blur(16px) saturate(1.4);
-  border: 1px solid color-mix(in srgb, var(--ai) 22%, var(--border-2)); box-shadow: 0 16px 50px rgba(0,0,0,.28); animation: fadeIn .14s ease-out; overflow: hidden; }
+  border: 1px solid var(--border-2); box-shadow: 0 16px 50px rgba(0,0,0,.28); animation: fadeIn .14s ease-out; overflow: hidden; }
 .sel-explain-head { display: flex; align-items: center; gap: 8px; padding: 9px 8px 9px 12px; border-bottom: 1px solid var(--border); }
 .sel-explain-head .spark { color: var(--ai); }
 .sel-explain-head b { font-size: 13px; }
@@ -2031,6 +2037,17 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .term-n code { font-family: var(--font-mono); font-size: 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 1px 5px; }
 .term-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 9px; }
 .term-nav .chip-btn { padding: 5px 11px; font-size: 12.5px; }
+/* Легенда реальных команд: тихая монопространственная строка под
+   шапкой — видно, что есть настоящие вызовы, без набора help. */
+.term-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin: -2px 0 10px; }
+.term-legend code { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); background: var(--surface-2); border: 1px solid var(--border); border-radius: 5px; padding: 2px 7px; }
+/* Команда, распознанная в эхе введённой строки — акцентный моноширинный токен. */
+.term-cmd { color: var(--ai); font-weight: 700; }
+/* Индикатор «идёт обращение к модели»: мигающий блочный курсор —
+   ощущение работающего процесса, а не «печатает…» у чат-бота. */
+.term-busy { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 13px; color: var(--text-2); }
+.term-cursor { width: 8px; height: 15px; background: var(--ai); animation: termBlink 1s step-end infinite; }
+@keyframes termBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 @media (max-width: 620px) { .term-body { max-height: 260px; } }
 
 /* --- Панель --- */
