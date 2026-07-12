@@ -77,7 +77,9 @@ func RegisterCommands(bus interface {
 //	PATCH /api/v1/campus/students/{id}     {full_name, email, group_id, status}
 //	POST  /api/v1/campus/grades            {student_id, subject, grade, graded_on, note}
 //	GET   /api/v1/campus/journal           ?group=&student=&subject=&limit=
-func Routes(bus command.Bus, repo *Repository) func(mux *http.ServeMux) {
+//
+// Чтения защищает guard (право PermRead), мутации авторизует шина команд.
+func Routes(bus command.Bus, repo *Repository, guard *authz.Guard) func(mux *http.ServeMux) {
 	return func(mux *http.ServeMux) {
 		mux.HandleFunc("POST /api/v1/campus/groups", func(w http.ResponseWriter, r *http.Request) {
 			var req struct{ Code, Name string }
@@ -88,6 +90,9 @@ func Routes(bus command.Bus, repo *Repository) func(mux *http.ServeMux) {
 		})
 
 		mux.HandleFunc("GET /api/v1/campus/groups", func(w http.ResponseWriter, r *http.Request) {
+			if !httpapi.RequirePermission(w, r, guard, PermRead) {
+				return
+			}
 			groups, err := repo.Groups(r.Context())
 			if err != nil {
 				writeErr(w, err)
@@ -119,6 +124,9 @@ func Routes(bus command.Bus, repo *Repository) func(mux *http.ServeMux) {
 		})
 
 		mux.HandleFunc("GET /api/v1/campus/students", func(w http.ResponseWriter, r *http.Request) {
+			if !httpapi.RequirePermission(w, r, guard, PermRead) {
+				return
+			}
 			q := r.URL.Query()
 			limit, _ := strconv.Atoi(q.Get("limit"))
 			offset, _ := strconv.Atoi(q.Get("offset"))
@@ -180,6 +188,9 @@ func Routes(bus command.Bus, repo *Repository) func(mux *http.ServeMux) {
 		})
 
 		mux.HandleFunc("GET /api/v1/campus/journal", func(w http.ResponseWriter, r *http.Request) {
+			if !httpapi.RequirePermission(w, r, guard, PermRead) {
+				return
+			}
 			q := r.URL.Query()
 			limit, _ := strconv.Atoi(q.Get("limit"))
 			grades, err := repo.Journal(r.Context(), JournalFilter{

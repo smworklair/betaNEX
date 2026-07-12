@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/smworklair/betakis/internal/kernel/authz"
 	"github.com/smworklair/betakis/internal/kernel/command"
 	"github.com/smworklair/betakis/internal/platform/httpapi"
 	"github.com/smworklair/betakis/internal/platform/xlsx"
@@ -35,9 +36,14 @@ func RegisterStatsCommands(bus Registrar, repo *PostgresRepository) error {
 //	GET  /api/v1/finance/export/entries.csv       реестр проводок
 //	GET  /api/v1/finance/export/turnovers.xlsx    обороты по месяцам
 //	POST /api/v1/finance/import/accounts          CSV: code,name,type[,currency]
-func ReportRoutes(bus command.Bus, repo *PostgresRepository) func(mux *http.ServeMux) {
+//
+// Чтения и экспорты защищает guard (PermRead), мутации — шина команд.
+func ReportRoutes(bus command.Bus, repo *PostgresRepository, guard *authz.Guard) func(mux *http.ServeMux) {
 	return func(mux *http.ServeMux) {
 		mux.HandleFunc("GET /api/v1/finance/stats/monthly", func(w http.ResponseWriter, r *http.Request) {
+			if !httpapi.RequirePermission(w, r, guard, PermRead) {
+				return
+			}
 			rows, err := repo.MonthlyTurnovers(r.Context())
 			if err != nil {
 				writeCommandError(w, err)
@@ -71,6 +77,9 @@ func ReportRoutes(bus command.Bus, repo *PostgresRepository) func(mux *http.Serv
 		})
 
 		mux.HandleFunc("GET /api/v1/finance/export/accounts.csv", func(w http.ResponseWriter, r *http.Request) {
+			if !httpapi.RequirePermission(w, r, guard, PermRead) {
+				return
+			}
 			balances, err := repo.Accounts(r.Context())
 			if err != nil {
 				writeCommandError(w, err)
@@ -88,6 +97,9 @@ func ReportRoutes(bus command.Bus, repo *PostgresRepository) func(mux *http.Serv
 		})
 
 		mux.HandleFunc("GET /api/v1/finance/export/entries.csv", func(w http.ResponseWriter, r *http.Request) {
+			if !httpapi.RequirePermission(w, r, guard, PermRead) {
+				return
+			}
 			entries, err := repo.Entries(r.Context())
 			if err != nil {
 				writeCommandError(w, err)
@@ -107,6 +119,9 @@ func ReportRoutes(bus command.Bus, repo *PostgresRepository) func(mux *http.Serv
 		})
 
 		mux.HandleFunc("GET /api/v1/finance/export/turnovers.xlsx", func(w http.ResponseWriter, r *http.Request) {
+			if !httpapi.RequirePermission(w, r, guard, PermRead) {
+				return
+			}
 			rows, err := repo.MonthlyTurnovers(r.Context())
 			if err != nil {
 				writeCommandError(w, err)

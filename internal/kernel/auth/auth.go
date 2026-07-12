@@ -54,6 +54,9 @@ type Store interface {
 	// RevokeSession отзывает сессию по хэшу токена. Отзыв уже отозванной
 	// сессии не ошибка.
 	RevokeSession(ctx context.Context, hash []byte) error
+	// ExtendSession продлевает живую сессию до expiresAt (скользящее
+	// окно). Продление отозванной или истёкшей сессии — no-op.
+	ExtendSession(ctx context.Context, hash []byte, expiresAt time.Time) error
 }
 
 // ErrNoUser возвращается Store, когда пользователя нет; сервис
@@ -129,21 +132,41 @@ func (s *Service) Login(ctx context.Context, email, password string) (string, Us
 // Пользователь ищется в tenant'е сессии — вызывающему остаётся положить
 // актора и tenant в контекст запроса.
 func (s *Service) Authenticate(ctx context.Context, token string) (User, error) {
-	sess, err := s.store.SessionByTokenHash(ctx, hashToken(token))
+	u, _, err := s.AuthenticateTouch(ctx, token)
+	return u, err
+}
+
+// AuthenticateTouch — Authenticate со скользящим продлением: если сессии
+// осталось меньше половины TTL, срок сдвигается на полный TTL от текущего
+// момента. refreshed=true означает «cookie стоит перевыпустить с полным
+// сроком» — активный пользователь не разлогинивается никогда, а украденный
+// токен всё равно умирает не позже TTL после последнего использования.
+func (s *Service) AuthenticateTouch(ctx context.Context, token string) (User, bool, error) {
+	hash := hashToken(token)
+	sess, err := s.store.SessionByTokenHash(ctx, hash)
 	if err != nil {
-		return User{}, err
+		return User{}, false, err
 	}
 	u, err := s.store.UserByID(tenancy.WithTenant(ctx, sess.TenantID), sess.UserID)
 	if errors.Is(err, ErrNoUser) {
-		return User{}, ErrSessionInvalid
+		return User{}, false, ErrSessionInvalid
 	}
 	if err != nil {
-		return User{}, fmt.Errorf("auth: authenticate: %w", err)
+		return User{}, false, fmt.Errorf("auth: authenticate: %w", err)
 	}
 	if !u.Active {
-		return User{}, ErrSessionInvalid
+		return User{}, false, ErrSessionInvalid
 	}
-	return u, nil
+
+	refreshed := false
+	if now := s.now(); sess.ExpiresAt.Sub(now) < s.ttl/2 {
+		// Продление best-effort: неудача не рвёт запрос — сессия ещё жива,
+		// а следующий запрос попробует продлить снова.
+		if err := s.store.ExtendSession(ctx, hash, now.Add(s.ttl)); err == nil {
+			refreshed = true
+		}
+	}
+	return u, refreshed, nil
 }
 
 // Logout отзывает сессию токена. Идемпотентен.

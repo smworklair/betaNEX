@@ -15,8 +15,10 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -64,7 +66,18 @@ type DBConfig struct {
 // AuthConfig configures kernel authentication.
 type AuthConfig struct {
 	// SessionTTL is how long an issued session (and its cookie) lives.
+	// Sessions slide: any authenticated request made after half the TTL
+	// has passed extends the session by a full TTL, so active users are
+	// never logged out mid-work.
 	SessionTTL time.Duration
+
+	// CookieSameSite is the SameSite attribute of the session cookie:
+	// "lax", "strict" or "none". "none" is required when the frontend is
+	// served from a different origin than the API (browsers do not send
+	// Lax cookies on cross-site fetch), and forces the Secure flag.
+	// Empty means auto: "none" when CORS origins are configured,
+	// "lax" otherwise.
+	CookieSameSite string
 }
 
 // FilesConfig configures on-disk file storage.
@@ -80,6 +93,13 @@ type FilesConfig struct {
 type HTTPConfig struct {
 	// Addr is the TCP address the server listens on, e.g. ":8080".
 	Addr string
+
+	// CORSOrigins lists browser origins (scheme://host[:port]) allowed to
+	// call the API with credentials from another origin — e.g. the Vercel
+	// frontend talking to a VPS backend. Empty means same-origin only:
+	// no CORS headers are emitted and cross-site requests are rejected
+	// by the CSRF check.
+	CORSOrigins []string
 
 	// ReadTimeout bounds the time spent reading an entire request, including
 	// its body. It protects the server from slow-client attacks.
@@ -117,6 +137,7 @@ func Load() (Config, error) {
 		Env: Environment(r.str("NEX_ENV", string(EnvDevelopment))),
 		HTTP: HTTPConfig{
 			Addr:            r.str("NEX_HTTP_ADDR", ":8080"),
+			CORSOrigins:     r.list("NEX_CORS_ORIGINS"),
 			ReadTimeout:     r.duration("NEX_HTTP_READ_TIMEOUT", 10*time.Second),
 			WriteTimeout:    r.duration("NEX_HTTP_WRITE_TIMEOUT", 15*time.Second),
 			IdleTimeout:     r.duration("NEX_HTTP_IDLE_TIMEOUT", 60*time.Second),
@@ -126,7 +147,8 @@ func Load() (Config, error) {
 			URL: r.str("NEX_DATABASE_URL", ""),
 		},
 		Auth: AuthConfig{
-			SessionTTL: r.duration("NEX_SESSION_TTL", 24*time.Hour),
+			SessionTTL:     r.duration("NEX_SESSION_TTL", 7*24*time.Hour),
+			CookieSameSite: r.str("NEX_COOKIE_SAMESITE", ""),
 		},
 		Files: FilesConfig{
 			Dir:            r.str("NEX_DATA_DIR", "./data"),
@@ -145,6 +167,18 @@ func Load() (Config, error) {
 			cfg.Log.Format = "json"
 		} else {
 			cfg.Log.Format = "text"
+		}
+	}
+
+	// Browsers do not attach SameSite=Lax cookies to cross-site fetch calls,
+	// so a cross-origin frontend silently loses its session unless the cookie
+	// is SameSite=None. Configured CORS origins make the cross-origin intent
+	// explicit — derive the cookie default from it.
+	if cfg.Auth.CookieSameSite == "" {
+		if len(cfg.HTTP.CORSOrigins) > 0 {
+			cfg.Auth.CookieSameSite = "none"
+		} else {
+			cfg.Auth.CookieSameSite = "lax"
 		}
 	}
 
@@ -177,6 +211,20 @@ func (c Config) validate() error {
 		errs = append(errs, errors.New("NEX_SESSION_TTL: must be positive"))
 	}
 
+	switch c.Auth.CookieSameSite {
+	case "lax", "strict", "none":
+	default:
+		errs = append(errs, fmt.Errorf("NEX_COOKIE_SAMESITE: unknown value %q (want lax, strict or none)", c.Auth.CookieSameSite))
+	}
+
+	for _, origin := range c.HTTP.CORSOrigins {
+		u, err := url.Parse(origin)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" ||
+			u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+			errs = append(errs, fmt.Errorf("NEX_CORS_ORIGINS: %q is not an origin (want scheme://host[:port])", origin))
+		}
+	}
+
 	switch c.Log.Level {
 	case "debug", "info", "warn", "error":
 	default:
@@ -204,6 +252,22 @@ func (r *envReader) str(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// list parses the value of key as a comma-separated list, trimming
+// whitespace and dropping empty items. An unset key yields nil.
+func (r *envReader) list(key string) []string {
+	v, ok := os.LookupEnv(key)
+	if !ok || v == "" {
+		return nil
+	}
+	var out []string
+	for _, item := range strings.Split(v, ",") {
+		if item = strings.TrimSpace(item); item != "" {
+			out = append(out, strings.TrimSuffix(item, "/"))
+		}
+	}
+	return out
 }
 
 // duration parses the value of key as a Go duration (e.g. "15s", "2m"), or

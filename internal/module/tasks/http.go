@@ -12,13 +12,15 @@ import (
 	"github.com/smworklair/betakis/internal/platform/httpapi"
 )
 
-// Routes монтирует маршруты модуля.
+// Routes монтирует маршруты модуля. Чтения защищает guard (право
+// PermRead), мутации авторизует шина команд (PermWrite).
 //
 //	POST   /api/v1/tasks                 {title, note, due_on, assignee}
 //	GET    /api/v1/tasks                 ?status=&assignee=&q=&sort=&limit=&offset=
 //	POST   /api/v1/tasks/{id}/complete
+//	POST   /api/v1/tasks/{id}/dispatch   {user_ids: [uuid, ...]}
 //	DELETE /api/v1/tasks/{id}
-func Routes(bus command.Bus, repo *Repository) func(mux *http.ServeMux) {
+func Routes(bus command.Bus, repo *Repository, guard *authz.Guard) func(mux *http.ServeMux) {
 	return func(mux *http.ServeMux) {
 		mux.HandleFunc("POST /api/v1/tasks", func(w http.ResponseWriter, r *http.Request) {
 			var req struct {
@@ -47,6 +49,9 @@ func Routes(bus command.Bus, repo *Repository) func(mux *http.ServeMux) {
 		})
 
 		mux.HandleFunc("GET /api/v1/tasks", func(w http.ResponseWriter, r *http.Request) {
+			if !httpapi.RequirePermission(w, r, guard, PermRead) {
+				return
+			}
 			q := r.URL.Query()
 			limit, _ := strconv.Atoi(q.Get("limit"))
 			offset, _ := strconv.Atoi(q.Get("offset"))
@@ -67,6 +72,20 @@ func Routes(bus command.Bus, repo *Repository) func(mux *http.ServeMux) {
 
 		mux.HandleFunc("POST /api/v1/tasks/{id}/complete", func(w http.ResponseWriter, r *http.Request) {
 			dispatch(w, r, bus, Complete{ID: r.PathValue("id")}, http.StatusOK)
+		})
+
+		mux.HandleFunc("POST /api/v1/tasks/{id}/dispatch", func(w http.ResponseWriter, r *http.Request) {
+			var req struct {
+				UserIDs []string `json:"user_ids"`
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+			dec := json.NewDecoder(r.Body)
+			dec.DisallowUnknownFields()
+			if err := dec.Decode(&req); err != nil {
+				httpapi.WriteProblem(w, http.StatusBadRequest, "Некорректный JSON", err.Error())
+				return
+			}
+			dispatch(w, r, bus, Dispatch{ID: r.PathValue("id"), UserIDs: req.UserIDs}, http.StatusOK)
 		})
 
 		mux.HandleFunc("DELETE /api/v1/tasks/{id}", func(w http.ResponseWriter, r *http.Request) {
@@ -125,6 +144,8 @@ func writeErr(w http.ResponseWriter, err error) {
 		httpapi.WriteProblem(w, http.StatusBadRequest, "Не указан tenant", err.Error())
 	case errors.Is(err, ErrNotFound):
 		httpapi.WriteProblem(w, http.StatusNotFound, "Задача не найдена", err.Error())
+	case errors.Is(err, ErrRecipientNotFound):
+		httpapi.WriteProblem(w, http.StatusUnprocessableEntity, "Получатель не найден", err.Error())
 	default:
 		httpapi.WriteProblem(w, http.StatusInternalServerError, "Внутренняя ошибка", err.Error())
 	}

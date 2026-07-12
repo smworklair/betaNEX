@@ -10,6 +10,8 @@ import (
 const (
 	PermAccountsWrite = "finance:accounts:write"
 	PermEntriesPost   = "finance:entries:post"
+	// PermRead — право чтения счетов, проводок, отчётов и экспортов.
+	PermRead = "finance:read"
 )
 
 // Имена команд модуля — стабильные, попадают в журнал аудита.

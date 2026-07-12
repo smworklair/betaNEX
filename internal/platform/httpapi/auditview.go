@@ -38,6 +38,7 @@ func AuditRoutes(reader audit.Reader) func(mux *http.ServeMux) {
 					Outcome:    string(e.Outcome),
 					ActorID:    e.ActorID,
 					Detail:     e.Detail,
+					Diff:       e.Diff,
 					TraceID:    e.TraceID,
 					OccurredAt: e.OccurredAt,
 				})
@@ -48,12 +49,13 @@ func AuditRoutes(reader audit.Reader) func(mux *http.ServeMux) {
 }
 
 type auditEntryDTO struct {
-	Command    string    `json:"command"`
-	Outcome    string    `json:"outcome"`
-	ActorID    string    `json:"actor_id,omitempty"`
-	Detail     string    `json:"detail,omitempty"`
-	TraceID    string    `json:"trace_id,omitempty"`
-	OccurredAt time.Time `json:"occurred_at"`
+	Command    string     `json:"command"`
+	Outcome    string     `json:"outcome"`
+	ActorID    string     `json:"actor_id,omitempty"`
+	Detail     string     `json:"detail,omitempty"`
+	Diff       audit.Diff `json:"diff,omitempty"`
+	TraceID    string     `json:"trace_id,omitempty"`
+	OccurredAt time.Time  `json:"occurred_at"`
 }
 
 // requireRole проверяет, что актор запроса аутентифицирован и несёт

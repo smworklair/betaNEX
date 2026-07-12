@@ -174,3 +174,45 @@ func TestRegisterInvalid(t *testing.T) {
 		t.Error("регистрация nil-хендлера должна возвращать ошибку")
 	}
 }
+
+// Дифф, сообщённый хендлером через audit.SetDiff, попадает в запись
+// журнала об успехе команды.
+func TestDispatchCollectsDiff(t *testing.T) {
+	rec := &audit.MemoryRecorder{}
+	bus := command.NewMemoryBus(allowAll{}, rec)
+
+	if err := bus.Register("test.update", func(ctx context.Context, _ command.Command) error {
+		audit.SetDiff(ctx, audit.Diff{"status": {From: "open", To: "done"}})
+		return nil
+	}); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	if err := bus.Dispatch(ctxWithActor(), testCmd{name: "test.update", perm: "test:update"}); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+
+	e := lastEntry(t, rec)
+	change, ok := e.Diff["status"]
+	if !ok {
+		t.Fatalf("дифф не записан: %+v", e)
+	}
+	if change.From != "open" || change.To != "done" {
+		t.Errorf("diff.status = %+v, want open→done", change)
+	}
+}
+
+// Команда без SetDiff оставляет дифф пустым — журнал не выдумывает
+// изменений.
+func TestDispatchWithoutDiff(t *testing.T) {
+	rec := &audit.MemoryRecorder{}
+	bus := command.NewMemoryBus(allowAll{}, rec)
+	if err := bus.Register("test.plain", func(context.Context, command.Command) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if err := bus.Dispatch(ctxWithActor(), testCmd{name: "test.plain", perm: "test:plain"}); err != nil {
+		t.Fatal(err)
+	}
+	if e := lastEntry(t, rec); e.Diff != nil {
+		t.Errorf("дифф без SetDiff должен быть nil, получено %+v", e.Diff)
+	}
+}

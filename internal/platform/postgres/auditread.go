@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/smworklair/betakis/internal/kernel/audit"
@@ -43,7 +44,7 @@ func (r *AuditReader) Entries(ctx context.Context, f audit.Filter) ([]audit.Entr
 		}
 		out = make([]audit.Entry, 0, len(rows))
 		for _, row := range rows {
-			out = append(out, audit.Entry{
+			e := audit.Entry{
 				Command:    row.Command,
 				Outcome:    audit.Outcome(row.Outcome),
 				ActorID:    row.ActorID,
@@ -51,7 +52,13 @@ func (r *AuditReader) Entries(ctx context.Context, f audit.Filter) ([]audit.Entr
 				Detail:     row.Detail,
 				TraceID:    row.TraceID,
 				OccurredAt: row.OccurredAt.Time,
-			})
+			}
+			if len(row.Diff) > 0 {
+				// Дифф хранится как jsonb; нечитаемое значение не валит
+				// выборку — журнал ценнее одной битой записи.
+				_ = json.Unmarshal(row.Diff, &e.Diff)
+			}
+			out = append(out, e)
 		}
 		return nil
 	})

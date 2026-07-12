@@ -17,6 +17,7 @@ type AuditLog struct {
 	Detail     string
 	TraceID    string
 	OccurredAt pgtype.Timestamptz
+	Diff       []byte
 }
 
 type CampusGrade struct {
@@ -109,6 +110,31 @@ type IdempotencyKey struct {
 	ContentType string
 	Body        []byte
 	CreatedAt   pgtype.Timestamptz
+}
+
+type Notification struct {
+	ID        pgtype.UUID
+	TenantID  pgtype.UUID
+	UserID    pgtype.UUID
+	Kind      string
+	Title     string
+	Body      string
+	RefType   string
+	RefID     string
+	CreatedAt pgtype.Timestamptz
+	ReadAt    pgtype.Timestamptz
+}
+
+type Outbox struct {
+	ID          int64
+	TenantID    pgtype.UUID
+	Topic       string
+	Payload     []byte
+	CreatedAt   pgtype.Timestamptz
+	AvailableAt pgtype.Timestamptz
+	Attempts    int32
+	DoneAt      pgtype.Timestamptz
+	LastError   string
 }
 
 type Session struct {

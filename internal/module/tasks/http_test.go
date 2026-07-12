@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/smworklair/betakis/internal/kernel/authz"
+	"github.com/smworklair/betakis/internal/kernel/identity"
 )
 
 func TestToDTO(t *testing.T) {
@@ -67,11 +68,61 @@ func TestWriteErrStatusMapping(t *testing.T) {
 	}
 }
 
+// Чтение списка задач закрыто authz: аноним получает 401, роль без
+// права tasks:read — 403. Проверка стоит до обращения к репозиторию,
+// поэтому nil-репозиторий не достигается.
+func TestListRequiresReadPermission(t *testing.T) {
+	policy := authz.NewPolicy()
+	policy.Grant("teacher", PermRead)
+	mux := http.NewServeMux()
+	Routes(nil, nil, authz.NewGuard(policy))(mux)
+
+	t.Run("аноним — 401", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/tasks", nil))
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("статус = %d, ожидался 401", rec.Code)
+		}
+	})
+
+	t.Run("роль без права — 403", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/tasks", nil)
+		req = req.WithContext(identity.WithActor(req.Context(), identity.Actor{ID: "s1", Roles: []string{"student"}}))
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("статус = %d, ожидался 403", rec.Code)
+		}
+	})
+}
+
+// Валидация команды рассылки: без получателей и с пустыми id — ошибка.
+func TestDispatchValidate(t *testing.T) {
+	tests := []struct {
+		name string
+		cmd  Dispatch
+		ok   bool
+	}{
+		{"валидная", Dispatch{ID: "t-1", UserIDs: []string{"u-1", "u-2"}}, true},
+		{"без id задачи", Dispatch{UserIDs: []string{"u-1"}}, false},
+		{"без получателей", Dispatch{ID: "t-1"}, false},
+		{"пустой получатель", Dispatch{ID: "t-1", UserIDs: []string{"u-1", ""}}, false},
+		{"слишком много получателей", Dispatch{ID: "t-1", UserIDs: make([]string, 101)}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := tt.cmd.Validate(); (err == nil) != tt.ok {
+				t.Errorf("Validate() = %v, ok-ожидание %v", err, tt.ok)
+			}
+		})
+	}
+}
+
 // Ошибки валидации входа обязаны давать 400 до обращения к шине команд:
 // хендлеры вызываются с nil-шиной, паника означала бы нарушение порядка.
 func TestRoutesRejectBadInput(t *testing.T) {
 	mux := http.NewServeMux()
-	Routes(nil, nil)(mux)
+	Routes(nil, nil, nil)(mux)
 
 	tests := []struct {
 		name   string

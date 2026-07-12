@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -88,6 +89,33 @@ func (s *AuthStore) CreateUser(ctx context.Context, u auth.User) (auth.User, err
 	return out, err
 }
 
+// ListUsers возвращает пользователей tenant'а из контекста — справочник
+// для выбора исполнителей и получателей. Хэш пароля не выбирается.
+func (s *AuthStore) ListUsers(ctx context.Context, limit int) ([]auth.User, error) {
+	if limit <= 0 || limit > 1000 {
+		limit = 200
+	}
+	var out []auth.User
+	err := s.db.InTenantTx(ctx, func(ctx context.Context, q *db.Queries) error {
+		rows, err := q.ListUsers(ctx, int32(limit)) // #nosec G115 -- ограничен 1000 выше
+		if err != nil {
+			return err
+		}
+		out = make([]auth.User, 0, len(rows))
+		for _, row := range rows {
+			out = append(out, auth.User{
+				ID:          row.ID.String(),
+				Email:       row.Email,
+				DisplayName: row.DisplayName,
+				Roles:       row.Roles,
+				Active:      row.IsActive,
+			})
+		}
+		return nil
+	})
+	return out, err
+}
+
 // CreateSession сохраняет новую сессию.
 func (s *AuthStore) CreateSession(ctx context.Context, sess auth.Session) error {
 	var tenant, user pgtype.UUID
@@ -125,6 +153,15 @@ func (s *AuthStore) SessionByTokenHash(ctx context.Context, hash []byte) (auth.S
 // RevokeSession отзывает сессию по хэшу токена. Идемпотентен.
 func (s *AuthStore) RevokeSession(ctx context.Context, hash []byte) error {
 	return db.New(s.db.pool).RevokeSessionByTokenHash(ctx, hash)
+}
+
+// ExtendSession продлевает живую сессию (скользящее окно). Отозванную
+// или истёкшую запрос не трогает — no-op по контракту auth.Store.
+func (s *AuthStore) ExtendSession(ctx context.Context, hash []byte, expiresAt time.Time) error {
+	return db.New(s.db.pool).ExtendSession(ctx, db.ExtendSessionParams{
+		TokenHash: hash,
+		ExpiresAt: pgtype.Timestamptz{Time: expiresAt, Valid: true},
+	})
 }
 
 // userFromRow переводит строку БД в тип ядра.

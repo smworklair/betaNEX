@@ -59,13 +59,14 @@ func TestFilesHTTPFlow(t *testing.T) {
 
 	policy := authz.NewPolicy()
 	policy.Grant("admin", files.PermWrite)
+	policy.Grant("admin", files.PermRead)
 	bus := command.NewMemoryBus(authz.NewPolicyAuthorizer(policy), &audit.MemoryRecorder{}, command.WithTxRunner(pg))
 	if err := files.RegisterCommands(bus, repo); err != nil {
 		t.Fatal(err)
 	}
 	router := httpapi.NewRouter(slog.New(slog.NewTextHandler(io.Discard, nil)), httpapi.RouterConfig{
 		DevAuth: true,
-		Mount:   []func(*http.ServeMux){files.Routes(bus, repo, store, 1<<20)},
+		Mount:   []func(*http.ServeMux){files.Routes(bus, repo, store, 1<<20, authz.NewGuard(policy))},
 	})
 
 	do := func(req *http.Request) *httptest.ResponseRecorder {

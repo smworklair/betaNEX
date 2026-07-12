@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/smworklair/betakis/internal/kernel/identity"
+	"github.com/smworklair/betakis/internal/kernel/authz"
 	"github.com/smworklair/betakis/internal/kernel/tenancy"
 )
 
@@ -28,17 +28,21 @@ type SearchSource interface {
 	Search(ctx context.Context, query string, limit int) ([]SearchHit, error)
 }
 
+// PermSearch — право сквозного поиска. Поиск агрегирует данные многих
+// модулей, поэтому право отдельное и выдаётся ролям, у которых есть
+// чтение хотя бы части источников.
+const PermSearch = "search:read"
+
 // SearchRoutes монтирует сквозной полнотекстовый поиск:
 //
 //	GET /api/v1/search?q=оплата обучения&limit=20
 //
-// Требует аутентифицированного актора и tenant'а: поиск ходит в данные
-// организации. Синтаксис запроса — websearch (кавычки, минус-слова, or).
-func SearchRoutes(sources ...SearchSource) func(mux *http.ServeMux) {
+// Требует права PermSearch и tenant'а: поиск ходит в данные организации.
+// Синтаксис запроса — websearch (кавычки, минус-слова, or).
+func SearchRoutes(guard *authz.Guard, sources ...SearchSource) func(mux *http.ServeMux) {
 	return func(mux *http.ServeMux) {
 		mux.HandleFunc("GET /api/v1/search", func(w http.ResponseWriter, r *http.Request) {
-			if _, ok := identity.ActorFrom(r.Context()); !ok {
-				WriteProblem(w, http.StatusUnauthorized, "Не аутентифицирован", "нет сессии")
+			if !RequirePermission(w, r, guard, PermSearch) {
 				return
 			}
 			if _, ok := tenancy.TenantFrom(r.Context()); !ok {

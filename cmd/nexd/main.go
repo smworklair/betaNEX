@@ -18,6 +18,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -31,6 +32,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/smworklair/betakis/api"
 	"github.com/smworklair/betakis/internal/config"
 	"github.com/smworklair/betakis/internal/kernel/audit"
 	"github.com/smworklair/betakis/internal/kernel/auth"
@@ -40,12 +42,14 @@ import (
 	"github.com/smworklair/betakis/internal/module/campus"
 	"github.com/smworklair/betakis/internal/module/files"
 	"github.com/smworklair/betakis/internal/module/finance"
+	"github.com/smworklair/betakis/internal/module/notifications"
 	"github.com/smworklair/betakis/internal/module/tasks"
 	"github.com/smworklair/betakis/internal/platform/blob"
 	"github.com/smworklair/betakis/internal/platform/cron"
 	"github.com/smworklair/betakis/internal/platform/httpapi"
 	"github.com/smworklair/betakis/internal/platform/logging"
 	"github.com/smworklair/betakis/internal/platform/metrics"
+	"github.com/smworklair/betakis/internal/platform/outbox"
 	"github.com/smworklair/betakis/internal/platform/postgres"
 )
 
@@ -125,8 +129,10 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 
 	// RBAC-политика приложения: модули объявляют права, корень раздаёт их
 	// ролям. С вехой M4 раздача переедет в настраиваемую политику tenant'а.
+	// Права чтения выдаются явно (authz на чтение, P0): без права роль не
+	// видит данные раздела, без сессии запрос получает 401.
 	policy := authz.NewPolicy()
-	for _, perm := range []string{finance.PermAccountsWrite, finance.PermEntriesPost} {
+	for _, perm := range []string{finance.PermAccountsWrite, finance.PermEntriesPost, finance.PermRead} {
 		policy.Grant("admin", perm)
 		policy.Grant("accountant", perm)
 	}
@@ -137,9 +143,22 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		policy.Grant("admin", perm)
 	}
 	policy.Grant("teacher", campus.PermGradesWrite) // преподаватель ведёт журнал
-	policy.Grant("admin", tasks.PermWrite)
-	policy.Grant("teacher", tasks.PermWrite)
-	policy.Grant("accountant", tasks.PermWrite)
+	for _, role := range []string{"admin", "teacher"} {
+		policy.Grant(role, campus.PermRead)
+	}
+	for _, role := range []string{"admin", "teacher", "accountant"} {
+		policy.Grant(role, tasks.PermWrite)
+		policy.Grant(role, files.PermRead)
+		policy.Grant(role, httpapi.PermSearch)
+		policy.Grant(role, httpapi.PermUsersRead)
+	}
+	// Задачи и уведомления видят все роли, включая студентов.
+	for _, role := range []string{"admin", "teacher", "accountant", "student"} {
+		policy.Grant(role, tasks.PermRead)
+		policy.Grant(role, notifications.PermRead)
+		policy.Grant(role, notifications.PermWrite)
+	}
+	guard := authz.NewGuard(policy)
 
 	// Хранилище: PostgreSQL, если задан NEX_DATABASE_URL, иначе память
 	// процесса (только для быстрых локальных запусков без БД).
@@ -152,9 +171,10 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		authCfg       *httpapi.AuthConfig
 		extraMounts   []func(*http.ServeMux)
 		filesRepo     *files.Repository
-		filesStore    *blob.Store
+		filesStore    blob.Storage
 		pgDB          *postgres.DB
 		idemStore     httpapi.IdempotencyStore
+		outboxWorker  *outbox.Worker
 	)
 	if cfg.DB.URL != "" {
 		pg, err := postgres.Connect(ctx, cfg.DB.URL)
@@ -210,13 +230,26 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		recorder = postgres.NewAuditRecorder(pg, httpapi.RequestIDFrom)
 		busOpts = append(busOpts, command.WithTxRunner(pg))
 
-		// Аутентификация: argon2id + server-side сессии (ADR-004).
+		// Аутентификация: argon2id + server-side сессии (ADR-004) со
+		// скользящим продлением. SameSite задаётся конфигом: None —
+		// для кросс-доменного фронтенда (Vercel), Lax — за одним доменом.
+		authStore := postgres.NewAuthStore(pg)
 		authCfg = &httpapi.AuthConfig{
-			Service:       auth.NewService(postgres.NewAuthStore(pg), cfg.Auth.SessionTTL),
+			Service:       auth.NewService(authStore, cfg.Auth.SessionTTL),
 			TTL:           cfg.Auth.SessionTTL,
 			ResolveTenant: resolveTenant,
 			SecureCookie:  cfg.Env == config.EnvProduction,
+			SameSite:      sameSiteMode(cfg.Auth.CookieSameSite),
 			Audit:         recorder,
+		}
+
+		// Справочник пользователей: выбор исполнителей и получателей.
+		extraMounts = append(extraMounts, httpapi.UsersRoutes(authStore, guard))
+
+		// Outbox: очередь надёжных побочных эффектов + воркер доставки.
+		outboxWorker = outbox.NewWorker(pg, log)
+		if err := sched.Add(cron.Job{Name: "outbox.cleanup", At: "04:15", Run: outboxWorker.Cleanup}); err != nil {
+			return err
 		}
 	} else {
 		log.Warn("NEX_DATABASE_URL is empty: running with in-memory storage, data is lost on restart")
@@ -231,7 +264,7 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	}
 
 	mounts := []func(*http.ServeMux){
-		finance.Routes(bus, financeRepo),
+		finance.Routes(bus, financeRepo, guard),
 		func(mux *http.ServeMux) { mux.Handle("GET /metrics", reg.Handler()) },
 	}
 	var searchSources []httpapi.SearchSource
@@ -243,7 +276,7 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		if err := finance.RegisterStatsCommands(bus, pgRepo); err != nil {
 			return fmt.Errorf("register finance stats: %w", err)
 		}
-		mounts = append(mounts, finance.ReportRoutes(bus, pgRepo))
+		mounts = append(mounts, finance.ReportRoutes(bus, pgRepo, guard))
 		if err := sched.Add(cron.Job{Name: "finance.stats.refresh", At: "02:30", Run: func(ctx context.Context) error {
 			return pgDB.ForEachTenant(ctx, pgRepo.RefreshStats)
 		}}); err != nil {
@@ -254,7 +287,7 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		if err := files.RegisterCommands(bus, filesRepo); err != nil {
 			return fmt.Errorf("register files commands: %w", err)
 		}
-		mounts = append(mounts, files.Routes(bus, filesRepo, filesStore, cfg.Files.MaxUploadBytes))
+		mounts = append(mounts, files.Routes(bus, filesRepo, filesStore, cfg.Files.MaxUploadBytes, guard))
 		searchSources = append(searchSources, filesRepo)
 	}
 	if pgDB != nil {
@@ -263,19 +296,34 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		if err := campus.RegisterCommands(bus, campusRepo); err != nil {
 			return fmt.Errorf("register campus commands: %w", err)
 		}
-		mounts = append(mounts, campus.Routes(bus, campusRepo))
+		mounts = append(mounts, campus.Routes(bus, campusRepo, guard))
 		searchSources = append(searchSources, campusRepo)
 
-		// Задачи.
+		// Уведомления: лента пользователя + сервис для других модулей.
+		// Внешняя доставка уходит в outbox; пока обработчик темы только
+		// логирует — SMTP появится вместе с notification-каналами (M7+).
+		notifRepo := notifications.NewRepository(pgDB)
+		if err := notifications.RegisterCommands(bus, notifRepo); err != nil {
+			return fmt.Errorf("register notifications commands: %w", err)
+		}
+		mounts = append(mounts, notifications.Routes(bus, notifRepo, guard))
+		notifier := notifications.NewService(notifRepo, outbox.NewQueue(pgDB))
+		outboxWorker.Handle(notifications.TopicCreated, func(ctx context.Context, m outbox.Message) error {
+			log.Info("notification delivery queued (no external channel yet)",
+				slog.String("payload", string(m.Payload)))
+			return nil
+		})
+
+		// Задачи. Рассылка задач уведомляет получателей через notifier.
 		tasksRepo := tasks.NewRepository(pgDB)
-		if err := tasks.RegisterCommands(bus, tasksRepo); err != nil {
+		if err := tasks.RegisterCommands(bus, tasksRepo, taskNotifier{svc: notifier}); err != nil {
 			return fmt.Errorf("register tasks commands: %w", err)
 		}
-		mounts = append(mounts, tasks.Routes(bus, tasksRepo))
+		mounts = append(mounts, tasks.Routes(bus, tasksRepo, guard))
 		searchSources = append(searchSources, tasksRepo)
 	}
 	if len(searchSources) > 0 {
-		mounts = append(mounts, httpapi.SearchRoutes(searchSources...))
+		mounts = append(mounts, httpapi.SearchRoutes(guard, searchSources...))
 	}
 	mounts = append(mounts, extraMounts...)
 
@@ -285,6 +333,8 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		Pprof:         cfg.Env == config.EnvDevelopment,
 		ResolveTenant: resolveTenant,
 		Auth:          authCfg,
+		CORS:          httpapi.CORSConfig{AllowedOrigins: cfg.HTTP.CORSOrigins},
+		OpenAPI:       api.OpenAPI,
 		Observe:       observe,
 		Idempotency:   idemStore,
 		Mount:         mounts,
@@ -298,16 +348,47 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		Logger:          log,
 	})
 
-	// HTTP-сервер и планировщик живут до общей отмены контекста.
+	// HTTP-сервер, планировщик и outbox-воркер живут до общей отмены
+	// контекста.
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return server.Run(gctx) })
 	g.Go(func() error { sched.Run(gctx); return nil })
+	if outboxWorker != nil {
+		g.Go(func() error { return outboxWorker.Run(gctx) })
+	}
 	if err := g.Wait(); err != nil {
 		return err
 	}
 
 	log.Info("nexd stopped")
 	return nil
+}
+
+// sameSiteMode переводит строку конфига в http.SameSite.
+func sameSiteMode(v string) http.SameSite {
+	switch v {
+	case "none":
+		return http.SameSiteNoneMode
+	case "strict":
+		return http.SameSiteStrictMode
+	default:
+		return http.SameSiteLaxMode
+	}
+}
+
+// taskNotifier связывает задачи с сервисом уведомлений и переводит его
+// ошибки в доменные ошибки задач — перевод живёт здесь, чтобы модули
+// не знали друг о друге.
+type taskNotifier struct {
+	svc *notifications.Service
+}
+
+func (a taskNotifier) Notify(ctx context.Context, userIDs []string, kind, title, body, refType, refID string) error {
+	err := a.svc.Notify(ctx, userIDs, kind, title, body, refType, refID)
+	if errors.Is(err, notifications.ErrUserNotFound) {
+		return fmt.Errorf("%w: %v", tasks.ErrRecipientNotFound, err)
+	}
+	return err
 }
 
 // tenantCmd — администрирование реестра tenant'ов:

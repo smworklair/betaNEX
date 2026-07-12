@@ -15,13 +15,14 @@ import (
 const maxBodyBytes = 1 << 20 // 1 МБ
 
 // Routes возвращает функцию монтирования маршрутов модуля — её передают
-// в httpapi.RouterConfig.Mount из композиционного корня.
-func Routes(bus command.Bus, repo Repository) func(mux *http.ServeMux) {
+// в httpapi.RouterConfig.Mount из композиционного корня. Чтения защищает
+// guard (право PermRead), мутации авторизует шина команд.
+func Routes(bus command.Bus, repo Repository, guard *authz.Guard) func(mux *http.ServeMux) {
 	return func(mux *http.ServeMux) {
 		mux.HandleFunc("POST /api/v1/finance/accounts", handleCreateAccount(bus))
-		mux.HandleFunc("GET /api/v1/finance/accounts", handleListAccounts(repo))
+		mux.HandleFunc("GET /api/v1/finance/accounts", handleListAccounts(repo, guard))
 		mux.HandleFunc("POST /api/v1/finance/entries", handlePostEntry(bus))
-		mux.HandleFunc("GET /api/v1/finance/entries", handleListEntries(repo))
+		mux.HandleFunc("GET /api/v1/finance/entries", handleListEntries(repo, guard))
 	}
 }
 
@@ -90,8 +91,11 @@ func handleCreateAccount(bus command.Bus) http.HandlerFunc {
 	}
 }
 
-func handleListAccounts(repo Repository) http.HandlerFunc {
+func handleListAccounts(repo Repository, guard *authz.Guard) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !httpapi.RequirePermission(w, r, guard, PermRead) {
+			return
+		}
 		balances, err := repo.Accounts(r.Context())
 		if err != nil {
 			writeCommandError(w, err)
@@ -135,8 +139,11 @@ func handlePostEntry(bus command.Bus) http.HandlerFunc {
 	}
 }
 
-func handleListEntries(repo Repository) http.HandlerFunc {
+func handleListEntries(repo Repository, guard *authz.Guard) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !httpapi.RequirePermission(w, r, guard, PermRead) {
+			return
+		}
 		entries, err := repo.Entries(r.Context())
 		if err != nil {
 			writeCommandError(w, err)

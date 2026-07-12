@@ -83,7 +83,7 @@ func TestAuthFlowOverHTTP(t *testing.T) {
 			ResolveTenant: pg.ResolveTenant,
 			Audit:         recorder,
 		},
-		Mount: []func(*http.ServeMux){finance.Routes(bus, repo)},
+		Mount: []func(*http.ServeMux){finance.Routes(bus, repo, authz.NewGuard(policy))},
 	})
 
 	login := func(password string) *httptest.ResponseRecorder {

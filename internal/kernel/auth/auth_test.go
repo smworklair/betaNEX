@@ -84,6 +84,14 @@ func (m *memStore) RevokeSession(_ context.Context, hash []byte) error {
 	return nil
 }
 
+func (m *memStore) ExtendSession(_ context.Context, hash []byte, expiresAt time.Time) error {
+	if s, ok := m.sessions[m.key(hash)]; ok {
+		s.ExpiresAt = expiresAt
+		m.sessions[m.key(hash)] = s
+	}
+	return nil
+}
+
 func newTestService(t *testing.T) (*Service, *memStore, context.Context) {
 	t.Helper()
 	hash, err := HashPassword("верный-пароль")
@@ -155,6 +163,34 @@ func TestLoginRejections(t *testing.T) {
 			t.Errorf("err = %v, want ErrInvalidCredentials", err)
 		}
 	})
+}
+
+func TestSlidingSessionRefresh(t *testing.T) {
+	svc, store, ctx := newTestService(t)
+	token, _, err := svc.Login(ctx, "admin@college.ru", "верный-пароль")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Свежая сессия (осталось больше половины TTL) не продлевается.
+	if _, refreshed, err := svc.AuthenticateTouch(context.Background(), token); err != nil || refreshed {
+		t.Fatalf("свежая сессия: refreshed=%v, err=%v, want false, nil", refreshed, err)
+	}
+
+	// Сессия во второй половине TTL продлевается на полный TTL.
+	for k, s := range store.sessions {
+		s.ExpiresAt = time.Now().Add(10 * time.Minute) // TTL часа осталось 10 минут
+		store.sessions[k] = s
+	}
+	_, refreshed, err := svc.AuthenticateTouch(context.Background(), token)
+	if err != nil || !refreshed {
+		t.Fatalf("старая сессия: refreshed=%v, err=%v, want true, nil", refreshed, err)
+	}
+	for _, s := range store.sessions {
+		if until := time.Until(s.ExpiresAt); until < 55*time.Minute {
+			t.Errorf("сессия продлена лишь до %v, ждали полный TTL", until)
+		}
+	}
 }
 
 func TestTokenHashedInStore(t *testing.T) {

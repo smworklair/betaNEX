@@ -15,6 +15,8 @@ const (
 	PermGroupsWrite   = "campus:groups:write"
 	PermStudentsWrite = "campus:students:write"
 	PermGradesWrite   = "campus:grades:write"
+	// PermRead — право чтения групп, студентов и журнала.
+	PermRead = "campus:read"
 )
 
 // Имена команд — стабильные, попадают в журнал аудита.

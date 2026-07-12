@@ -57,3 +57,39 @@ func TestRecovererCatchesPanic(t *testing.T) {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
 	}
 }
+
+// CSRF-страж активен в обычном (production) роутере и выключен в
+// development (DevAuth): там Vite-прокси шлёт Origin дев-сервера.
+func TestRouterCSRFModes(t *testing.T) {
+	foreignPost := func(router http.Handler) int {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/openapi.yaml", nil)
+		req.Host = "api.example.com"
+		req.Header.Set("Origin", "https://evil.example.com")
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	prod := NewRouter(testLogger(), RouterConfig{})
+	if code := foreignPost(prod); code != http.StatusForbidden {
+		t.Errorf("production: POST с чужим Origin = %d, want 403", code)
+	}
+
+	dev := NewRouter(testLogger(), RouterConfig{DevAuth: true})
+	if code := foreignPost(dev); code == http.StatusForbidden {
+		t.Error("development: CSRF-страж не должен резать запросы Vite-прокси")
+	}
+}
+
+// Спека OpenAPI раздаётся без аутентификации.
+func TestRouterServesOpenAPI(t *testing.T) {
+	router := NewRouter(testLogger(), RouterConfig{OpenAPI: []byte("openapi: 3.1.0\n")})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/openapi.yaml", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if got := rec.Body.String(); got != "openapi: 3.1.0\n" {
+		t.Errorf("body = %q", got)
+	}
+}

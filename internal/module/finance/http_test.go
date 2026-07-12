@@ -20,7 +20,7 @@ func newServer(repo finance.Repository) http.Handler {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	return httpapi.NewRouter(log, httpapi.RouterConfig{
 		DevAuth: true,
-		Mount:   []func(*http.ServeMux){finance.Routes(bus, repo)},
+		Mount:   []func(*http.ServeMux){finance.Routes(bus, repo, newGuard())},
 	})
 }
 

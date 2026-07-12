@@ -81,7 +81,24 @@ variable is optional and falls back to a sensible default.
 | `NEX_LOG_LEVEL`             | `info`         | `debug`, `info`, `warn` or `error`.                |
 | `NEX_LOG_FORMAT`            | env-dependent  | `json` or `text` (defaults: text in dev, json in prod). |
 | `NEX_DATABASE_URL`          | *(empty)*      | PostgreSQL DSN. Empty = in-memory mode (no persistence). |
-| `NEX_SESSION_TTL`           | `24h`          | Lifetime of an issued session (and its cookie).    |
+| `NEX_SESSION_TTL`           | `168h`         | Session (and cookie) lifetime. Sessions are sliding: any authenticated request in the second half of the TTL extends it by a full TTL. |
+| `NEX_CORS_ORIGINS`          | *(empty)*      | Comma-separated browser origins allowed to call the API with credentials (e.g. the Vercel frontend). Empty = same-origin only. The same list is the allowlist for the CSRF origin check on mutations. |
+| `NEX_COOKIE_SAMESITE`       | auto           | `lax`, `strict` or `none` for the session cookie. Auto: `none` when `NEX_CORS_ORIGINS` is set (cross-origin frontend), `lax` otherwise. `none` forces the `Secure` flag. |
+
+### Cross-origin frontend (Vercel + separate API host)
+
+Browsers do not attach `SameSite=Lax` cookies to cross-site `fetch` calls, so
+a frontend served from another origin loses its session on every page load
+unless the backend is configured for it. Set on the backend:
+
+```sh
+NEX_CORS_ORIGINS=https://your-app.vercel.app   # exact frontend origin(s)
+# NEX_COOKIE_SAMESITE=none  — derived automatically from NEX_CORS_ORIGINS
+```
+
+and point the frontend at the API with `VITE_API_URL=https://api.example.com`.
+With the same-origin deploy (Caddy in front of both, `VITE_API_URL=/`) no CORS
+configuration is needed and the cookie stays `Lax`.
 
 ## Project layout
 

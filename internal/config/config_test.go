@@ -15,6 +15,7 @@ func clearNexEnv(t *testing.T) {
 		"NEX_HTTP_READ_TIMEOUT", "NEX_HTTP_WRITE_TIMEOUT",
 		"NEX_HTTP_IDLE_TIMEOUT", "NEX_HTTP_SHUTDOWN_TIMEOUT",
 		"NEX_LOG_LEVEL", "NEX_LOG_FORMAT",
+		"NEX_CORS_ORIGINS", "NEX_COOKIE_SAMESITE", "NEX_SESSION_TTL",
 	} {
 		t.Setenv(k, "")
 	}
@@ -46,6 +47,62 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Log.Format != "text" {
 		t.Errorf("Log.Format = %q, want text (development default)", cfg.Log.Format)
 	}
+	if cfg.Auth.SessionTTL != 7*24*time.Hour {
+		t.Errorf("Auth.SessionTTL = %v, want 168h", cfg.Auth.SessionTTL)
+	}
+	// Без CORS-origin'ов cookie остаётся Lax (same-origin деплой).
+	if cfg.Auth.CookieSameSite != "lax" {
+		t.Errorf("Auth.CookieSameSite = %q, want lax", cfg.Auth.CookieSameSite)
+	}
+	if cfg.HTTP.CORSOrigins != nil {
+		t.Errorf("HTTP.CORSOrigins = %v, want nil", cfg.HTTP.CORSOrigins)
+	}
+}
+
+func TestLoadCORSAndCookie(t *testing.T) {
+	clearNexEnv(t)
+
+	t.Run("список origin'ов и авто-None", func(t *testing.T) {
+		t.Setenv("NEX_CORS_ORIGINS", "https://app.example.com, https://beta.example.com/")
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load() error = %v", err)
+		}
+		want := []string{"https://app.example.com", "https://beta.example.com"}
+		if len(cfg.HTTP.CORSOrigins) != 2 || cfg.HTTP.CORSOrigins[0] != want[0] || cfg.HTTP.CORSOrigins[1] != want[1] {
+			t.Errorf("CORSOrigins = %v, want %v", cfg.HTTP.CORSOrigins, want)
+		}
+		// Кросс-доменный деплой: SameSite выводится в none автоматически.
+		if cfg.Auth.CookieSameSite != "none" {
+			t.Errorf("CookieSameSite = %q, want none", cfg.Auth.CookieSameSite)
+		}
+	})
+
+	t.Run("явный SameSite сильнее авто-вывода", func(t *testing.T) {
+		t.Setenv("NEX_CORS_ORIGINS", "https://app.example.com")
+		t.Setenv("NEX_COOKIE_SAMESITE", "strict")
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load() error = %v", err)
+		}
+		if cfg.Auth.CookieSameSite != "strict" {
+			t.Errorf("CookieSameSite = %q, want strict", cfg.Auth.CookieSameSite)
+		}
+	})
+
+	t.Run("origin с путём отклоняется", func(t *testing.T) {
+		t.Setenv("NEX_CORS_ORIGINS", "https://app.example.com/api")
+		if _, err := Load(); err == nil {
+			t.Error("Load() пропустил origin с путём")
+		}
+	})
+
+	t.Run("неизвестный SameSite отклоняется", func(t *testing.T) {
+		t.Setenv("NEX_COOKIE_SAMESITE", "sometimes")
+		if _, err := Load(); err == nil {
+			t.Error("Load() пропустил неизвестный SameSite")
+		}
+	})
 }
 
 func TestLoadOverrides(t *testing.T) {

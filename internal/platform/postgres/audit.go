@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -42,6 +43,14 @@ func (r *AuditRecorder) Record(ctx context.Context, e audit.Entry) error {
 		trace = r.traceID(ctx)
 	}
 
+	var diff []byte
+	if len(e.Diff) > 0 {
+		var err error
+		if diff, err = json.Marshal(e.Diff); err != nil {
+			return fmt.Errorf("postgres: audit diff marshal: %w", err)
+		}
+	}
+
 	err := r.db.InTx(ctx, func(ctx context.Context, q *db.Queries) error {
 		return q.CreateAuditEntry(ctx, db.CreateAuditEntryParams{
 			TenantID:   tenant,
@@ -51,6 +60,7 @@ func (r *AuditRecorder) Record(ctx context.Context, e audit.Entry) error {
 			Detail:     e.Detail,
 			TraceID:    trace,
 			OccurredAt: pgtype.Timestamptz{Time: e.OccurredAt, Valid: true},
+			Diff:       diff,
 		})
 	})
 	if err != nil {

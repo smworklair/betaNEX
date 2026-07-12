@@ -52,21 +52,22 @@ func TestCampusAndTasksFlow(t *testing.T) {
 	campusRepo := campus.NewRepository(pg)
 	tasksRepo := tasks.NewRepository(pg)
 	policy := authz.NewPolicy()
-	for _, p := range []string{campus.PermGroupsWrite, campus.PermStudentsWrite, campus.PermGradesWrite, tasks.PermWrite} {
+	for _, p := range []string{campus.PermGroupsWrite, campus.PermStudentsWrite, campus.PermGradesWrite, campus.PermRead, tasks.PermWrite, tasks.PermRead} {
 		policy.Grant("admin", p)
 	}
+	guard := authz.NewGuard(policy)
 	bus := command.NewMemoryBus(authz.NewPolicyAuthorizer(policy), &audit.MemoryRecorder{}, command.WithTxRunner(pg))
 	if err := campus.RegisterCommands(bus, campusRepo); err != nil {
 		t.Fatal(err)
 	}
-	if err := tasks.RegisterCommands(bus, tasksRepo); err != nil {
+	if err := tasks.RegisterCommands(bus, tasksRepo, nil); err != nil {
 		t.Fatal(err)
 	}
 	router := httpapi.NewRouter(slog.New(slog.NewTextHandler(io.Discard, nil)), httpapi.RouterConfig{
 		DevAuth: true,
 		Mount: []func(*http.ServeMux){
-			campus.Routes(bus, campusRepo),
-			tasks.Routes(bus, tasksRepo),
+			campus.Routes(bus, campusRepo, guard),
+			tasks.Routes(bus, tasksRepo, guard),
 		},
 	})
 
