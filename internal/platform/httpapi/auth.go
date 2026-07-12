@@ -33,6 +33,14 @@ type AuthConfig struct {
 	// SecureCookie ставит флаг Secure (обязателен в production).
 	SecureCookie bool
 
+	// SameSite — атрибут SameSite cookie сессии. Нулевое значение — Lax.
+	// Кросс-доменный фронтенд (Vercel + API на своём домене) требует
+	// http.SameSiteNoneMode: Lax-cookie браузер не прикладывает к
+	// cross-site fetch, и сессия «теряется» при каждом обновлении
+	// страницы. None принудительно включает Secure — таково требование
+	// браузеров.
+	SameSite http.SameSite
+
 	// Audit фиксирует входы и отказы (команды auth.login / auth.logout).
 	Audit audit.Recorder
 }
@@ -151,7 +159,7 @@ func (a *authAPI) handleMe(w http.ResponseWriter, r *http.Request) {
 		WriteProblem(w, http.StatusUnauthorized, "Не аутентифицирован", "нет сессии")
 		return
 	}
-	user, err := a.cfg.Service.Authenticate(r.Context(), c.Value)
+	user, refreshed, err := a.cfg.Service.AuthenticateTouch(r.Context(), c.Value)
 	if errors.Is(err, auth.ErrSessionInvalid) {
 		WriteProblem(w, http.StatusUnauthorized, "Не аутентифицирован", "сессия недействительна")
 		return
@@ -159,6 +167,10 @@ func (a *authAPI) handleMe(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		WriteProblem(w, http.StatusInternalServerError, "Внутренняя ошибка", err.Error())
 		return
+	}
+	if refreshed {
+		// Сессия в БД продлена — cookie переезжает на полный TTL вместе с ней.
+		http.SetCookie(w, a.cookie(c.Value, a.cfg.TTL))
 	}
 	WriteJSON(w, http.StatusOK, userResponse{
 		ID: user.ID, Email: user.Email, DisplayName: user.DisplayName,
@@ -175,9 +187,13 @@ func (a *authAPI) sessionIdentity() middleware {
 			ctx := r.Context()
 			if _, has := identity.ActorFrom(ctx); !has {
 				if c, err := r.Cookie(sessionCookie); err == nil && c.Value != "" {
-					if user, err := a.cfg.Service.Authenticate(ctx, c.Value); err == nil {
+					if user, refreshed, err := a.cfg.Service.AuthenticateTouch(ctx, c.Value); err == nil {
 						ctx = identity.WithActor(ctx, identity.Actor{ID: user.ID, Roles: user.Roles})
 						ctx = tenancy.WithTenant(ctx, user.TenantID)
+						if refreshed {
+							// Скользящее окно: сессия продлена — cookie тоже.
+							http.SetCookie(w, a.cookie(c.Value, a.cfg.TTL))
+						}
 					}
 				}
 			}
@@ -193,14 +209,20 @@ func (a *authAPI) sessionIdentity() middleware {
 // (см. AuthConfig.SecureCookie в композиционном корне), в development
 // false — локальная разработка идёт по http.
 func (a *authAPI) cookie(token string, ttl time.Duration) *http.Cookie {
+	sameSite := a.cfg.SameSite
+	if sameSite == 0 {
+		sameSite = http.SameSiteLaxMode
+	}
+	// SameSite=None без Secure браузеры отвергают целиком — форсируем.
+	secure := a.cfg.SecureCookie || sameSite == http.SameSiteNoneMode
 	return &http.Cookie{ // #nosec G124 -- HttpOnly/SameSite заданы, Secure=true в production
 		Name:     sessionCookie,
 		Value:    token,
 		Path:     "/",
 		MaxAge:   int(ttl.Seconds()),
 		HttpOnly: true,
-		Secure:   a.cfg.SecureCookie,
-		SameSite: http.SameSiteLaxMode,
+		Secure:   secure,
+		SameSite: sameSite,
 	}
 }
 

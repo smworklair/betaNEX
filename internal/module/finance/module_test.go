@@ -26,6 +26,13 @@ func newBus(repo finance.Repository) *command.MemoryBus {
 	return bus
 }
 
+// newGuard — проверка прав чтения: бухгалтеру доступно finance:read.
+func newGuard() *authz.Guard {
+	policy := authz.NewPolicy()
+	policy.Grant("accountant", finance.PermRead)
+	return authz.NewGuard(policy)
+}
+
 func accountantCtx(tenant string) context.Context {
 	ctx := identity.WithActor(context.Background(), identity.Actor{ID: "u1", Roles: []string{"accountant"}})
 	return tenancy.WithTenant(ctx, tenant)

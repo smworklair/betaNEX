@@ -129,6 +129,9 @@ func (b *MemoryBus) Dispatch(ctx context.Context, cmd Command) error {
 // в одной транзакции: не записался аудит — откатилось и изменение.
 func (b *MemoryBus) execute(ctx context.Context, h HandlerFunc, cmd Command) error {
 	run := func(ctx context.Context) error {
+		// Коллектор диффа: хендлер сообщает «что поменялось» через
+		// audit.SetDiff, запись успеха ниже заберёт его в журнал.
+		ctx = audit.WithCollector(ctx)
 		if err := h(ctx, cmd); err != nil {
 			return err
 		}
@@ -155,6 +158,7 @@ func (b *MemoryBus) recordErr(ctx context.Context, cmd Command, outcome audit.Ou
 		Command:    cmd.Name(),
 		Outcome:    outcome,
 		Detail:     detail,
+		Diff:       audit.CollectedDiff(ctx),
 		OccurredAt: time.Now().UTC(),
 	}
 	if actor, ok := identity.ActorFrom(ctx); ok {

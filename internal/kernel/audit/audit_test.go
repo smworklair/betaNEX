@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -24,7 +25,7 @@ func TestMemoryRecorder(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := rec.Entries()
-	if len(got) != 1 || got[0] != e {
+	if len(got) != 1 || !reflect.DeepEqual(got[0], e) {
 		t.Fatalf("Entries() = %+v, ожидалась одна запись %+v", got, e)
 	}
 

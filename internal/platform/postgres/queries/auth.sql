@@ -13,6 +13,14 @@ SELECT * FROM users WHERE email = $1;
 -- name: GetUserByID :one
 SELECT * FROM users WHERE id = $1;
 
+-- name: ListUsers :many
+-- Справочник пользователей tenant'а: выбор исполнителя задачи,
+-- получателей рассылки. Хэш пароля наружу не выбирается.
+SELECT id, email, display_name, roles, is_active, created_at
+FROM users
+ORDER BY display_name, email
+LIMIT $1;
+
 -- name: CreateSession :exec
 INSERT INTO sessions (tenant_id, user_id, token_hash, expires_at)
 VALUES ($1, $2, $3, $4);
@@ -24,6 +32,10 @@ WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now();
 -- name: RevokeSessionByTokenHash :exec
 UPDATE sessions SET revoked_at = now()
 WHERE token_hash = $1 AND revoked_at IS NULL;
+
+-- name: ExtendSession :exec
+UPDATE sessions SET expires_at = $2
+WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now();
 
 -- name: DeleteExpiredSessions :execrows
 DELETE FROM sessions

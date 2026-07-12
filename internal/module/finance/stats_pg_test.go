@@ -121,7 +121,7 @@ func doImport(ctx context.Context, t *testing.T, bus *command.MemoryBus, repo *f
 	tenant, _ := tenancy.TenantFrom(ctx)
 	router := httpapi.NewRouter(slog.New(slog.NewTextHandler(io.Discard, nil)), httpapi.RouterConfig{
 		DevAuth: true,
-		Mount:   []func(*http.ServeMux){finance.ReportRoutes(bus, repo)},
+		Mount:   []func(*http.ServeMux){finance.ReportRoutes(bus, repo, newGuard())},
 	})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/finance/import/accounts", strings.NewReader(body))
 	req.Header.Set("X-Dev-Actor", "u1")

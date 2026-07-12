@@ -56,7 +56,7 @@ func TestIdempotencyKey(t *testing.T) {
 	router := httpapi.NewRouter(slog.New(slog.NewTextHandler(io.Discard, nil)), httpapi.RouterConfig{
 		DevAuth:     true,
 		Idempotency: postgres.NewIdempotencyStore(pg),
-		Mount:       []func(*http.ServeMux){finance.Routes(bus, repo)},
+		Mount:       []func(*http.ServeMux){finance.Routes(bus, repo, authz.NewGuard(policy))},
 	})
 
 	post := func(key string) *httptest.ResponseRecorder {

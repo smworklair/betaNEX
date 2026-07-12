@@ -13,8 +13,8 @@ import (
 
 const createAuditEntry = `-- name: CreateAuditEntry :exec
 
-INSERT INTO audit_log (tenant_id, actor_id, command, outcome, detail, trace_id, occurred_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO audit_log (tenant_id, actor_id, command, outcome, detail, trace_id, occurred_at, diff)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 `
 
 type CreateAuditEntryParams struct {
@@ -25,6 +25,7 @@ type CreateAuditEntryParams struct {
 	Detail     string
 	TraceID    string
 	OccurredAt pgtype.Timestamptz
+	Diff       []byte
 }
 
 // Журнал аудита. Только INSERT: журнал append-only, что закреплено
@@ -38,12 +39,13 @@ func (q *Queries) CreateAuditEntry(ctx context.Context, arg CreateAuditEntryPara
 		arg.Detail,
 		arg.TraceID,
 		arg.OccurredAt,
+		arg.Diff,
 	)
 	return err
 }
 
 const listAuditEntries = `-- name: ListAuditEntries :many
-SELECT id, tenant_id, actor_id, command, outcome, detail, trace_id, occurred_at FROM audit_log ORDER BY occurred_at DESC, id DESC LIMIT $1
+SELECT id, tenant_id, actor_id, command, outcome, detail, trace_id, occurred_at, diff FROM audit_log ORDER BY occurred_at DESC, id DESC LIMIT $1
 `
 
 func (q *Queries) ListAuditEntries(ctx context.Context, limit int32) ([]AuditLog, error) {
@@ -64,6 +66,7 @@ func (q *Queries) ListAuditEntries(ctx context.Context, limit int32) ([]AuditLog
 			&i.Detail,
 			&i.TraceID,
 			&i.OccurredAt,
+			&i.Diff,
 		); err != nil {
 			return nil, err
 		}
@@ -76,7 +79,7 @@ func (q *Queries) ListAuditEntries(ctx context.Context, limit int32) ([]AuditLog
 }
 
 const listAuditEntriesFiltered = `-- name: ListAuditEntriesFiltered :many
-SELECT id, tenant_id, actor_id, command, outcome, detail, trace_id, occurred_at FROM audit_log
+SELECT id, tenant_id, actor_id, command, outcome, detail, trace_id, occurred_at, diff FROM audit_log
 WHERE ($2::text IS NULL OR command = $2)
   AND ($3::text IS NULL OR actor_id = $3)
 ORDER BY occurred_at DESC, id DESC
@@ -107,6 +110,7 @@ func (q *Queries) ListAuditEntriesFiltered(ctx context.Context, arg ListAuditEnt
 			&i.Detail,
 			&i.TraceID,
 			&i.OccurredAt,
+			&i.Diff,
 		); err != nil {
 			return nil, err
 		}

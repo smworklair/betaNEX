@@ -19,6 +19,23 @@ import (
 // ErrNotFound — блоба с таким хэшем нет.
 var ErrNotFound = errors.New("blob: not found")
 
+// Storage — абстракция объектного хранилища содержимого файлов.
+// Потребители (модуль files) зависят только от неё: подмена локального
+// диска на S3-совместимый бекенд — новая реализация интерфейса плюс
+// строка конфигурации, без изменений в модулях.
+//
+// Контракт: содержимое адресуется sha256-хэшем и неизменяемо; Save
+// идемпотентен по содержимому; Open отдаёт ReadSeeker (Range-запросы);
+// Remove отсутствующего блоба — не ошибка.
+type Storage interface {
+	Save(tenant string, r io.Reader) (sha string, size int64, err error)
+	Open(tenant, sha string) (io.ReadSeekCloser, error)
+	Remove(tenant, sha string) error
+}
+
+// Проверка соответствия интерфейсу на этапе компиляции.
+var _ Storage = (*Store)(nil)
+
 var (
 	hexRe  = regexp.MustCompile(`^[0-9a-f]{64}$`)
 	uuidRe = regexp.MustCompile(`^[0-9a-f-]{36}$`)

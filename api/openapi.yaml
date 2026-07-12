@@ -1,18 +1,40 @@
-# NEX API — источник истины контракта (веха M5).
-# Из этой спеки генерируются: серверные интерфейсы Go (oapi-codegen)
-# и TypeScript-клиент (openapi-typescript). Правило: сначала меняем
-# спеку, потом код.
+# NEX API — источник истины контракта. Раздаётся сервером по
+# GET /api/v1/openapi.yaml. Правило: сначала меняем спеку, потом код.
 openapi: 3.1.0
 info:
   title: NEX API
-  version: 0.1.0
+  version: 0.2.0
   description: |
     API платформы NEX. Ошибки возвращаются в формате RFC 9457
-    (application/problem+json). Все доменные маршруты будут жить
-    под /api/v1 и требовать аутентификации.
+    (application/problem+json). Все доменные маршруты живут под /api/v1
+    и требуют аутентификации.
+
+    **Аутентификация** — httpOnly-cookie `nex_session`, выдаётся
+    `POST /api/v1/auth/login`. Сессия скользящая: активное использование
+    продлевает её, cookie перевыпускается сервером автоматически.
+    Кросс-доменный фронтенд должен слать запросы с `credentials: include`;
+    его origin должен входить в `NEX_CORS_ORIGINS` сервера.
+
+    **Идемпотентность** — мутирующие запросы могут нести заголовок
+    `Idempotency-Key`: повтор с тем же ключом вернёт сохранённый ответ.
+
+    **Авторизация** — RBAC: мутации проверяются шиной команд, чтения —
+    правами вида `<module>:read`. Ответы: 401 без сессии, 403 без права.
 servers:
   - url: http://localhost:8080
     description: Локальная разработка
+
+tags:
+  - name: system
+  - name: auth
+  - name: users
+  - name: tasks
+  - name: notifications
+  - name: finance
+  - name: campus
+  - name: files
+  - name: search
+  - name: audit
 
 paths:
   /healthz:
@@ -21,42 +43,653 @@ paths:
       summary: Liveness-проверка
       description: Возвращает 200, если процесс жив. Не проверяет зависимости.
       tags: [system]
+      security: []
       responses:
         "200":
           description: Процесс жив
           content:
             application/json:
+              schema: { $ref: "#/components/schemas/HealthStatus" }
+
+  /readyz:
+    get:
+      operationId: getReadyz
+      summary: Readiness-проверка
+      description: 200, когда зависимости (Postgres) доступны; иначе 503.
+      tags: [system]
+      security: []
+      responses:
+        "200": { description: Готов }
+        "503": { description: Зависимости недоступны }
+
+  /api/v1/openapi.yaml:
+    get:
+      operationId: getOpenAPI
+      summary: Эта спека
+      tags: [system]
+      security: []
+      responses:
+        "200":
+          description: OpenAPI-документ
+          content:
+            application/yaml: {}
+
+  /api/v1/auth/login:
+    post:
+      operationId: login
+      summary: Вход по паре email/пароль в организации
+      tags: [auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenant, email, password]
+              properties:
+                tenant: { type: string, description: slug или UUID организации }
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        "200":
+          description: Сессия открыта; выдана httpOnly-cookie nex_session
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionUser" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+
+  /api/v1/auth/logout:
+    post:
+      operationId: logout
+      summary: Выход (отзыв сессии). Идемпотентен
+      tags: [auth]
+      responses:
+        "204": { description: Сессия отозвана, cookie погашена }
+
+  /api/v1/auth/me:
+    get:
+      operationId: me
+      summary: Пользователь текущей сессии
+      tags: [auth]
+      responses:
+        "200":
+          description: Аутентифицирован
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionUser" }
+        "401": { $ref: "#/components/responses/Problem" }
+
+  /api/v1/users:
+    get:
+      operationId: listUsers
+      summary: Справочник пользователей организации (право users:read)
+      tags: [users]
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, maximum: 1000 } }
+      responses:
+        "200":
+          description: Пользователи (без хэшей паролей)
+          content:
+            application/json:
               schema:
-                $ref: "#/components/schemas/HealthStatus"
+                type: array
+                items: { $ref: "#/components/schemas/UserSummary" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+
+  /api/v1/tasks:
+    post:
+      operationId: createTask
+      summary: Создать задачу (право tasks:write)
+      tags: [tasks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title: { type: string, maxLength: 500 }
+                note: { type: string }
+                due_on: { type: string, format: date }
+                assignee: { type: string }
+      responses:
+        "201": { description: Создана }
+        "400": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+    get:
+      operationId: listTasks
+      summary: Список задач (право tasks:read)
+      tags: [tasks]
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [open, done] } }
+        - { name: assignee, in: query, schema: { type: string } }
+        - { name: q, in: query, schema: { type: string }, description: Полнотекстовый поиск }
+        - { name: sort, in: query, schema: { type: string, enum: [due, due_desc, created] } }
+        - { name: limit, in: query, schema: { type: integer, maximum: 500 } }
+        - { name: offset, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: Задачи
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Task" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+
+  /api/v1/tasks/{id}/complete:
+    post:
+      operationId: completeTask
+      summary: Отметить выполненной (право tasks:write)
+      tags: [tasks]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Выполнена }
+        "404": { $ref: "#/components/responses/Problem" }
+
+  /api/v1/tasks/{id}/dispatch:
+    post:
+      operationId: dispatchTask
+      summary: Разослать задачу пользователям (право tasks:write)
+      description: |
+        Получатели получают внутреннее уведомление task.assigned; внешняя
+        доставка ставится в outbox. Рассылка атомарна: несуществующий
+        получатель откатывает её целиком (422).
+      tags: [tasks]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_ids]
+              properties:
+                user_ids:
+                  type: array
+                  maxItems: 100
+                  items: { type: string, format: uuid }
+      responses:
+        "200": { description: Разослана }
+        "404": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+
+  /api/v1/tasks/{id}:
+    delete:
+      operationId: deleteTask
+      summary: Удалить задачу (право tasks:write)
+      tags: [tasks]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "204": { description: Удалена }
+        "404": { $ref: "#/components/responses/Problem" }
+
+  /api/v1/notifications:
+    get:
+      operationId: listNotifications
+      summary: Своя лента уведомлений (право notifications:read)
+      tags: [notifications]
+      parameters:
+        - { name: unread, in: query, schema: { type: string, enum: ["1", "true"] }, description: Только непрочитанные }
+        - { name: limit, in: query, schema: { type: integer, maximum: 200 } }
+        - { name: offset, in: query, schema: { type: integer } }
+      responses:
+        "200":
+          description: Уведомления, свежие первыми
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Notification" }
+        "401": { $ref: "#/components/responses/Problem" }
+
+  /api/v1/notifications/unread-count:
+    get:
+      operationId: unreadCount
+      summary: Число непрочитанных (право notifications:read)
+      tags: [notifications]
+      responses:
+        "200":
+          description: Счётчик
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  unread: { type: integer }
+
+  /api/v1/notifications/{id}/read:
+    post:
+      operationId: markNotificationRead
+      summary: Отметить прочитанным (право notifications:write). Идемпотентен
+      tags: [notifications]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Отмечено }
+
+  /api/v1/notifications/read-all:
+    post:
+      operationId: markAllNotificationsRead
+      summary: Отметить все прочитанными (право notifications:write)
+      tags: [notifications]
+      responses:
+        "200": { description: Отмечено }
+
+  /api/v1/finance/accounts:
+    post:
+      operationId: createAccount
+      summary: Создать счёт (право finance:accounts:write)
+      tags: [finance]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, name, type]
+              properties:
+                code: { type: string }
+                name: { type: string }
+                type: { type: string, enum: [asset, liability, income, expense, equity] }
+                currency: { type: string }
+      responses:
+        "201": { description: Создан }
+        "409": { $ref: "#/components/responses/Problem" }
+    get:
+      operationId: listAccounts
+      summary: План счетов с сальдо (право finance:read)
+      tags: [finance]
+      responses:
+        "200":
+          description: Счета
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Account" }
+
+  /api/v1/finance/entries:
+    post:
+      operationId: postEntry
+      summary: Провести двойную запись (право finance:entries:post)
+      tags: [finance]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [lines]
+              properties:
+                memo: { type: string }
+                lines:
+                  type: array
+                  items: { $ref: "#/components/schemas/EntryLine" }
+      responses:
+        "201": { description: Проведена }
+        "422": { $ref: "#/components/responses/Problem" }
+    get:
+      operationId: listEntries
+      summary: Реестр проводок (право finance:read)
+      tags: [finance]
+      responses:
+        "200": { description: Проводки }
+
+  /api/v1/finance/stats/monthly:
+    get:
+      operationId: monthlyTurnovers
+      summary: Витрина месячных оборотов (право finance:read)
+      tags: [finance]
+      responses:
+        "200": { description: Обороты по месяцам и счетам }
+
+  /api/v1/finance/stats/refresh:
+    post:
+      operationId: refreshStats
+      summary: Пересчитать витрину (право finance:stats:refresh)
+      tags: [finance]
+      responses:
+        "200": { description: Пересчитана }
+
+  /api/v1/finance/export/accounts.csv:
+    get:
+      operationId: exportAccountsCSV
+      summary: Экспорт плана счетов, CSV (право finance:read)
+      tags: [finance]
+      responses:
+        "200": { description: CSV с UTF-8 BOM, content: { text/csv: {} } }
+
+  /api/v1/finance/export/entries.csv:
+    get:
+      operationId: exportEntriesCSV
+      summary: Экспорт проводок, CSV (право finance:read)
+      tags: [finance]
+      responses:
+        "200": { description: CSV с UTF-8 BOM, content: { text/csv: {} } }
+
+  /api/v1/finance/export/turnovers.xlsx:
+    get:
+      operationId: exportTurnoversXLSX
+      summary: Экспорт оборотов, XLSX (право finance:read)
+      tags: [finance]
+      responses:
+        "200": { description: XLSX-файл }
+
+  /api/v1/finance/import/accounts:
+    post:
+      operationId: importAccounts
+      summary: Импорт плана счетов из CSV (право finance:accounts:write)
+      description: |
+        CSV `code,name,type[,currency]`; первая строка-заголовок
+        пропускается. Каждая строка проводится обычной командой; ошибки
+        собираются в построчный отчёт, не прерывая импорт.
+      tags: [finance]
+      requestBody:
+        required: true
+        content:
+          text/csv: {}
+      responses:
+        "200":
+          description: "Отчёт: created + errors[{line, error}]"
+
+  /api/v1/campus/groups:
+    post:
+      operationId: createGroup
+      summary: Создать учебную группу (право campus:groups:write)
+      tags: [campus]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, name]
+              properties:
+                code: { type: string }
+                name: { type: string }
+      responses:
+        "201": { description: Создана }
+        "409": { $ref: "#/components/responses/Problem" }
+    get:
+      operationId: listGroups
+      summary: Группы с числом студентов (право campus:read)
+      tags: [campus]
+      responses:
+        "200": { description: Группы }
+
+  /api/v1/campus/students:
+    post:
+      operationId: enrollStudent
+      summary: Зачислить студента (право campus:students:write)
+      tags: [campus]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [full_name]
+              properties:
+                full_name: { type: string }
+                email: { type: string }
+                group_id: { type: string }
+      responses:
+        "201": { description: Зачислен }
+    get:
+      operationId: listStudents
+      summary: Студенты (право campus:read)
+      tags: [campus]
+      parameters:
+        - { name: group, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string } }
+        - { name: q, in: query, schema: { type: string } }
+        - { name: sort, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer } }
+        - { name: offset, in: query, schema: { type: integer } }
+      responses:
+        "200": { description: Студенты }
+
+  /api/v1/campus/students/{id}:
+    patch:
+      operationId: updateStudent
+      summary: Обновить студента (право campus:students:write)
+      tags: [campus]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "201": { description: Обновлён }
+        "404": { $ref: "#/components/responses/Problem" }
+
+  /api/v1/campus/grades:
+    post:
+      operationId: recordGrade
+      summary: Выставить оценку (право campus:grades:write)
+      tags: [campus]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [student_id, subject, grade]
+              properties:
+                student_id: { type: string }
+                subject: { type: string }
+                grade: { type: integer, minimum: 2, maximum: 5 }
+                graded_on: { type: string, format: date }
+                note: { type: string }
+      responses:
+        "201": { description: Выставлена }
+
+  /api/v1/campus/journal:
+    get:
+      operationId: journal
+      summary: Учебный журнал (право campus:read)
+      tags: [campus]
+      parameters:
+        - { name: group, in: query, schema: { type: string } }
+        - { name: student, in: query, schema: { type: string } }
+        - { name: subject, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer } }
+      responses:
+        "200": { description: Оценки }
+
+  /api/v1/files:
+    post:
+      operationId: uploadFile
+      summary: Загрузить файл (право files:write)
+      tags: [files]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+                entity_type: { type: string }
+                entity_id: { type: string }
+      responses:
+        "201": { description: Загружен, возвращается sha256 }
+    get:
+      operationId: listFiles
+      summary: Список файлов (право files:read)
+      tags: [files]
+      parameters:
+        - { name: entity_type, in: query, schema: { type: string } }
+        - { name: entity_id, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer } }
+      responses:
+        "200": { description: Метаданные файлов }
+
+  /api/v1/files/{id}:
+    get:
+      operationId: downloadFile
+      summary: Скачать содержимое (право files:read; Range поддерживается)
+      tags: [files]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: Содержимое файла }
+        "404": { $ref: "#/components/responses/Problem" }
+    delete:
+      operationId: deleteFile
+      summary: Удалить файл (право files:write)
+      tags: [files]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "204": { description: Удалён }
+
+  /api/v1/search:
+    get:
+      operationId: search
+      summary: Сквозной полнотекстовый поиск (право search:read)
+      tags: [search]
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, maximum: 100 } }
+      responses:
+        "200": { description: "Результаты: {query, hits[]}" }
+
+  /api/v1/audit:
+    get:
+      operationId: auditEntries
+      summary: Журнал аудита организации (только роль admin)
+      tags: [audit]
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, maximum: 500 } }
+        - { name: command, in: query, schema: { type: string } }
+        - { name: actor, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Записи, свежие первыми
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AuditEntry" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+
+security:
+  - cookieAuth: []
 
 components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: nex_session
+
+  responses:
+    Problem:
+      description: Ошибка в формате RFC 9457
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+
   schemas:
     HealthStatus:
       type: object
       required: [status]
       properties:
-        status:
-          type: string
-          enum: [ok]
+        status: { type: string, enum: [ok] }
 
     # RFC 9457 Problem Details — единый формат ошибок API.
     Problem:
       type: object
       required: [title, status]
       properties:
-        type:
-          type: string
-          format: uri
-          default: about:blank
-        title:
-          type: string
-          description: Краткое человекочитаемое описание проблемы
-        status:
-          type: integer
-          description: HTTP-статус
-        detail:
-          type: string
-          description: Подробности конкретного случая
-        instance:
-          type: string
-          description: URI конкретного случая (для поиска в логах)
+        type: { type: string, format: uri, default: "about:blank" }
+        title: { type: string, description: Краткое человекочитаемое описание проблемы }
+        status: { type: integer, description: HTTP-статус }
+        detail: { type: string, description: Подробности конкретного случая }
+        instance: { type: string, description: URI конкретного случая (для поиска в логах) }
+
+    SessionUser:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        display_name: { type: string }
+        roles:
+          type: array
+          items: { type: string }
+        tenant: { type: string, format: uuid }
+
+    UserSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        display_name: { type: string }
+        roles:
+          type: array
+          items: { type: string }
+        active: { type: boolean }
+
+    Task:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        note: { type: string }
+        status: { type: string, enum: [open, done] }
+        due_on: { type: string, format: date }
+        assignee: { type: string }
+        created_by: { type: string }
+        created_at: { type: string, format: date-time }
+        done_at: { type: string, format: date-time }
+
+    Notification:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, description: Например task.assigned }
+        title: { type: string }
+        body: { type: string }
+        ref_type: { type: string }
+        ref_id: { type: string }
+        created_at: { type: string, format: date-time }
+        read_at: { type: string, format: date-time }
+
+    Account:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        type: { type: string }
+        currency: { type: string }
+        balance: { type: integer, description: Сальдо в копейках }
+
+    EntryLine:
+      type: object
+      required: [account_id, side, amount]
+      properties:
+        account_id: { type: string, format: uuid }
+        side: { type: string, enum: [debit, credit] }
+        amount: { type: integer, minimum: 1, description: В копейках }
+
+    AuditEntry:
+      type: object
+      properties:
+        command: { type: string }
+        outcome: { type: string, enum: [ok, denied, error] }
+        actor_id: { type: string }
+        detail: { type: string }
+        diff:
+          type: object
+          description: "Изменённые поля: {поле: {from, to}}"
+          additionalProperties:
+            type: object
+            properties:
+              from: {}
+              to: {}
+        trace_id: { type: string }
+        occurred_at: { type: string, format: date-time }

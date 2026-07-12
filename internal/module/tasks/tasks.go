@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/smworklair/betakis/internal/kernel/audit"
 	"github.com/smworklair/betakis/internal/kernel/command"
 	"github.com/smworklair/betakis/internal/kernel/identity"
 	"github.com/smworklair/betakis/internal/kernel/tenancy"
@@ -21,20 +22,29 @@ import (
 	"github.com/smworklair/betakis/internal/platform/postgres/db"
 )
 
-// PermWrite — право изменения задач.
-const PermWrite = "tasks:write"
+// Права модуля.
+const (
+	// PermWrite — право изменения задач.
+	PermWrite = "tasks:write"
+	// PermRead — право чтения списка задач.
+	PermRead = "tasks:read"
+)
 
 // Имена команд.
 const (
 	CmdCreate   = "tasks.create"
 	CmdComplete = "tasks.complete"
 	CmdDelete   = "tasks.delete"
+	CmdDispatch = "tasks.dispatch"
 )
 
 // Ошибки модуля.
 var (
 	ErrNoTenant = errors.New("tasks: no tenant in context")
 	ErrNotFound = errors.New("tasks: task not found")
+	// ErrRecipientNotFound — получатель рассылки не существует в tenant'е.
+	// В неё композиционный корень переводит ошибку сервиса уведомлений.
+	ErrRecipientNotFound = errors.New("tasks: recipient not found")
 )
 
 // Task — рабочая задача.
@@ -90,6 +100,39 @@ func (Complete) Permission() string { return PermWrite }
 func (c Complete) Validate() error {
 	if c.ID == "" {
 		return errors.New("tasks: id is required")
+	}
+	return nil
+}
+
+// Dispatch — команда «разослать задачу»: получатели узнают о задаче
+// через сервис уведомлений (внутренняя лента + внешняя доставка через
+// outbox). Рассылка атомарна: не уведомился один — не уведомился никто.
+type Dispatch struct {
+	ID      string
+	UserIDs []string
+}
+
+// Name возвращает стабильное имя команды для аудита.
+func (Dispatch) Name() string { return CmdDispatch }
+
+// Permission возвращает право, требуемое для исполнения.
+func (Dispatch) Permission() string { return PermWrite }
+
+// Validate проверяет инварианты входа.
+func (c Dispatch) Validate() error {
+	if c.ID == "" {
+		return errors.New("tasks: id is required")
+	}
+	if len(c.UserIDs) == 0 {
+		return errors.New("tasks: user_ids is required")
+	}
+	if len(c.UserIDs) > 100 {
+		return errors.New("tasks: too many recipients (max 100)")
+	}
+	for _, id := range c.UserIDs {
+		if id == "" {
+			return errors.New("tasks: empty user id in user_ids")
+		}
 	}
 	return nil
 }
@@ -247,10 +290,19 @@ func (r *Repository) Get(ctx context.Context, id string) (Task, error) {
 	return out, mapErr(err)
 }
 
-// RegisterCommands подключает команды модуля к шине.
+// Notifier — то, что задачам нужно от сервиса уведомлений. Интерфейс
+// объявлен здесь (а не в notifications), чтобы зависимость шла от
+// потребителя: tasks не знает, кто именно доставит уведомление.
+// Реализация — notifications.Service; связывает их композиционный корень.
+type Notifier interface {
+	Notify(ctx context.Context, userIDs []string, kind, title, body, refType, refID string) error
+}
+
+// RegisterCommands подключает команды модуля к шине. notifier может быть
+// nil — тогда команда рассылки отвечает ошибкой (уведомления не подключены).
 func RegisterCommands(bus interface {
 	Register(name string, h command.HandlerFunc) error
-}, repo *Repository,
+}, repo *Repository, notifier Notifier,
 ) error {
 	if err := bus.Register(CmdCreate, func(ctx context.Context, cmd command.Command) error {
 		c, ok := cmd.(Create)
@@ -274,7 +326,29 @@ func RegisterCommands(bus interface {
 		if !ok {
 			return fmt.Errorf("tasks: %s: unexpected command type %T", CmdComplete, cmd)
 		}
-		return repo.Complete(ctx, c.ID)
+		if err := repo.Complete(ctx, c.ID); err != nil {
+			return err
+		}
+		// Complete переводит только открытые задачи — дифф детерминирован.
+		audit.SetDiff(ctx, audit.Diff{"status": {From: "open", To: "done"}})
+		return nil
+	}); err != nil {
+		return err
+	}
+	if err := bus.Register(CmdDispatch, func(ctx context.Context, cmd command.Command) error {
+		c, ok := cmd.(Dispatch)
+		if !ok {
+			return fmt.Errorf("tasks: %s: unexpected command type %T", CmdDispatch, cmd)
+		}
+		if notifier == nil {
+			return errors.New("tasks: dispatch: notifications are not configured")
+		}
+		t, err := repo.Get(ctx, c.ID)
+		if err != nil {
+			return err
+		}
+		return notifier.Notify(ctx, c.UserIDs,
+			"task.assigned", "Вам направлена задача: "+t.Title, t.Note, "task", t.ID)
 	}); err != nil {
 		return err
 	}

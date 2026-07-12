@@ -24,8 +24,19 @@ type Entry struct {
 	ActorID    string    // кто (пусто = аноним/система)
 	TenantID   string    // в каком tenant'е
 	Detail     string    // подробности (текст ошибки, причина отказа)
+	Diff       Diff      // что именно поменялось (nil = команда не сообщила)
 	TraceID    string    // X-Request-Id запроса; заполняется при чтении
 	OccurredAt time.Time // момент фиксации (UTC)
+}
+
+// Diff — изменения полей, произведённые командой: поле → до/после.
+// Заполняется хендлером через SetDiff; шина команд переносит его в Entry.
+type Diff map[string]FieldChange
+
+// FieldChange — значение одного поля до и после команды.
+type FieldChange struct {
+	From any `json:"from"`
+	To   any `json:"to"`
 }
 
 // Filter — параметры выборки журнала для вьюера «кто что менял».

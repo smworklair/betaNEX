@@ -22,8 +22,10 @@ import (
 //	GET    /api/v1/files            ?entity_type=&entity_id=&limit=
 //	GET    /api/v1/files/{id}       скачивание содержимого
 //	DELETE /api/v1/files/{id}
-func Routes(bus command.Bus, repo *Repository, store *blob.Store, maxUpload int64) func(mux *http.ServeMux) {
-	h := &api{bus: bus, repo: repo, store: store, maxUpload: maxUpload}
+//
+// Чтения защищает guard (право PermRead), мутации авторизует шина команд.
+func Routes(bus command.Bus, repo *Repository, store blob.Storage, maxUpload int64, guard *authz.Guard) func(mux *http.ServeMux) {
+	h := &api{bus: bus, repo: repo, store: store, maxUpload: maxUpload, guard: guard}
 	return func(mux *http.ServeMux) {
 		mux.HandleFunc("POST /api/v1/files", h.upload)
 		mux.HandleFunc("GET /api/v1/files", h.list)
@@ -35,8 +37,9 @@ func Routes(bus command.Bus, repo *Repository, store *blob.Store, maxUpload int6
 type api struct {
 	bus       command.Bus
 	repo      *Repository
-	store     *blob.Store
+	store     blob.Storage
 	maxUpload int64
+	guard     *authz.Guard
 }
 
 type fileDTO struct {
@@ -139,6 +142,9 @@ func (h *api) upload(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *api) list(w http.ResponseWriter, r *http.Request) {
+	if !httpapi.RequirePermission(w, r, h.guard, PermRead) {
+		return
+	}
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	files, err := h.repo.List(r.Context(),
 		r.URL.Query().Get("entity_type"), r.URL.Query().Get("entity_id"), limit)
@@ -154,13 +160,12 @@ func (h *api) list(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *api) download(w http.ResponseWriter, r *http.Request) {
+	if !httpapi.RequirePermission(w, r, h.guard, PermRead) {
+		return
+	}
 	tenant, ok := tenancy.TenantFrom(r.Context())
 	if !ok {
 		httpapi.WriteProblem(w, http.StatusBadRequest, "Не указан tenant", "")
-		return
-	}
-	if _, ok := identity.ActorFrom(r.Context()); !ok {
-		httpapi.WriteProblem(w, http.StatusUnauthorized, "Не аутентифицирован", "нет сессии")
 		return
 	}
 	f, err := h.repo.File(r.Context(), r.PathValue("id"))

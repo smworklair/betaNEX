@@ -87,6 +87,21 @@ func (q *Queries) DeleteExpiredSessions(ctx context.Context) (int64, error) {
 	return result.RowsAffected(), nil
 }
 
+const extendSession = `-- name: ExtendSession :exec
+UPDATE sessions SET expires_at = $2
+WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now()
+`
+
+type ExtendSessionParams struct {
+	TokenHash []byte
+	ExpiresAt pgtype.Timestamptz
+}
+
+func (q *Queries) ExtendSession(ctx context.Context, arg ExtendSessionParams) error {
+	_, err := q.db.Exec(ctx, extendSession, arg.TokenHash, arg.ExpiresAt)
+	return err
+}
+
 const getLiveSessionByTokenHash = `-- name: GetLiveSessionByTokenHash :one
 SELECT id, tenant_id, user_id, token_hash, created_at, expires_at, revoked_at FROM sessions
 WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now()
@@ -145,6 +160,51 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const listUsers = `-- name: ListUsers :many
+SELECT id, email, display_name, roles, is_active, created_at
+FROM users
+ORDER BY display_name, email
+LIMIT $1
+`
+
+type ListUsersRow struct {
+	ID          pgtype.UUID
+	Email       string
+	DisplayName string
+	Roles       []string
+	IsActive    bool
+	CreatedAt   pgtype.Timestamptz
+}
+
+// Справочник пользователей tenant'а: выбор исполнителя задачи,
+// получателей рассылки. Хэш пароля наружу не выбирается.
+func (q *Queries) ListUsers(ctx context.Context, limit int32) ([]ListUsersRow, error) {
+	rows, err := q.db.Query(ctx, listUsers, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListUsersRow
+	for rows.Next() {
+		var i ListUsersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Email,
+			&i.DisplayName,
+			&i.Roles,
+			&i.IsActive,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const revokeSessionByTokenHash = `-- name: RevokeSessionByTokenHash :exec

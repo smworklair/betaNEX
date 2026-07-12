@@ -30,6 +30,14 @@ type RouterConfig struct {
 	// и session-middleware. nil — без неё (in-memory режим, dev-заголовки).
 	Auth *AuthConfig
 
+	// CORS — кросс-доменная политика и allowlist CSRF-проверки.
+	// Пустой список origin'ов = только same-origin.
+	CORS CORSConfig
+
+	// OpenAPI — YAML-спека контракта; раздаётся по GET /api/v1/openapi.yaml.
+	// nil — маршрут не монтируется.
+	OpenAPI []byte
+
 	// Observe вызывается по завершении каждого запроса — сюда композиционный
 	// корень подставляет запись метрик. route — шаблон маршрута ServeMux
 	// ("GET /api/v1/finance/accounts"), а не сырой путь: кардинальность
@@ -74,19 +82,33 @@ func NewRouter(log *slog.Logger, cfg RouterConfig) http.Handler {
 	if cfg.Pprof {
 		mountPprof(mux)
 	}
+	if cfg.OpenAPI != nil {
+		mux.Handle("GET /api/v1/openapi.yaml", handleOpenAPI(cfg.OpenAPI))
+	}
 	for _, mount := range cfg.Mount {
 		mount(mux)
 	}
 
 	// Порядок цепочки: сессия аутентифицирует первой; dev-заголовки могут
 	// подменить актора только там, где включены; резолвер tenant'а
-	// нормализует то, что положили предыдущие слои.
+	// нормализует то, что положили предыдущие слои. csrfGuard режет
+	// мутирующие запросы с чужим Origin раньше аутентификации: cookie
+	// жертвы не должна успеть превратиться в актора. В development
+	// стража нет: Vite-прокси шлёт Origin дев-сервера (5173) на другой
+	// Host, а режим и так позволяет подменять актора dev-заголовками —
+	// защищать там нечего.
 	mws := []middleware{requestID(), requestLogger(log), recoverer(log)}
+	if !cfg.DevAuth {
+		mws = append(mws, csrfGuard(cfg.CORS))
+	}
 	if cfg.Observe != nil {
 		// observer — внешним слоем: recoverer ниже превращает панику в 500,
 		// и метрика честно учитывает её как 500.
 		mws = append([]middleware{observer(mux, cfg.Observe)}, mws...)
 	}
+	// CORS — самым внешним слоем: preflight отвечается до логирования
+	// метрик по маршрутам, а заголовки доступа стоят даже на панике.
+	mws = append([]middleware{cors(cfg.CORS)}, mws...)
 	if authLayer != nil {
 		mws = append(mws, authLayer.sessionIdentity())
 	}
