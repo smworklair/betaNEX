@@ -6,9 +6,10 @@ import {
 } from 'lucide-react';
 import { useApp } from '../ui';
 import { finance, aiInsights, failedLogins, students } from '../data';
-import { attendanceRate, nexReply, PAGE_TITLES, type NavLink } from '../nexbrain';
+import { attendanceRate, nexReply, PAGE_TITLES, type NavLink, type NexData } from '../nexbrain';
 import { llmReady, llmAsk } from '../llm';
 import { Md } from '../md';
+import { DataBlock } from '../nexdata';
 import {
   HOME_BLOCK_CATALOG, HOME_BLOCK_BY_ID, DEFAULT_HOME_BLOCKS,
   HOME_SHORTCUT_CATALOG, HOME_SHORTCUT_BY_ID, DEFAULT_HOME_SHORTCUTS, moveInArray,
@@ -43,21 +44,42 @@ function LiveClock() {
    Терминал NEX — командная строка сисадмина прямо на «Главном».
    Запрос и ответ живут в блоке: журнал сессии (переживает
    переходы по разделам через sessionStorage), история команд
-   по ↑/↓, встроенные команды help / clear / open <раздел>,
-   остальное — вопрос к NEX тем же движком, что и полный чат
-   (LLM при подключённом ключе, иначе локальный nexbrain).
+   по ↑/↓, встроенные команды help / clear / open <раздел> и
+   набор именованных запросов состояния (status/risk/finance/
+   security) — они отвечают мгновенно и без ИИ, готовым срезом
+   данных (таблица/график/KPI), как настоящая консоль диагностики,
+   а не диалог. Всё остальное, что не распознано как команда, —
+   вопрос к NEX тем же движком, что и полный чат (LLM при
+   подключённом ключе, иначе локальный nexbrain); и то, и другое
+   тоже может вернуть структурированный блок, если он есть.
    ============================================================ */
 
-interface TermMsg { who: 'u' | 'n'; text: string; nav?: NavLink[]; action?: string; }
+interface TermMsg { who: 'u' | 'n'; text: string; nav?: NavLink[]; action?: string; data?: NexData; pending?: boolean; }
 
 const TERM_KEY = 'nex-terminal-log';
 const TERM_LIMIT = 60; // строк журнала храним не больше этого
+
+/* Именованные команды состояния: отвечают напрямую данными системы
+   (через nexReply, без похода к LLM) — таблица риска, финансовая
+   сводка, панель KPI, статус безопасности. Ключ — как набирает
+   пользователь, значение — каноническая фраза для nexReply. */
+const STATUS_COMMANDS: Record<string, string> = {
+  status: 'статус', 'статус': 'статус', 'сводка': 'статус',
+  risk: 'риск', 'риск': 'риск', 'риски': 'риск',
+  finance: 'финансы', 'финансы': 'финансы', 'деньги': 'финансы',
+  security: 'безопасность', 'безопасность': 'безопасность',
+};
+
+/* Список для подсказки под строкой ввода — те же ключи, без дублей. */
+const STATUS_COMMAND_LIST = ['status', 'risk', 'finance', 'security'];
+const KNOWN_TOKENS = new Set(['help', '?', 'помощь', 'clear', 'очистить', 'open', 'открой', 'открыть', ...Object.keys(STATUS_COMMANDS)]);
 
 const TERM_HELP = [
   '**Команды терминала:**',
   '- `help` — эта справка;',
   '- `clear` — очистить экран;',
   '- `open <раздел>` — открыть раздел, например `open финансы`;',
+  '- `status` / `risk` / `finance` / `security` — срез данных без ИИ: KPI, риск, финансы, безопасность;',
   '- стрелки ↑/↓ — история команд.',
   '',
   'Всё остальное — вопрос к NEX своими словами: «кто в зоне риска», «что с деньгами», «сводка дня».',
@@ -68,8 +90,23 @@ const TERM_HELP = [
 function loadTermSession(): { log: TermMsg[]; hist: string[] } {
   try {
     const raw = JSON.parse(sessionStorage.getItem(TERM_KEY) || '{}');
-    return { log: raw.log || [], hist: raw.hist || [] };
+    // «pending» переживший вкладку (закрыта посреди запроса к LLM) не
+    // должен грузиться зависшим мигающим курсором — только сам факт,
+    // что запрос был прерван.
+    const log: TermMsg[] = (raw.log || []).filter((m: TermMsg) => !m.pending);
+    return { log, hist: raw.hist || [] };
   } catch { return { log: [], hist: [] }; }
+}
+
+/* Подсвечивает распознанную команду в эхе введённой строки (первое
+   слово из KNOWN_TOKENS) — так видно, что именно превратилось в
+   вызов, а не в свободный вопрос. */
+function TermEcho({ text }: { text: string }) {
+  const m = text.match(/^(\S+)([\s\S]*)$/);
+  if (!m) return <>{text}</>;
+  const [, head, rest] = m;
+  if (!KNOWN_TOKENS.has(head.toLowerCase())) return <>{text}</>;
+  return <><b className="term-cmd">{head}</b>{rest}</>;
 }
 
 function NexTerminal({ disabled, chips }: { disabled: boolean; chips: { label: string; q: string }[] }) {
@@ -118,9 +155,19 @@ function NexTerminal({ disabled, chips }: { disabled: boolean; chips: { label: s
     const open = low.match(/^(?:open|открой|открыть)\s+(.+)$/);
     if (open) { push(openSection(open[1])); return; }
 
+    // Именованные команды состояния — считаются без ИИ, отвечают
+    // мгновенно готовым срезом данных. Проверяются до похода к LLM:
+    // это инженерные примитивы консоли, а не тема для диалога.
+    const status = STATUS_COMMANDS[low];
+    if (status) {
+      const a = nexReply(status, { page: 'home' });
+      push({ who: 'n', text: a.text, nav: a.nav, action: a.action, data: a.data });
+      return;
+    }
+
     if (llmReady()) {
       setBusy(true);
-      push({ who: 'n', text: '…' });
+      push({ who: 'n', text: '', pending: true });
       try {
         const text = await llmAsk(cmd, { system: 'Ты — NEX, терминал информационной системы колледжа. Отвечаешь администратору системы: коротко, по делу, по-русски.' });
         setLog((l) => [...l.slice(0, -1), { who: 'n', text }]);
@@ -130,7 +177,7 @@ function NexTerminal({ disabled, chips }: { disabled: boolean; chips: { label: s
       } finally { setBusy(false); }
     }
     const a = nexReply(cmd, { page: 'home' });
-    push({ who: 'n', text: a.text, nav: a.nav, action: a.action });
+    push({ who: 'n', text: a.text, nav: a.nav, action: a.action, data: a.data });
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -161,13 +208,27 @@ function NexTerminal({ disabled, chips }: { disabled: boolean; chips: { label: s
         </div>
       </div>
 
+      {/* Реальные команды консоли — не нужно набирать help, чтобы их увидеть. */}
+      <div className="term-legend">
+        {STATUS_COMMAND_LIST.map((c) => <code key={c}>{c}</code>)}
+        <code>open &lt;раздел&gt;</code>
+        <code>help</code>
+      </div>
+
       {log.length > 0 && (
         <div className="term-body" ref={bodyRef}>
           {log.map((m, i) => m.who === 'u' ? (
-            <div className="term-u" key={i}><span className="term-prompt">›</span>{m.text}</div>
+            <div className="term-u" key={i}><span className="term-prompt">›</span><TermEcho text={m.text} /></div>
           ) : (
             <div className="term-n" key={i}>
-              <Md text={m.text} />
+              {m.pending ? (
+                <span className="term-busy"><span className="term-cursor" />обращаюсь к модели…</span>
+              ) : (
+                <>
+                  <Md text={m.text} />
+                  {m.data && <DataBlock kind={m.data} />}
+                </>
+              )}
               {(m.nav?.length || m.action) ? (
                 <div className="term-nav">
                   {m.nav?.map((n) => (
