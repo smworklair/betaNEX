@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, type ReactNode, type Fo
 import { Sparkles, ArrowUp, AlertTriangle, Wallet, ShieldCheck } from 'lucide-react';
 import type { Role, Severity } from './data';
 import type { NexReply } from './nexbrain';
-import { apiMe, primaryRole } from './api/auth';
+import { apiMe, authConfigured, primaryRole } from './api/auth';
 import { DEFAULT_HOME_BLOCKS, DEFAULT_HOME_SHORTCUTS } from './home';
 
 export type Theme = 'light' | 'dark';
@@ -108,9 +108,33 @@ export const useApp = () => {
   return c;
 };
 
+/* Ключ демо-сессии в localStorage. Используется ТОЛЬКО без бэкенда
+   (VITE_API_URL пуст): серверной сессии нет, и без сохранения обновление
+   страницы выбрасывало бы на форму входа. С настоящим бэкендом источник
+   истины — httpOnly-cookie + /auth/me, localStorage не трогается. */
+const DEMO_USER_KEY = 'nex-demo-user';
+
+function readDemoUser(): User | null {
+  if (authConfigured()) return null;
+  try {
+    return JSON.parse(localStorage.getItem(DEMO_USER_KEY) || 'null') as User | null;
+  } catch {
+    return null;
+  }
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>(() => (localStorage.getItem('nex-theme') as Theme) || 'light');
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUserState] = useState<User | null>(readDemoUser);
+
+  /* setUser дополнительно сохраняет/чистит демо-сессию: и логин, и все
+     кнопки «Выйти» проходят через него — отдельной обвязки не нужно. */
+  const setUser = (u: User | null) => {
+    setUserState(u);
+    if (authConfigured()) return;
+    if (u) localStorage.setItem(DEMO_USER_KEY, JSON.stringify(u));
+    else localStorage.removeItem(DEMO_USER_KEY);
+  };
   const [page, setPage] = useState('home');
   const [objStudent, setObjStudent] = useState<number | null>(null);
   const [cmdOpen, setCmdOpen] = useState(false);
