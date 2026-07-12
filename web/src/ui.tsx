@@ -135,7 +135,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (u) localStorage.setItem(DEMO_USER_KEY, JSON.stringify(u));
     else localStorage.removeItem(DEMO_USER_KEY);
   };
-  const [page, setPage] = useState('home');
+  /* Текущий раздел переживает обновление страницы: восстанавливаем из
+     localStorage и сохраняем на каждом переходе. Неизвестный id не
+     страшен — рендер разделов падает обратно на «Главное»
+     (ALL_ITEMS[id]?.node ?? <Home />). Явные setPage('home') при входе
+     работают как раньше. */
+  const [page, setPageState] = useState(() => localStorage.getItem('nex-page') || 'home');
+  const setPage = (p: string) => {
+    setPageState(p);
+    localStorage.setItem('nex-page', p);
+  };
   const [objStudent, setObjStudent] = useState<number | null>(null);
   const [cmdOpen, setCmdOpen] = useState(false);
   const [inlineHost, setInlineHost] = useState<HTMLElement | null>(null);
