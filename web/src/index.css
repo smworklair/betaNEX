@@ -322,11 +322,16 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .g2 { color: var(--danger); font-weight: 700; }
 
 /* ===================== AI affordances ===================== */
-.ai-card { border: 1px solid var(--border); border-left: 2px solid var(--ai); border-radius: var(--r-md); background: var(--surface); padding: 12px 14px; }
-.ai-head { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; color: var(--ai); margin-bottom: 6px; }
+.ai-card { border: 1px solid var(--border-2); border-radius: var(--r-md); background: var(--surface); padding: 12px 14px; }
+/* Подпись «NEX»/«Резюме» и т.п. — нейтральный текст, акцент остаётся
+   только на иконке (тот же довод, что у fin-copilot: заголовок не должен
+   целиком гореть синим, это просто подпись автора заметки). */
+.ai-head { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; color: var(--text-2); margin-bottom: 6px; }
+.ai-head svg { color: var(--ai); flex-shrink: 0; }
 .ai-body { font-size: 13px; color: var(--text); }
 .ai-actions { display: flex; gap: 8px; margin-top: 10px; }
-.ai-inline { display: inline-flex; align-items: center; gap: 5px; color: var(--ai); font-size: 12px; font-weight: 600; cursor: pointer; }
+.ai-inline { display: inline-flex; align-items: center; gap: 5px; color: var(--text-2); font-size: 12px; font-weight: 600; cursor: pointer; }
+.ai-inline svg { color: var(--ai); flex-shrink: 0; }
 
 /* ===================== Security ribbon / meters ===================== */
 .ribbon { display: flex; align-items: center; gap: 16px; padding: 14px 18px; border-radius: var(--r-lg); border: 1px solid var(--border); }
@@ -708,71 +713,66 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .legend-row .legend-item { font-size: 12px; }
 
 /* ============================================================
-   In-page inline chat — NEX works right inside the page (glassy)
+   Реплики встроенного разбора NEX (в панели-аннотации .nex-inline)
    ============================================================ */
 .inline-veil { position: fixed; inset: 0; z-index: 500; background: transparent; }
-.inline-chat { position: fixed; z-index: 501; display: flex; flex-direction: column; max-height: 60vh; border-radius: 16px;
-  background: color-mix(in srgb, var(--surface) 80%, transparent); backdrop-filter: blur(16px) saturate(1.4); -webkit-backdrop-filter: blur(16px) saturate(1.4);
-  border: 1px solid color-mix(in srgb, var(--ai) 22%, var(--border-2)); box-shadow: 0 16px 50px rgba(0,0,0,.28); animation: fadeIn .14s ease-out; overflow: hidden; }
-.inline-chat.expanded { max-height: 76vh; }
-.inline-head { display: flex; align-items: center; gap: 8px; padding: 9px 8px 9px 13px; border-bottom: 1px solid var(--border); }
-.inline-head .spark { color: var(--ai); }
-.inline-head b { font-size: 13.5px; }
-.inline-head .icon-btn { width: 28px; height: 28px; }
-/* Нейтральный тон вместо акцентного: это подпись состояния
-   («в странице», «ИИ»/«без контекста»), а не декоративный акцент —
-   не должна конкурировать за внимание с самим содержимым панели. */
-.inline-badge { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); background: var(--surface-2); padding: 2px 7px; border-radius: 999px; margin-right: auto; }
-.inline-body { flex: 1; overflow-y: auto; padding: 12px 13px; display: flex; flex-direction: column; gap: 11px; }
-.inline-msg.u { align-self: flex-end; background: var(--accent); color: var(--accent-fg); padding: 7px 11px; border-radius: 11px 11px 3px 11px; max-width: 85%; font-size: 13px; line-height: 1.45; }
-.inline-msg.n { display: flex; gap: 8px; align-items: flex-start; }
-.inline-msg.n .ic { width: 22px; height: 22px; border-radius: 7px; background: var(--ai-weak); color: var(--ai); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-/* Тот же пузырь, что у .chat-msg.n .body и .fin-co-a .bd — единый вид
-   ответа NEX везде, где идёт диалог по шагам. */
-.inline-msg.n .nb { flex: 1; font-size: 13px; line-height: 1.55; background: var(--surface-2); padding: 9px 12px; border-radius: 3px 14px 14px 14px; }
+/* Нейтральная подпись состояния («ИИ» у плана в агентах и т.п.) */
+.inline-badge { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); background: var(--surface-2); padding: 2px 7px; border-radius: 999px; }
+/* «Как текст страницы»: никакой переписки. Вопрос — тихая строка с
+   маркером «›», ответ — обычный текст без заливки, как абзац раздела. */
+.inline-msg.u { color: var(--text-3); font-size: 12.5px; font-weight: 600; line-height: 1.5; }
+.inline-msg.u::before { content: '› '; color: var(--ai); font-weight: 700; }
+.inline-msg.n .nb { font-size: 13px; line-height: 1.6; }
 .inline-nav { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
 .inline-nav .chip-btn { font-size: 12px; padding: 5px 10px; }
 .inline-nav .chip-btn .ic { color: inherit; }
 .inline-act { margin-top: 9px; }
 .inline-quick { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 13px 10px; }
 .chip-btn.sm { font-size: 12px; padding: 5px 11px; }
-.inline-foot { display: flex; gap: 7px; align-items: center; padding: 9px 10px; border-top: 1px solid var(--border); }
-.inline-foot input { flex: 1; height: 34px; border: 1px solid var(--border-2); border-radius: 9px; padding: 0 11px; background: var(--bg); color: var(--text); outline: none; font-size: 13px; }
-.inline-foot input:focus { border-color: var(--ai); box-shadow: 0 0 0 3px var(--ai-weak); }
+.inline-foot { display: flex; gap: 7px; align-items: center; padding: 7px 0 2px; border-top: 1px solid var(--border); }
+.inline-foot input { flex: 1; height: 32px; border: none; border-radius: 0; padding: 0 2px; background: transparent; color: var(--text); outline: none; font-size: 13px; }
+.inline-foot .ask-send { background: transparent; color: var(--text-3); }
+.inline-foot .ask-send:hover { color: var(--ai); background: var(--ai-weak); filter: none; }
 .ask-send.sm { width: 34px; height: 34px; border-radius: 9px; }
 
 /* ============================================================
    In-page inline panel: opens in the page flow, under the clicked
    block, and pushes the rest of the content down.
    ============================================================ */
-/* Обычная граница карточки, не акцентная: панель встраивается в
-   поток страницы, а не «прилетает» отдельным ИИ-виджетом поверх неё. */
+/* «Разбор» — не окно чата, а раскрывшаяся секция-аннотация той карточки,
+   из которой позвали NEX: без своей рамки, фона и тени, отделяется
+   только тонкой линией и заголовком-подписью, как приложение к тексту. */
 .nex-inline { display: flex; flex-direction: column; max-height: 440px; overflow: hidden;
-  margin: 14px 0 4px; border: 1px solid var(--border); border-radius: var(--r-lg);
-  background: var(--surface); box-shadow: var(--shadow-sm); animation: inlineGrow .2s cubic-bezier(.2,0,0,1); }
+  margin: 13px 0 2px; border-top: 1px solid var(--border);
+  animation: inlineGrow .2s cubic-bezier(.2,0,0,1); }
 @keyframes inlineGrow { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
-.nex-inline-head { display: flex; align-items: center; gap: 8px; padding: 10px 8px 10px 13px; border-bottom: 1px solid var(--border); }
-.nex-inline-head .spark { color: var(--ai); flex-shrink: 0; }
-.nex-inline-head b { font-size: 13.5px; }
-.nex-inline-head .inline-badge { margin-right: auto; }
-.nex-inline-head .icon-btn { width: 28px; height: 28px; }
-.nex-inline-body { flex: 1; overflow-y: auto; padding: 13px; display: flex; flex-direction: column; gap: 12px; }
-.nex-inline-quick { display: flex; flex-wrap: wrap; gap: 7px; padding: 0 13px 10px; }
+.nex-inline-head { display: flex; align-items: center; gap: 7px; padding: 10px 0 4px; }
+.nex-inline-head .cap-spark { color: var(--ai); flex-shrink: 0; }
+.nex-inline-cap { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); margin-right: auto; }
+.nex-inline-head .icon-btn { width: 26px; height: 26px; }
+.nex-inline-body { flex: 1; overflow-y: auto; padding: 6px 0 12px; display: flex; flex-direction: column; gap: 10px; }
+.nex-inline-quick { display: flex; flex-wrap: wrap; gap: 7px; padding: 0 0 10px; }
 .nex-inline-quick .chip-btn .ic { color: var(--ai); }
 
-/* floating context-LESS explainer (selection only); нейтральная
-   граница — тот же довод, что у .nex-inline выше. */
+/* Иконка ИИ в заголовке карточки AiBox — контейнерный бейдж (как у
+   fin-copilot-orb), а не голая цветная иконка вплотную к тексту. */
+.ai-orb { display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 26px; height: 26px; border-radius: 9px; background: var(--ai); color: #fff;
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--ai) 40%, transparent); }
+.card.ai-box .card-title .ai-orb { width: 22px; height: 22px; border-radius: 7px; box-shadow: none; }
+
+/* Объяснение выделенного — словарная сноска: заглавное «слово» и
+   определение, без шапки-чата, бейджей и аватарок. Плавает над
+   контентом, поэтому лёгкое стекло остаётся. */
 .sel-explain { position: fixed; z-index: 501; display: flex; flex-direction: column; border-radius: 14px;
   background: color-mix(in srgb, var(--surface) 82%, transparent); backdrop-filter: blur(16px) saturate(1.4); -webkit-backdrop-filter: blur(16px) saturate(1.4);
   border: 1px solid var(--border-2); box-shadow: 0 16px 50px rgba(0,0,0,.28); animation: fadeIn .14s ease-out; overflow: hidden; }
-.sel-explain-head { display: flex; align-items: center; gap: 8px; padding: 9px 8px 9px 12px; border-bottom: 1px solid var(--border); }
-.sel-explain-head .spark { color: var(--ai); }
-.sel-explain-head b { font-size: 13px; }
-.sel-explain-head .inline-badge { margin-right: auto; }
-.sel-explain-head .icon-btn { width: 26px; height: 26px; }
-.sel-explain-body { padding: 12px; font-size: 13px; line-height: 1.6; color: var(--text); }
-.sel-explain-more { display: flex; align-items: center; justify-content: center; gap: 7px; padding: 10px; border: none; border-top: 1px solid var(--border); background: var(--surface-2); color: var(--ai); font-size: 12.5px; font-weight: 600; cursor: pointer; }
-.sel-explain-more:hover { background: var(--ai-weak); }
+.sel-explain-head { display: flex; align-items: flex-start; gap: 8px; padding: 11px 9px 0 14px; }
+.sel-term { flex: 1; font-size: 13px; font-weight: 700; line-height: 1.45; padding-top: 3px; }
+.sel-explain-head .icon-btn { width: 26px; height: 26px; flex-shrink: 0; }
+.sel-explain-body { padding: 7px 14px 12px; font-size: 13px; line-height: 1.6; color: var(--text-2); }
+.sel-explain-more { display: flex; align-items: center; justify-content: center; gap: 7px; padding: 10px; border: none; border-top: 1px solid var(--border); background: transparent; color: var(--text-2); font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.sel-explain-more:hover { background: var(--ai-weak); color: var(--ai); }
 
 /* ============================================================
    "в разработке" badge · AI workspace toggle · nav controls
@@ -921,7 +921,13 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
    что у .nex-inline/.inline-badge (см. ai.tsx): ответ должен читаться
    как часть страницы, а не как отдельный подсвеченный ИИ-виджет. */
 .ai-box-quick { display: flex; flex-wrap: wrap; gap: 7px; }
-.ai-box-answer { margin-top: 12px; padding: 13px 15px; border-radius: var(--r-md); background: var(--surface-2); font-size: 13.5px; line-height: 1.6; border: 1px solid var(--border); }
+/* AiBox — «умная строка» раздела: ввод — подчёркнутая строка, ответ —
+   текст документа под тонкой линией, а не заполненный блок-сообщение. */
+.ai-box .chat-input { border: none; border-bottom: 1px solid var(--border-2); border-radius: 0; background: transparent; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; padding: 0 2px; }
+.ai-box .chat-input:focus-within { border-bottom-color: var(--ai); box-shadow: none; }
+.ai-box .ask-send { background: transparent; color: var(--text-3); }
+.ai-box .ask-send:hover { color: var(--ai); background: var(--ai-weak); filter: none; }
+.ai-box-answer { margin-top: 12px; padding: 12px 2px 0; border-top: 1px solid var(--border); font-size: 13.5px; line-height: 1.6; }
 
 /* индикатор «печатает» */
 .typing { display: inline-flex; gap: 5px; padding: 6px 2px; }
@@ -996,9 +1002,9 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
    AI-native: proactive strip (NEX speaks first) + agentic runs
    ============================================================ */
 .nex-strip { max-width: 1280px; margin: 0 auto 18px; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px; padding: 13px 15px;
-  border: 1px solid color-mix(in srgb, var(--ai) 28%, var(--border)); border-left: 3px solid var(--ai);
-  border-radius: var(--r-lg); background: color-mix(in srgb, var(--ai) 7%, var(--surface)); }
-.nex-strip-ic { width: 28px; height: 28px; border-radius: 8px; background: var(--ai-weak); color: var(--ai); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  border: 1px solid var(--border-2); border-radius: var(--r-lg); }
+.nex-strip-ic { width: 30px; height: 30px; border-radius: 9px; background: var(--ai); color: #fff;
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--ai) 40%, transparent); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .nex-strip-main { flex: 1; min-width: 260px; }
 /* инлайн-панель, раскрытая внутри полосы, занимает всю ширину снизу,
    а не сжимает текст полосы в столбик */
@@ -1010,7 +1016,8 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
    .ai-box-answer выше: рамка чата и так обозначает, что это ответ NEX,
    вложенный синий блок внутри нужен не был. */
 .agent-run { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface-2); padding: 11px 13px; }
-.agent-run-head { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 700; color: var(--ai); margin-bottom: 9px; }
+.agent-run-head { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 700; color: var(--text-2); margin-bottom: 9px; }
+.agent-run-head svg { color: var(--ai); flex-shrink: 0; }
 .agent-steps { display: flex; flex-direction: column; gap: 7px; }
 .agent-step { display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--text-3); }
 .agent-step.active { color: var(--text); }
@@ -1136,7 +1143,7 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .kpi-value { font-size: 28px; letter-spacing: -0.035em; }
 
 /* ---- стеклянные поверхности ---- */
-.card, .kpi, .ai-card, .opp-card, .agent-card, .perk-card, .ribbon, .nex-strip {
+.card, .kpi, .opp-card, .agent-card, .perk-card, .ribbon {
   background: var(--surface);
   backdrop-filter: blur(20px) saturate(1.6); -webkit-backdrop-filter: blur(20px) saturate(1.6);
   box-shadow: var(--gloss), var(--shadow-sm);
@@ -1144,8 +1151,16 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .card, .kpi { border-radius: var(--r-lg); }
 .card:hover, .kpi:hover { border-color: var(--border-2); }
 .card-head { border-bottom: 1px solid var(--border); }
-.ai-card { border-radius: var(--r-lg); border-left: 2px solid var(--ai); }
-.nex-strip { background: color-mix(in srgb, var(--ai) 7%, var(--surface)); }
+/* ИИ-заметки и проактивная полоса NEX — единый язык с эталоном
+   (.fin-copilot): нейтральная рамка + едва заметная радиальная подсветка
+   вместо яркой синей полосы-границы и залитого синим фона. И вне
+   saturate-стекла — иначе синий внутри «раздувается» и блок выпрыгивает
+   отдельным виджетом, а он должен читаться как часть страницы. */
+.ai-card, .nex-strip {
+  border-radius: var(--r-lg);
+  background: radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--ai) 9%, transparent), transparent 55%), var(--surface);
+  box-shadow: var(--shadow-sm);
+}
 
 /* меню, поповеры, модалки — плотное стекло. .nex-inline сюда
    намеренно не входит: это встроенная в поток страницы панель
@@ -1154,7 +1169,7 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
    не непрозрачный «поповерный» и не blur/saturate, которые здесь
    же усиливали её акцентную рамку сильнее, чем у остальных панелей. */
 .cmd-modal, .omni-pop, .acct-menu, .mention-pop, .drawer, .ai-panel, .m-drawer,
-.inline-chat, .sel-explain {
+.sel-explain {
   backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
 }
 .cmd-modal, .omni-pop, .acct-menu, .mention-pop { background: var(--elevated); border-radius: 20px; box-shadow: var(--gloss), var(--shadow-md); }
@@ -1198,10 +1213,10 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .iact { border-radius: 999px; }
 .chip-btn, .hero-chip, .int-chip { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); background: color-mix(in srgb, var(--surface) 75%, transparent); }
 
-/* пузыри сообщений — круглее (iMessage) */
+/* пузыри сообщений — круглее (iMessage); inline-msg сюда не входит:
+   реплики разбора — текст страницы, без пузырей в любом режиме */
 .chat-msg.u { border-radius: 20px 20px 6px 20px; }
 .ai-msg.u { border-radius: 16px 16px 5px 16px; }
-.inline-msg.u { border-radius: 14px 14px 4px 14px; }
 .msgr-bubble { border-radius: 18px 18px 18px 5px; }
 .msgr-bubble.me { border-radius: 18px 18px 5px 18px; }
 .chat-input, .ask-hero-box { border-radius: 999px; background: var(--surface); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: var(--gloss), var(--shadow-sm); }
@@ -2225,14 +2240,15 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .fin-live i { width: 6px; height: 6px; border-radius: 999px; background: var(--success); box-shadow: 0 0 0 0 var(--success);
   animation: finPulse 1.8s infinite; }
 @keyframes finPulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 60%, transparent); } 70% { box-shadow: 0 0 0 6px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
-.fin-copilot-log { margin: 14px 0 6px; display: flex; flex-direction: column; gap: 14px; max-height: 420px; overflow-y: auto; }
-.fin-co-turn { display: flex; flex-direction: column; gap: 8px; }
-.fin-co-q { align-self: flex-end; background: var(--accent); color: var(--accent-fg); font-size: 13px; font-weight: 500;
-  padding: 8px 13px; border-radius: 14px 14px 3px 14px; max-width: 84%; }
-.fin-co-a { display: flex; gap: 9px; align-items: flex-start; max-width: 94%; }
-.fin-co-a .ic { width: 22px; height: 22px; border-radius: 7px; background: var(--ai-weak); color: var(--ai);
-  display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
-.fin-co-a .bd { font-size: 13.5px; line-height: 1.55; background: var(--surface-2); padding: 10px 13px; border-radius: 3px 14px 14px 14px; }
+/* Журнал расчётов, не переписка: каждый расчёт — запись «› вопрос →
+   ответ числами/графиком», записи разделены тонкими линиями. */
+.fin-copilot-log { margin: 14px 0 6px; display: flex; flex-direction: column; gap: 12px; max-height: 420px; overflow-y: auto; }
+.fin-co-turn { display: flex; flex-direction: column; gap: 6px; padding-top: 11px; border-top: 1px solid var(--border); }
+.fin-co-turn:first-child { padding-top: 0; border-top: none; }
+.fin-co-q { color: var(--text-3); font-size: 12px; font-weight: 600; line-height: 1.5; }
+.fin-co-q::before { content: '› '; color: var(--ai); font-weight: 700; }
+.fin-co-a { max-width: 96%; }
+.fin-co-a .bd { font-size: 13.5px; line-height: 1.6; }
 .fin-co-chart { margin-top: 10px; padding: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); }
 .fin-copilot-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
 .fin-co-chip { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border: 1px solid var(--border-2);

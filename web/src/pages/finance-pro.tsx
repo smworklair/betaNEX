@@ -139,7 +139,6 @@ function FinCopilot() {
             <div key={i} className="fin-co-turn">
               <div className="fin-co-q">{m.q}</div>
               <div className="fin-co-a">
-                <div className="ic"><Sparkles size={12} /></div>
                 <div className="bd">
                   <div>{m.a.text}</div>
                   {m.a.chart && <div className="fin-co-chart">{m.a.chart}</div>}

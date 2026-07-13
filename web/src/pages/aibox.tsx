@@ -32,7 +32,7 @@ export function AiBox({ title, placeholder, quick = [], system, fallback }: {
 
   return (
     <div className="card ai-box" style={{ marginBottom: 16 }}>
-      <div className="card-head"><div className="card-title"><Sparkles size={15} style={{ color: 'var(--ai)' }} /> {title}</div>
+      <div className="card-head"><div className="card-title"><span className="ai-orb"><Sparkles size={13} /></span> {title}</div>
         <span className="dim" style={{ fontSize: 12 }}>{llmReady() ? 'ИИ' : 'демо'}</span></div>
       <div className="card-body">
         {quick.length > 0 && (
