@@ -137,7 +137,10 @@ export function NotificationsPage() {
       </div>
       <div className="card"><div className="row-list">
         {list.map((n) => { const Icon = n.icon; return (
-          <div className="feed-row" key={n.id} style={{ background: n.unread ? 'var(--ai-weak)' : undefined }}>
+          // Полоса-акцент вместо заливки всей строки — тот же приём,
+          // что у карточки-подсказки NEX (border-left), а не сплошной
+          // подсвеченный блок: непрочитанное заметно, но не «кричит».
+          <div className="feed-row" key={n.id} style={n.unread ? { borderLeft: '2px solid var(--ai)', paddingLeft: 14 } : undefined}>
             <div className="feed-ico"><Icon size={14} /></div>
             <div className="feed-main"><div className="t">{n.title}</div><div className="m">{n.desc} · {n.time}</div></div>
             {/* Цвет тона (danger/warn/ai/info) значим только для «новое» —

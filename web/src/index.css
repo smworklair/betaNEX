@@ -565,7 +565,11 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .chat-msg.u { align-self: flex-end; background: var(--accent); color: var(--accent-fg); padding: 10px 14px; border-radius: 14px 14px 4px 14px; max-width: 80%; font-size: 14px; line-height: 1.5; }
 .chat-msg.n { display: flex; gap: 12px; align-items: flex-start; max-width: 96%; }
 .chat-msg.n .ava { width: 30px; height: 30px; border-radius: 9px; background: var(--ai-weak); color: var(--ai); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.chat-msg.n .body { flex: 1; min-width: 0; }
+/* Пузырь ответа — тот же паттерн, что у копайлота в финансах
+   (.fin-co-a .bd): нейтральная заливка и скруглённый «хвостик» слева
+   сверху, а не голый текст без границ. Один вид «сообщения от NEX»
+   на всё приложение. */
+.chat-msg.n .body { flex: 1; min-width: 0; background: var(--surface-2); padding: 11px 15px; border-radius: 4px 16px 16px 16px; }
 .chat-msg.n .prose { font-size: 14.5px; line-height: 1.62; color: var(--text); }
 .chat-data { margin-top: 12px; }
 .chat-data.kpi-row, .chat-data.chart-flex { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
@@ -586,7 +590,9 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .chat-msg.n:hover .msg-tools, .chat-row.u:hover .msg-tools, .msg-tools:focus-within { opacity: 1; }
 .msg-tools.u { margin-top: 2px; }
 .msg-tools button { width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--text-3); border-radius: 7px; cursor: pointer; }
-.msg-tools button:hover { background: var(--surface-2); color: var(--text); }
+/* .body теперь сам — пузырь на surface-2; hover нужен заметно темнее
+   его, а не того же тона (иначе подсветка кнопки не видна). */
+.msg-tools button:hover { background: var(--elevated); color: var(--text); }
 .msg-tools button.on { color: var(--ai); background: var(--ai-weak); }
 
 /* input add-ons: files / connectors / @ mentions */
@@ -721,7 +727,9 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .inline-msg.u { align-self: flex-end; background: var(--accent); color: var(--accent-fg); padding: 7px 11px; border-radius: 11px 11px 3px 11px; max-width: 85%; font-size: 13px; line-height: 1.45; }
 .inline-msg.n { display: flex; gap: 8px; align-items: flex-start; }
 .inline-msg.n .ic { width: 22px; height: 22px; border-radius: 7px; background: var(--ai-weak); color: var(--ai); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.inline-msg.n .nb { flex: 1; font-size: 13px; line-height: 1.55; }
+/* Тот же пузырь, что у .chat-msg.n .body и .fin-co-a .bd — единый вид
+   ответа NEX везде, где идёт диалог по шагам. */
+.inline-msg.n .nb { flex: 1; font-size: 13px; line-height: 1.55; background: var(--surface-2); padding: 9px 12px; border-radius: 3px 14px 14px 14px; }
 .inline-nav { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
 .inline-nav .chip-btn { font-size: 12px; padding: 5px 10px; }
 .inline-nav .chip-btn .ic { color: inherit; }
@@ -909,9 +917,11 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .prose code, .nb code, .sel-explain-body code { font-family: var(--font-mono); font-size: .88em; background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }
 .md-hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
 
-/* встраиваемый ИИ-бокс на страницах */
+/* встраиваемый ИИ-бокс на страницах: нейтральный тон — тот же довод,
+   что у .nex-inline/.inline-badge (см. ai.tsx): ответ должен читаться
+   как часть страницы, а не как отдельный подсвеченный ИИ-виджет. */
 .ai-box-quick { display: flex; flex-wrap: wrap; gap: 7px; }
-.ai-box-answer { margin-top: 12px; padding: 13px 15px; border-radius: var(--r-md); background: var(--ai-weak); font-size: 13.5px; line-height: 1.6; border: 1px solid color-mix(in srgb, var(--ai) 20%, transparent); }
+.ai-box-answer { margin-top: 12px; padding: 13px 15px; border-radius: var(--r-md); background: var(--surface-2); font-size: 13.5px; line-height: 1.6; border: 1px solid var(--border); }
 
 /* индикатор «печатает» */
 .typing { display: inline-flex; gap: 5px; padding: 6px 2px; }
@@ -996,7 +1006,10 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .nex-strip-text { font-size: 13.5px; line-height: 1.55; color: var(--text); }
 .nex-strip-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
 
-.agent-run { border: 1px solid color-mix(in srgb, var(--ai) 24%, var(--border-2)); border-radius: var(--r-md); background: var(--ai-weak); padding: 11px 13px; }
+/* Блок «NEX выполняет» внутри чата — тот же нейтральный тон, что у
+   .ai-box-answer выше: рамка чата и так обозначает, что это ответ NEX,
+   вложенный синий блок внутри нужен не был. */
+.agent-run { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface-2); padding: 11px 13px; }
 .agent-run-head { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 700; color: var(--ai); margin-bottom: 9px; }
 .agent-steps { display: flex; flex-direction: column; gap: 7px; }
 .agent-step { display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--text-3); }
@@ -1134,14 +1147,18 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .ai-card { border-radius: var(--r-lg); border-left: 2px solid var(--ai); }
 .nex-strip { background: color-mix(in srgb, var(--ai) 7%, var(--surface)); }
 
-/* меню, поповеры, модалки — плотное стекло */
+/* меню, поповеры, модалки — плотное стекло. .nex-inline сюда
+   намеренно не входит: это встроенная в поток страницы панель
+   (открывается прямо в карточке, как fin-copilot), а не модалка
+   поверх контента — ей нужен обычный полупрозрачный фон карточки,
+   не непрозрачный «поповерный» и не blur/saturate, которые здесь
+   же усиливали её акцентную рамку сильнее, чем у остальных панелей. */
 .cmd-modal, .omni-pop, .acct-menu, .mention-pop, .drawer, .ai-panel, .m-drawer,
-.inline-chat, .sel-explain, .nex-inline {
+.inline-chat, .sel-explain {
   backdrop-filter: var(--blur); -webkit-backdrop-filter: var(--blur);
 }
 .cmd-modal, .omni-pop, .acct-menu, .mention-pop { background: var(--elevated); border-radius: 20px; box-shadow: var(--gloss), var(--shadow-md); }
 .acct-menu { border-radius: 16px; }
-.nex-inline { background: var(--elevated); }
 
 /* ---- кнопки: капсулы ---- */
 .btn { border-radius: 999px; height: 36px; padding: 0 16px; }
