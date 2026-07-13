@@ -917,9 +917,11 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .prose code, .nb code, .sel-explain-body code { font-family: var(--font-mono); font-size: .88em; background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }
 .md-hr { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
 
-/* встраиваемый ИИ-бокс на страницах */
+/* встраиваемый ИИ-бокс на страницах: нейтральный тон — тот же довод,
+   что у .nex-inline/.inline-badge (см. ai.tsx): ответ должен читаться
+   как часть страницы, а не как отдельный подсвеченный ИИ-виджет. */
 .ai-box-quick { display: flex; flex-wrap: wrap; gap: 7px; }
-.ai-box-answer { margin-top: 12px; padding: 13px 15px; border-radius: var(--r-md); background: var(--ai-weak); font-size: 13.5px; line-height: 1.6; border: 1px solid color-mix(in srgb, var(--ai) 20%, transparent); }
+.ai-box-answer { margin-top: 12px; padding: 13px 15px; border-radius: var(--r-md); background: var(--surface-2); font-size: 13.5px; line-height: 1.6; border: 1px solid var(--border); }
 
 /* индикатор «печатает» */
 .typing { display: inline-flex; gap: 5px; padding: 6px 2px; }
@@ -1004,7 +1006,10 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .nex-strip-text { font-size: 13.5px; line-height: 1.55; color: var(--text); }
 .nex-strip-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
 
-.agent-run { border: 1px solid color-mix(in srgb, var(--ai) 24%, var(--border-2)); border-radius: var(--r-md); background: var(--ai-weak); padding: 11px 13px; }
+/* Блок «NEX выполняет» внутри чата — тот же нейтральный тон, что у
+   .ai-box-answer выше: рамка чата и так обозначает, что это ответ NEX,
+   вложенный синий блок внутри нужен не был. */
+.agent-run { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface-2); padding: 11px 13px; }
 .agent-run-head { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 700; color: var(--ai); margin-bottom: 9px; }
 .agent-steps { display: flex; flex-direction: column; gap: 7px; }
 .agent-step { display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--text-3); }
