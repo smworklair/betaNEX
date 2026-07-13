@@ -122,7 +122,7 @@ function InlinePanel() {
   return (
     <div className="nex-inline" ref={rootRef}>
       <div className="nex-inline-head">
-        <Sparkles size={15} className="spark" />
+        <span className="ai-orb"><Sparkles size={13} /></span>
         <b>{inlineTitle || 'NEX'}</b>
         <span className="inline-badge">в странице</span>
         <button className="icon-btn" title="Открыть в полном чате" onClick={() => openChat(inlineSeed || undefined)}><ExternalLink size={15} /></button>
@@ -279,7 +279,7 @@ function SelExplain() {
       <div className="inline-veil" onClick={closeExplain} />
       <div className="sel-explain" style={{ left, top, width: W }} role="dialog" aria-label="NEX объясняет">
         <div className="sel-explain-head">
-          <Sparkles size={13} className="spark" /><b>NEX объясняет</b>
+          <span className="ai-orb"><Sparkles size={11} /></span><b>NEX объясняет</b>
           <span className="inline-badge">{llmReady() ? 'ИИ' : 'без контекста'}</span>
           <button className="icon-btn" title="Закрыть" onClick={closeExplain}><X size={15} /></button>
         </div>
