@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, type FormEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Sparkles, X, ArrowUp, ArrowRight, Quote, ExternalLink,
+  Sparkles, X, ArrowUp, ArrowRight, Quote, ExternalLink, Search,
   MessageSquare, Mail, CheckSquare, StickyNote, CalendarPlus, Wand2, Copy, Languages, ScrollText,
 } from 'lucide-react';
 import { useApp, Chip, NexAsk } from './ui';
@@ -130,7 +130,7 @@ function InlinePanel() {
 
       <div className="nex-inline-body">
         {msgs.map((m, i) => m.who === 'u'
-          ? <div className="inline-msg u" key={i}>{m.text}</div>
+          ? <div className="inline-msg u" key={i}><Search size={12} className="qi" />{m.text}</div>
           : (
             <div className="inline-msg n" key={i}>
               <div className="nb">
