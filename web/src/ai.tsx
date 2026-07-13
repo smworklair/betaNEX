@@ -122,11 +122,10 @@ function InlinePanel() {
   return (
     <div className="nex-inline" ref={rootRef}>
       <div className="nex-inline-head">
-        <span className="ai-orb"><Sparkles size={13} /></span>
-        <b>{inlineTitle || 'NEX'}</b>
-        <span className="inline-badge">в странице</span>
-        <button className="icon-btn" title="Открыть в полном чате" onClick={() => openChat(inlineSeed || undefined)}><ExternalLink size={15} /></button>
-        <button className="icon-btn" title="Закрыть" onClick={closeInline}><X size={16} /></button>
+        <Sparkles size={12} className="cap-spark" />
+        <span className="nex-inline-cap">NEX · {inlineTitle || 'разбор'}</span>
+        <button className="icon-btn" title="Открыть в полном чате" onClick={() => openChat(inlineSeed || undefined)}><ExternalLink size={14} /></button>
+        <button className="icon-btn" title="Закрыть" onClick={closeInline}><X size={15} /></button>
       </div>
 
       <div className="nex-inline-body">
@@ -134,7 +133,6 @@ function InlinePanel() {
           ? <div className="inline-msg u" key={i}>{m.text}</div>
           : (
             <div className="inline-msg n" key={i}>
-              <div className="ic"><Sparkles size={12} /></div>
               <div className="nb">
                 <Md text={m.text} />
                 {m.nav && m.nav.length > 0 && (
@@ -152,7 +150,7 @@ function InlinePanel() {
       </div>
 
       <form className="inline-foot" onSubmit={submit}>
-        <input autoFocus value={input} onChange={(e) => setInput(e.target.value)} placeholder="Спросите NEX прямо здесь…" />
+        <input autoFocus value={input} onChange={(e) => setInput(e.target.value)} placeholder="Уточнить или спросить про этот раздел…" />
         <button className="ask-send sm" type="submit" aria-label="Отправить"><ArrowUp size={16} /></button>
       </form>
     </div>
@@ -279,8 +277,7 @@ function SelExplain() {
       <div className="inline-veil" onClick={closeExplain} />
       <div className="sel-explain" style={{ left, top, width: W }} role="dialog" aria-label="NEX объясняет">
         <div className="sel-explain-head">
-          <span className="ai-orb"><Sparkles size={11} /></span><b>NEX объясняет</b>
-          <span className="inline-badge">{llmReady() ? 'ИИ' : 'без контекста'}</span>
+          <span className="sel-term">«{explain.text.length > 46 ? explain.text.slice(0, 43) + '…' : explain.text}»</span>
           <button className="icon-btn" title="Закрыть" onClick={closeExplain}><X size={15} /></button>
         </div>
         <div className="sel-explain-body"><Md text={body} /></div>
