@@ -322,11 +322,16 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .g2 { color: var(--danger); font-weight: 700; }
 
 /* ===================== AI affordances ===================== */
-.ai-card { border: 1px solid var(--border); border-left: 2px solid var(--ai); border-radius: var(--r-md); background: var(--surface); padding: 12px 14px; }
-.ai-head { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; color: var(--ai); margin-bottom: 6px; }
+.ai-card { border: 1px solid var(--border-2); border-radius: var(--r-md); background: var(--surface); padding: 12px 14px; }
+/* Подпись «NEX»/«Резюме» и т.п. — нейтральный текст, акцент остаётся
+   только на иконке (тот же довод, что у fin-copilot: заголовок не должен
+   целиком гореть синим, это просто подпись автора заметки). */
+.ai-head { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; color: var(--text-2); margin-bottom: 6px; }
+.ai-head svg { color: var(--ai); flex-shrink: 0; }
 .ai-body { font-size: 13px; color: var(--text); }
 .ai-actions { display: flex; gap: 8px; margin-top: 10px; }
-.ai-inline { display: inline-flex; align-items: center; gap: 5px; color: var(--ai); font-size: 12px; font-weight: 600; cursor: pointer; }
+.ai-inline { display: inline-flex; align-items: center; gap: 5px; color: var(--text-2); font-size: 12px; font-weight: 600; cursor: pointer; }
+.ai-inline svg { color: var(--ai); flex-shrink: 0; }
 
 /* ===================== Security ribbon / meters ===================== */
 .ribbon { display: flex; align-items: center; gap: 16px; padding: 14px 18px; border-radius: var(--r-lg); border: 1px solid var(--border); }
@@ -1004,9 +1009,9 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
    AI-native: proactive strip (NEX speaks first) + agentic runs
    ============================================================ */
 .nex-strip { max-width: 1280px; margin: 0 auto 18px; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px; padding: 13px 15px;
-  border: 1px solid color-mix(in srgb, var(--ai) 28%, var(--border)); border-left: 3px solid var(--ai);
-  border-radius: var(--r-lg); background: color-mix(in srgb, var(--ai) 7%, var(--surface)); }
-.nex-strip-ic { width: 28px; height: 28px; border-radius: 8px; background: var(--ai-weak); color: var(--ai); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  border: 1px solid var(--border-2); border-radius: var(--r-lg); }
+.nex-strip-ic { width: 30px; height: 30px; border-radius: 9px; background: var(--ai); color: #fff;
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--ai) 40%, transparent); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .nex-strip-main { flex: 1; min-width: 260px; }
 /* инлайн-панель, раскрытая внутри полосы, занимает всю ширину снизу,
    а не сжимает текст полосы в столбик */
@@ -1018,7 +1023,8 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
    .ai-box-answer выше: рамка чата и так обозначает, что это ответ NEX,
    вложенный синий блок внутри нужен не был. */
 .agent-run { border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface-2); padding: 11px 13px; }
-.agent-run-head { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 700; color: var(--ai); margin-bottom: 9px; }
+.agent-run-head { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 700; color: var(--text-2); margin-bottom: 9px; }
+.agent-run-head svg { color: var(--ai); flex-shrink: 0; }
 .agent-steps { display: flex; flex-direction: column; gap: 7px; }
 .agent-step { display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--text-3); }
 .agent-step.active { color: var(--text); }
@@ -1144,7 +1150,7 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .kpi-value { font-size: 28px; letter-spacing: -0.035em; }
 
 /* ---- стеклянные поверхности ---- */
-.card, .kpi, .ai-card, .opp-card, .agent-card, .perk-card, .ribbon, .nex-strip {
+.card, .kpi, .opp-card, .agent-card, .perk-card, .ribbon {
   background: var(--surface);
   backdrop-filter: blur(20px) saturate(1.6); -webkit-backdrop-filter: blur(20px) saturate(1.6);
   box-shadow: var(--gloss), var(--shadow-sm);
@@ -1152,8 +1158,16 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .card, .kpi { border-radius: var(--r-lg); }
 .card:hover, .kpi:hover { border-color: var(--border-2); }
 .card-head { border-bottom: 1px solid var(--border); }
-.ai-card { border-radius: var(--r-lg); border-left: 2px solid var(--ai); }
-.nex-strip { background: color-mix(in srgb, var(--ai) 7%, var(--surface)); }
+/* ИИ-заметки и проактивная полоса NEX — единый язык с эталоном
+   (.fin-copilot): нейтральная рамка + едва заметная радиальная подсветка
+   вместо яркой синей полосы-границы и залитого синим фона. И вне
+   saturate-стекла — иначе синий внутри «раздувается» и блок выпрыгивает
+   отдельным виджетом, а он должен читаться как часть страницы. */
+.ai-card, .nex-strip {
+  border-radius: var(--r-lg);
+  background: radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--ai) 9%, transparent), transparent 55%), var(--surface);
+  box-shadow: var(--shadow-sm);
+}
 
 /* меню, поповеры, модалки — плотное стекло. .nex-inline сюда
    намеренно не входит: это встроенная в поток страницы панель
