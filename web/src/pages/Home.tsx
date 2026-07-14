@@ -2,18 +2,22 @@ import { useState, useEffect, useRef, Fragment, type FormEvent, type KeyboardEve
 import {
   ArrowUp, ArrowRight, Wallet, Users, Sun, Sunrise, Moon,
   Sparkles, CornerDownLeft, ChevronRight, ChevronLeft, ChevronUp, ChevronDown,
-  ListChecks, Settings2, Check, RotateCcw, EyeOff, Plus, X, Eraser, ExternalLink,
+  ListChecks, Settings2, Check, RotateCcw, EyeOff, Plus, X, Eraser, ExternalLink, Maximize2,
 } from 'lucide-react';
 import { useApp } from '../ui';
-import { finance, aiInsights, failedLogins, students, staff } from '../data';
+import { finance, aiInsights, failedLogins, students } from '../data';
 import { attendanceRate, nexReply, PAGE_TITLES, type NavLink, type NexData } from '../nexbrain';
 import { llmReady, llmAsk } from '../llm';
 import { Md } from '../md';
 import { DataBlock } from '../nexdata';
-import { useCollection, uid, nowIso, type Entity } from '../beta/store';
+import { useCollection } from '../beta/store';
 import { TASK_SEED } from './tasks';
-import { terminalExec, type TermResult } from '../api/terminal';
+import { terminalExec, TERMINAL_BACKEND_TOKENS } from '../api/terminal';
 import { API_CONFIGURED, ApiError } from '../api/client';
+import {
+  TerminalWorkspace, TermResBlock, execRegistry, TERM_COMMANDS,
+  type TermRes, type TermTask, type EngineCtx,
+} from '../terminal';
 import {
   HOME_BLOCK_CATALOG, HOME_BLOCK_BY_ID, DEFAULT_HOME_BLOCKS,
   HOME_SHORTCUT_CATALOG, HOME_SHORTCUT_BY_ID, DEFAULT_HOME_SHORTCUTS, moveInArray,
@@ -58,7 +62,7 @@ function LiveClock() {
    тоже может вернуть структурированный блок, если он есть.
    ============================================================ */
 
-interface TermMsg { who: 'u' | 'n'; text: string; nav?: NavLink[]; action?: string; data?: NexData; res?: TermResult; pending?: boolean; }
+interface TermMsg { who: 'u' | 'n'; text: string; nav?: NavLink[]; action?: string; data?: NexData; res?: TermRes; pending?: boolean; }
 
 const TERM_KEY = 'nex-terminal-log';
 const TERM_LIMIT = 60; // строк журнала храним не больше этого
@@ -74,81 +78,29 @@ const STATUS_COMMANDS: Record<string, string> = {
   security: 'безопасность', 'безопасность': 'безопасность',
 };
 
-/* Команды экосистемы: управление системой из консоли. В демо исполняются
-   локальным движком поверх тех же коллекций, что и разделы сайта; с
-   бэкендом (VITE_API_URL) — POST /terminal/exec, где чтения идут через
-   модульные репозитории, а мутации — через шину команд с аудитом. */
-const ECO_TOKENS = new Set(['tasks', 'task', 'users', 'notify', 'audit', 'whoami']);
+/* Команды экосистемы (бэкенд-режим): при VITE_API_URL токены из
+   TERMINAL_BACKEND_TOKENS идут в POST /terminal/exec — чтения через
+   модульные репозитории, мутации через шину команд с аудитом. В демо
+   все команды исполняет общий реестр TERM_COMMANDS (src/terminal.tsx). */
+const ECO_TOKENS = TERMINAL_BACKEND_TOKENS;
 
 /* Список для подсказки под строкой ввода. */
-const STATUS_COMMAND_LIST = ['status', 'tasks', 'users', 'notify', 'audit'];
-const KNOWN_TOKENS = new Set(['help', '?', 'помощь', 'clear', 'очистить', 'open', 'открой', 'открыть', ...ECO_TOKENS, ...Object.keys(STATUS_COMMANDS)]);
+const STATUS_COMMAND_LIST = ['обзор', 'аналитика', 'финансы', 'безопасность', 'задачи'];
+const KNOWN_TOKENS = new Set([
+  'help', '?', 'помощь', 'clear', 'очистить', 'open', 'открой', 'открыть',
+  ...ECO_TOKENS, ...Object.keys(STATUS_COMMANDS),
+  ...TERM_COMMANDS.flatMap((c) => c.aliases),
+]);
 
 const TERM_HELP = [
-  '**Консоль администратора (альфа):** управление системой без ухода из терминала.',
-  '- `status` / `risk` / `finance` / `security` — срез данных без ИИ;',
-  '- `tasks [open|done|all]` — задачи; `task add <текст>` — создать; `task done <№>` — закрыть;',
-  '- `users` — люди организации; `notify <email|all> <текст>` — уведомить (с записью в аудит);',
-  '- `audit [n]` — журнал действий; `whoami` — кто я;',
-  '- `open <раздел>` — открыть раздел; `clear` — очистить; ↑/↓ — история.',
+  '**Консоль администратора (альфа):** весь функционал — командами, без навигации.',
+  '- `обзор` / `аналитика` / `финансы` / `безопасность` / `задачи` — домены системы;',
+  '- внутри доменов: `риск`, `группы`, `долги`, `платежи`, `напомнить`, `входы`, `сессии`, `аудит`, `люди`, `уведомить`…;',
+  '- `новая задача <текст>` — создать; `готово <№>` — закрыть;',
+  '- `открой <раздел>` — обычный UI; `clear` — очистить; ↑/↓ — история; кнопка ⛶ — полноэкранная среда.',
   '',
   'Всё остальное — вопрос к NEX своими словами: «кто в зоне риска», «что с деньгами».',
 ].join('\n');
-
-/* Журнал действий консоли (демо-аудит): пишется при каждой мутации из
-   терминала, читается командой audit. С бэкендом команду отвечает
-   настоящий append-only журнал аудита. */
-const TERM_AUDIT_KEY = 'nex-term-audit';
-interface TermAuditRow { at: string; cmd: string; outcome: string }
-function termAuditPush(cmd: string) {
-  try {
-    const rows: TermAuditRow[] = JSON.parse(sessionStorage.getItem(TERM_AUDIT_KEY) || '[]');
-    rows.unshift({ at: new Date().toISOString(), cmd, outcome: 'ok' });
-    sessionStorage.setItem(TERM_AUDIT_KEY, JSON.stringify(rows.slice(0, 50)));
-  } catch { /* квота — не критично */ }
-}
-function termAuditList(): TermAuditRow[] {
-  try { return JSON.parse(sessionStorage.getItem(TERM_AUDIT_KEY) || '[]'); } catch { return []; }
-}
-
-/* Задача в терминальном представлении — узкий взгляд на коллекцию
-   'tasks' (общую с разделом «Задачи»). */
-interface TermTask extends Entity {
-  title: string;
-  status: string;
-  due: string;
-  [k: string]: unknown;
-}
-
-const TERM_STATUS_LABEL: Record<string, string> = { open: 'открыта', in_progress: 'в работе', done: 'выполнена', canceled: 'отменена' };
-
-/* Рендер структурированного результата команды: таблица / KPI / текст +
-   подсказка следующего шага. Один и тот же для локального движка и
-   ответа бэкенда. */
-function TermResBlock({ r }: { r: TermResult }) {
-  return (
-    <>
-      {r.title && <div className="term-res-title">{r.title}</div>}
-      {r.text && <Md text={r.text} />}
-      {r.kind === 'kpi' && r.kpis && (
-        <div className="chat-data kpi-row">
-          {r.kpis.map((k) => (
-            <div className="kpi" key={k.label}><div className="kpi-label">{k.label}</div><div className="kpi-value">{k.value}</div></div>
-          ))}
-        </div>
-      )}
-      {r.kind === 'table' && r.rows && r.rows.length > 0 && (
-        <div className="chat-data table-wrap">
-          <table className="tbl">
-            <thead><tr>{r.columns?.map((c) => <th key={c}>{c}</th>)}</tr></thead>
-            <tbody>{r.rows.map((row, i) => <tr key={i}>{row.map((c, j) => <td key={j}>{c}</td>)}</tr>)}</tbody>
-          </table>
-        </div>
-      )}
-      {r.hint && <div className="term-hint">{r.hint}</div>}
-    </>
-  );
-}
 
 /* Сессия терминала (журнал + история команд) живёт в sessionStorage
    и переживает переходы по разделам в рамках вкладки. */
@@ -183,8 +135,18 @@ function NexTerminal({ disabled, chips }: { disabled: boolean; chips: { label: s
   const [hist, setHist] = useState<string[]>(session.hist);
   const [hIdx, setHIdx] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+  const [wsOpen, setWsOpen] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  /* Контекст общего реестра команд (src/terminal.tsx): и компактный
+     блок, и полноэкранная среда работают одним движком. */
+  const engineCtx: EngineCtx = {
+    userName: user?.name || 'аноним',
+    userRole: user?.role || '—',
+    toast, setPage,
+    tasks: tasksCol,
+  };
 
   useEffect(() => {
     try { sessionStorage.setItem(TERM_KEY, JSON.stringify({ log, hist: hist.slice(-30) })); } catch { /* квота — не критично */ }
@@ -208,78 +170,6 @@ function NexTerminal({ disabled, chips }: { disabled: boolean; chips: { label: s
     return { who: 'n', text: `Раздел «${name}» не нашёл. Например: ${targets.slice(0, 6).map((t) => t.label.toLowerCase()).join(', ')}…` };
   };
 
-  /* Локальный движок экосистемных команд (демо-режим): те же данные,
-     что и на страницах разделов — коллекция задач, справочник людей,
-     демо-аудит. С бэкендом эти команды исполняет terminal-модуль nexd. */
-  const localExec = (line: string): TermResult => {
-    const args = line.trim().split(/\s+/);
-    const head = args[0].toLowerCase();
-
-    if (head === 'whoami') {
-      return { kind: 'text', text: `${user?.name || 'аноним'} · роль: ${user?.role || '—'} · демо-сессия` };
-    }
-    if (head === 'tasks') {
-      const st = (args[1] || 'open').toLowerCase();
-      if (!['open', 'done', 'all'].includes(st)) return { kind: 'text', text: `Фильтр «${args[1]}» не знаю. Есть: open · done · all.` };
-      const rows = tasksCol.items.filter((t) => (st === 'all' ? true : st === 'done' ? t.status === 'done' : t.status !== 'done' && t.status !== 'canceled'));
-      if (!rows.length) return { kind: 'text', text: 'Задач нет.', hint: 'task add <текст> — создать' };
-      return {
-        kind: 'table', title: 'Задачи',
-        columns: ['№', 'Задача', 'Статус', 'Срок'],
-        rows: rows.slice(0, 15).map((t, i) => [String(i + 1), t.title, TERM_STATUS_LABEL[t.status] || t.status, t.due || '—']),
-        hint: 'task done <№> — закрыть · task add <текст> — создать',
-      };
-    }
-    if (head === 'task' && args[1]?.toLowerCase() === 'add' && args.length > 2) {
-      const title = args.slice(2).join(' ');
-      tasksCol.add({
-        title, note: '', status: 'open', priority: 'normal', category: 'Общее', tags: [],
-        due: '', assignees: [], watchers: [], recurrence: 'none', subtasks: [], checklist: [],
-        comments: [], history: [{ id: uid('h'), text: 'Создана из терминала', at: nowIso() }], attachments: [],
-      } as unknown as TermTask);
-      termAuditPush(`task add ${title}`);
-      return { kind: 'text', text: `Задача создана: **${title}** — уже видна в разделе «Задачи».`, hint: 'tasks — список · open задачи — открыть раздел' };
-    }
-    if (head === 'task' && args[1]?.toLowerCase() === 'done' && args[2]) {
-      const open = tasksCol.items.filter((t) => t.status !== 'done' && t.status !== 'canceled');
-      const n = parseInt(args[2], 10);
-      const target = open[n - 1];
-      if (!target) return { kind: 'text', text: `Открытой задачи №${args[2]} нет.`, hint: 'tasks — посмотреть номера' };
-      tasksCol.update(target.id, { status: 'done' } as Partial<TermTask>);
-      termAuditPush(`task done ${target.title}`);
-      return { kind: 'text', text: `Задача закрыта: **${target.title}**.` };
-    }
-    if (head === 'users') {
-      return {
-        kind: 'table', title: 'Люди организации',
-        columns: ['Имя', 'Роль', 'Email'],
-        rows: staff.map((s) => [s.name, s.role, s.email]),
-        hint: 'notify <email|all> <текст> — уведомить',
-      };
-    }
-    if (head === 'notify') {
-      if (args.length < 3) return { kind: 'text', text: 'Формат: notify <email|all> <текст>.', hint: 'users — список адресов' };
-      const to = args[1].toLowerCase();
-      const text = args.slice(2).join(' ');
-      const targets = to === 'all' ? staff : staff.filter((s) => s.email.toLowerCase() === to);
-      if (!targets.length) return { kind: 'text', text: `Получателя «${args[1]}» не нашёл.`, hint: 'users — список адресов' };
-      termAuditPush(`notify ${to}: ${text}`);
-      toast(`Уведомление отправлено: ${targets.length} получателям`);
-      return { kind: 'text', text: `Уведомление ушло **${targets.length}** получателям · записано в журнал аудита (демо).` };
-    }
-    if (head === 'audit') {
-      const rows = termAuditList();
-      if (!rows.length) return { kind: 'text', text: 'Журнал пуст — здесь появятся действия консоли (task add, notify…).' };
-      const limit = Math.min(Math.max(parseInt(args[1] || '10', 10) || 10, 1), 50);
-      return {
-        kind: 'table', title: 'Журнал действий консоли (демо)',
-        columns: ['Когда', 'Действие', 'Исход'],
-        rows: rows.slice(0, limit).map((r) => [new Date(r.at).toLocaleTimeString('ru'), r.cmd, r.outcome]),
-      };
-    }
-    return { kind: 'text', text: 'Не понял команду.', hint: 'help — список команд' };
-  };
-
   const run = async (raw: string) => {
     const cmd = raw.trim();
     if (!cmd || busy || disabled) return;
@@ -293,9 +183,25 @@ function NexTerminal({ disabled, chips }: { disabled: boolean; chips: { label: s
     const open = low.match(/^(?:open|открой|открыть)\s+(.+)$/);
     if (open) { push(openSection(open[1])); return; }
 
+    // Команды экосистемы. С бэкендом токены terminal-модуля идут в
+    // POST /terminal/exec (шина команд + аудит) — проверяются раньше
+    // мок-команд состояния, чтобы «финансы»/«безопасность» отвечали
+    // настоящими данными сервера, а не демо-срезом.
+    if (API_CONFIGURED && ECO_TOKENS.has(low.split(/\s+/)[0])) {
+      setBusy(true);
+      push({ who: 'n', text: '', pending: true });
+      try {
+        const res = await terminalExec(cmd);
+        setLog((l) => [...l.slice(0, -1), { who: 'n', text: '', res }]);
+      } catch (e) {
+        const msg = e instanceof ApiError ? `${e.title}${e.detail ? `: ${e.detail}` : ''}` : 'Сервер недоступен.';
+        setLog((l) => [...l.slice(0, -1), { who: 'n', text: msg }]);
+      } finally { setBusy(false); }
+      return;
+    }
+
     // Именованные команды состояния — считаются без ИИ, отвечают
-    // мгновенно готовым срезом данных. Проверяются до похода к LLM:
-    // это инженерные примитивы консоли, а не тема для диалога.
+    // мгновенно готовым срезом данных (демо-режим).
     const status = STATUS_COMMANDS[low];
     if (status) {
       const a = nexReply(status, { page: 'home' });
@@ -303,25 +209,8 @@ function NexTerminal({ disabled, chips }: { disabled: boolean; chips: { label: s
       return;
     }
 
-    // Команды экосистемы: задачи, люди, уведомления, аудит. С бэкендом —
-    // через terminal-модуль (шина команд + аудит), в демо — локальный
-    // движок поверх тех же коллекций, что и разделы сайта.
-    if (ECO_TOKENS.has(low.split(/\s+/)[0])) {
-      if (API_CONFIGURED) {
-        setBusy(true);
-        push({ who: 'n', text: '', pending: true });
-        try {
-          const res = await terminalExec(cmd);
-          setLog((l) => [...l.slice(0, -1), { who: 'n', text: '', res }]);
-        } catch (e) {
-          const msg = e instanceof ApiError ? `${e.title}${e.detail ? `: ${e.detail}` : ''}` : 'Сервер недоступен.';
-          setLog((l) => [...l.slice(0, -1), { who: 'n', text: msg }]);
-        } finally { setBusy(false); }
-        return;
-      }
-      push({ who: 'n', text: '', res: localExec(cmd) });
-      return;
-    }
+    const reg = execRegistry(cmd, engineCtx);
+    if (reg) { push({ who: 'n', text: '', res: reg }); return; }
 
     if (llmReady()) {
       setBusy(true);
@@ -353,6 +242,7 @@ function NexTerminal({ disabled, chips }: { disabled: boolean; chips: { label: s
   };
 
   return (
+    <>
     <form className="console term" onSubmit={(e) => { e.preventDefault(); run(q); }} onClick={() => !disabled && inputRef.current?.focus()}>
       <div className="console-head">
         <Sparkles size={15} className="console-spark" />
@@ -363,6 +253,7 @@ function NexTerminal({ disabled, chips }: { disabled: boolean; chips: { label: s
           {log.length > 0 && (
             <button type="button" className="icon-btn" title="Очистить экран (clear)" onClick={(e) => { e.stopPropagation(); setLog([]); }}><Eraser size={15} /></button>
           )}
+          <button type="button" className="icon-btn" title="Полноэкранная среда терминала" onClick={(e) => { e.stopPropagation(); if (!disabled) setWsOpen(true); }}><Maximize2 size={15} /></button>
           <button type="button" className="icon-btn" title="Открыть полный чат" onClick={(e) => { e.stopPropagation(); if (!disabled) openChat(); }}><ExternalLink size={15} /></button>
         </div>
       </div>
@@ -418,6 +309,8 @@ function NexTerminal({ disabled, chips }: { disabled: boolean; chips: { label: s
         </div>
       )}
     </form>
+    {wsOpen && <TerminalWorkspace ctx={engineCtx} remote={API_CONFIGURED ? terminalExec : undefined} onClose={() => setWsOpen(false)} />}
+    </>
   );
 }
 

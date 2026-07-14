@@ -384,6 +384,82 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 				return rows, nil
 			},
 			Unread: notifRepo.CountUnread,
+
+			// Аналитика — модуль campus.
+			Groups: func(ctx context.Context) ([]terminal.GroupRow, error) {
+				groups, err := campusRepo.Groups(ctx)
+				if err != nil {
+					return nil, err
+				}
+				rows := make([]terminal.GroupRow, 0, len(groups))
+				for _, g := range groups {
+					rows = append(rows, terminal.GroupRow{Code: g.Code, Name: g.Name, Students: g.ActiveStudents})
+				}
+				return rows, nil
+			},
+			Students: func(ctx context.Context, query string, limit int) ([]terminal.StudentRow, error) {
+				studs, err := campusRepo.Students(ctx, campus.StudentFilter{Query: query, Limit: limit})
+				if err != nil {
+					return nil, err
+				}
+				rows := make([]terminal.StudentRow, 0, len(studs))
+				for _, s := range studs {
+					rows = append(rows, terminal.StudentRow{Name: s.FullName, Group: s.GroupCode, Status: string(s.Status), Email: s.Email})
+				}
+				return rows, nil
+			},
+			Grades: func(ctx context.Context, limit int) ([]terminal.GradeRow, error) {
+				grades, err := campusRepo.Journal(ctx, campus.JournalFilter{Limit: limit})
+				if err != nil {
+					return nil, err
+				}
+				rows := make([]terminal.GradeRow, 0, len(grades))
+				for _, g := range grades {
+					rows = append(rows, terminal.GradeRow{
+						Student: g.FullName, Group: g.GroupCode, Subject: g.Subject,
+						Grade: g.Grade, On: g.GradedOn,
+					})
+				}
+				return rows, nil
+			},
+
+			// Финансы — леджер.
+			Balances: func(ctx context.Context) ([]terminal.BalanceRow, error) {
+				balances, err := financeRepo.Accounts(ctx)
+				if err != nil {
+					return nil, err
+				}
+				rows := make([]terminal.BalanceRow, 0, len(balances))
+				for _, b := range balances {
+					rows = append(rows, terminal.BalanceRow{
+						Code: b.Account.Code, Name: b.Account.Name,
+						Type: string(b.Account.Type), Amount: b.Amount,
+					})
+				}
+				return rows, nil
+			},
+			Entries: func(ctx context.Context, limit int) ([]terminal.EntryRow, error) {
+				entries, err := financeRepo.Entries(ctx)
+				if err != nil {
+					return nil, err
+				}
+				if len(entries) > limit {
+					entries = entries[len(entries)-limit:] // свежие в конце — берём хвост
+				}
+				rows := make([]terminal.EntryRow, 0, len(entries))
+				for _, e := range entries {
+					var debit int64
+					for _, l := range e.Lines {
+						if l.Side == finance.Debit {
+							debit += l.Amount
+						}
+					}
+					rows = append(rows, terminal.EntryRow{
+						Memo: e.Memo, PostedBy: e.PostedBy, PostedAt: e.PostedAt, Amount: debit,
+					})
+				}
+				return rows, nil
+			},
 		}
 		mounts = append(mounts, terminal.Routes(termDeps, guard))
 	}

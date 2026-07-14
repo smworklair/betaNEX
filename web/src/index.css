@@ -737,22 +737,17 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .ask-send.sm { width: 34px; height: 34px; border-radius: 9px; }
 
 /* ============================================================
-   Мини-чат (M): логика всплывания «чат = сам блок».
-   Панель НЕ вставляется в поток карточки (это раздувало её и весь ряд
-   сетки — соседние карточки тянулись по высоте «пустыми»), а накрывает
-   карточку-хост поверх: тот же стеклянный материал, что у .card, и те
-   же скругления (border-radius: inherit) — открылся чат, а блок и
-   страница вокруг не сдвинулись ни на пиксель. Если разговор длиннее
-   блока, панель растёт вниз поверх контента, оставаясь частью блока.
+   Мини-чат (M): раскрывается В потоке карточки-хоста — блок
+   расширяется и двигает страницу вниз, ничего не накрывая. Своего фона
+   нет (чат сливается с материалом блока), отделяется тонкой линией.
+   Пока чат открыт, контейнер ряда получает .inline-row — соседние
+   карточки не растягиваются «пустыми» вслед за выросшим хостом.
    ============================================================ */
 .inline-host { position: relative; }
-.nex-inline { position: absolute; top: -1px; left: -1px; right: -1px; z-index: 40;
-  display: flex; flex-direction: column; min-height: calc(100% + 2px); max-height: 480px;
-  padding: 12px 14px; border: 1px solid var(--border-2); border-radius: inherit; overflow: hidden;
-  /* непрозрачный «материал карточки»: слой surface поверх слоя bg —
-     контент блока под панелью не просвечивает и не создаёт шум */
-  background: linear-gradient(var(--surface), var(--surface)), var(--bg);
-  box-shadow: var(--gloss), var(--shadow-md); animation: inlineGrow .18s cubic-bezier(.2,0,0,1); }
+.inline-row { align-items: start; }
+.nex-inline { display: flex; flex-direction: column; max-height: 440px; overflow: hidden;
+  margin-top: 13px; border-top: 1px solid var(--border); padding-top: 11px;
+  animation: inlineGrow .18s cubic-bezier(.2,0,0,1); }
 @keyframes inlineGrow { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 .nex-inline-head { display: flex; align-items: center; gap: 8px; padding: 0 0 9px; border-bottom: 1px solid var(--border); }
 .nex-inline-head b { font-size: 13.5px; margin-right: auto; }
@@ -2086,6 +2081,71 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .term-res-title { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); margin-bottom: 7px; }
 .term-hint { margin-top: 9px; font-size: 11.5px; color: var(--text-3); font-family: var(--font-mono); }
 @media (max-width: 620px) { .term-body { max-height: 260px; } }
+
+/* ============================================================
+   Полноэкранная среда терминала (альфа): рабочее место администратора
+   поверх сайта — сайт остаётся, Esc возвращает. Слева домены
+   функционала, в центре лента результатов, снизу строка с живыми
+   подсказками. Никакого «мусора»: только команды и данные.
+   ============================================================ */
+.term-ws { position: fixed; inset: 0; z-index: 700; display: flex; flex-direction: column;
+  background:
+    radial-gradient(900px 500px at 85% -10%, color-mix(in srgb, var(--ai) 7%, transparent), transparent 60%),
+    var(--bg);
+  animation: wsIn .22s cubic-bezier(.2,0,0,1); }
+@keyframes wsIn { from { opacity: 0; transform: scale(.992); } to { opacity: 1; transform: none; } }
+.term-ws-head { display: flex; align-items: center; gap: 9px; padding: 12px 18px; border-bottom: 1px solid var(--border); }
+.term-ws-head b { font-size: 14.5px; }
+.term-ws-user { margin-left: auto; font-size: 12px; color: var(--text-3); }
+.term-ws-main { flex: 1; display: flex; min-height: 0; }
+.term-ws-rail { display: flex; flex-direction: column; gap: 3px; padding: 14px 10px; border-right: 1px solid var(--border); min-width: 168px; }
+.term-ws-rail button { display: flex; align-items: center; gap: 9px; padding: 9px 12px; border: none; border-radius: 10px;
+  background: transparent; color: var(--text-2); font-size: 13px; font-weight: 600; cursor: pointer; text-align: left; transition: .12s; }
+.term-ws-rail button:hover { background: var(--surface-2); color: var(--text); }
+.term-ws-rail button.on { background: var(--ai-weak); color: var(--ai); }
+/* пульс системы внизу рейла: живая точка + вердикт одним словом */
+.term-ws-pulse { margin-top: auto; display: flex; align-items: center; gap: 7px; padding: 9px 12px; font-size: 11px; color: var(--text-3); }
+.term-ws-pulse i { width: 7px; height: 7px; border-radius: 999px; background: var(--success); animation: finPulse 1.8s infinite; flex-shrink: 0; }
+.term-ws-pulse i.warn { background: var(--warn); }
+.term-ws-work { flex: 1; display: flex; flex-direction: column; min-width: 0; max-width: 980px; margin: 0 auto; width: 100%; padding: 0 22px; }
+.term-ws-body { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; padding: 18px 2px; }
+.term-ws-body .term-n { max-width: 860px; animation: termIn .18s ease-out; }
+.term-ws-body .term-u { animation: termIn .14s ease-out; }
+@keyframes termIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+/* метка исполнения под результатом: когда, сколько заняло, откуда данные */
+.term-meta { margin-top: 7px; font-size: 10.5px; color: var(--text-3); font-family: var(--font-mono); }
+/* строки таблиц откликаются на курсор — консоль живая, не распечатка */
+.term-ws .tbl tbody tr:hover td { background: var(--surface-2); }
+/* Команды активного домена — карта функционала всегда на виду. */
+.term-ws-cmds { display: flex; flex-wrap: wrap; gap: 7px; padding: 10px 0; border-top: 1px solid var(--border); }
+.term-ws-cmds button { display: inline-flex; align-items: center; gap: 8px; padding: 6px 11px; border: 1px solid var(--border);
+  border-radius: 999px; background: var(--surface); cursor: pointer; font-size: 12px; color: var(--text-2); }
+.term-ws-cmds button:hover { border-color: var(--ai); color: var(--text); }
+.term-ws-cmds button code { font-family: var(--font-mono); font-size: 11.5px; color: var(--ai); font-weight: 700; }
+.term-ws-cmds button span { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.term-ws-input { position: relative; display: flex; align-items: center; gap: 10px; padding: 12px 0 16px; }
+.term-ws-input input { flex: 1; height: 44px; border: 1px solid var(--border-2); border-radius: 12px; padding: 0 15px;
+  background: var(--surface); color: var(--text); outline: none; font-size: 14px; font-family: var(--font-mono); }
+.term-ws-input input:focus { border-color: var(--ai); box-shadow: 0 0 0 3px var(--ai-weak); }
+/* Живые подсказки над строкой: команда + что делает. Фон непрозрачный
+   (слой elevated поверх bg) — список не смешивается с контентом под ним. */
+.term-sug { position: absolute; left: 26px; right: 60px; bottom: 100%; margin-bottom: 6px; display: flex; flex-direction: column;
+  border: 1px solid var(--border-2); border-radius: 12px;
+  background: linear-gradient(var(--elevated), var(--elevated)), var(--bg);
+  box-shadow: var(--shadow-md); overflow: hidden; animation: termIn .12s ease-out; }
+.term-sug button { display: flex; align-items: center; gap: 12px; padding: 9px 13px; border: none; background: transparent;
+  cursor: pointer; text-align: left; font-size: 12.5px; color: var(--text-2); }
+.term-sug button.sel { background: var(--ai-weak); color: var(--text); }
+.term-sug button code { font-family: var(--font-mono); font-size: 12px; color: var(--ai); font-weight: 700; white-space: nowrap; }
+/* строка горячих клавиш — тихая шпаргалка под вводом */
+.term-ws-keys { display: flex; gap: 16px; justify-content: center; padding: 0 0 12px; font-size: 10.5px; color: var(--text-3); }
+.term-ws-keys kbd { font-size: 10px; padding: 1px 5px; border: 1px solid var(--border-2); border-radius: 5px; background: var(--surface-2); font-family: inherit; margin-right: 3px; }
+@media (max-width: 720px) {
+  .term-ws-rail { min-width: 52px; padding: 12px 6px; }
+  .term-ws-rail button span, .term-ws-pulse span { display: none; }
+  .term-ws-work { padding: 0 12px; }
+  .term-ws-keys { display: none; }
+}
 
 /* --- Панель --- */
 .panel { border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); overflow: hidden; }
