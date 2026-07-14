@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo, type ReactNode, type FormEvent, t
 import { createPortal } from 'react-dom';
 import {
   Sparkles, X, CornerDownLeft, LayoutDashboard, LineChart, Wallet, ShieldCheck, ListChecks,
-  Users, Calendar, GraduationCap, Search as SearchIcon,
+  Users, Calendar, GraduationCap, RotateCw,
 } from 'lucide-react';
 import { useApp } from './ui';
 import { Md } from './md';
@@ -480,38 +480,49 @@ export function execRegistry(line: string, ctx: EngineCtx): TermRes | null {
   return cmd.run(words.slice(1), ctx);
 }
 
-/* Подсказки: команды, чьё имя/алиас начинается с ввода. Пустой ввод —
-   ничего (легенда доменов и так на экране). */
-export function suggest(input: string): TermCommand[] {
+/* --- Поиск команд для меню (.cmenu) — общий для обоих режимов ----------- */
+
+/* Группирует команды по доменам (для меню с пустым запросом). */
+function paletteByDomain(): { domain: TermDomain; commands: TermCommand[] }[] {
+  const byDomain: Record<string, TermCommand[]> = {};
+  TERM_COMMANDS.forEach((c) => { (byDomain[c.domain] ||= []).push(c); });
+  return Object.entries(byDomain).map(([domain, commands]) => ({
+    domain: domain as TermDomain,
+    commands: [...commands].sort((a, b) => a.id.localeCompare(b.id)),
+  }));
+}
+
+/* Ранг совпадения: точное имя/алиас → префикс имени → префикс алиаса →
+   вхождение в имя → вхождение в описание. -1 — не совпало. */
+function cmdScore(c: TermCommand, q: string): number {
+  if (c.id === q || c.aliases.includes(q)) return 0;
+  if (c.id.startsWith(q)) return 1;
+  if (c.aliases.some((a) => a.startsWith(q))) return 2;
+  if (c.id.includes(q)) return 3;
+  if (c.desc.toLowerCase().includes(q)) return 4;
+  return -1;
+}
+
+export interface CmdSearch {
+  /* domain === null — плоский режим поиска: без секций, лучшие сверху */
+  groups: { domain: TermDomain | null; commands: TermCommand[] }[];
+  flat: TermCommand[];
+}
+
+/* Пустой запрос — все команды по доменам; непустой — плоский список,
+   отсортированный по качеству совпадения (id, алиасы, описание). */
+export function searchCommands(input: string): CmdSearch {
   const q = input.trim().toLowerCase();
-  if (!q) return [];
-  return TERM_COMMANDS
-    .filter((c) => c.id.startsWith(q) || c.aliases.some((a) => a.startsWith(q)))
-    .slice(0, 6);
-}
-
-/* Палитра всех команд: показывается при вводе `/` в начале пустой строки.
-   Группирует по доменам, сортирует команды внутри домена. */
-export function palette(): TermCommand[] {
-  return [...TERM_COMMANDS].sort((a, b) => {
-    // Сортируем: сначала по домену, потом по id
-    const d = a.domain.localeCompare(b.domain);
-    return d !== 0 ? d : a.id.localeCompare(b.id);
-  });
-}
-
-/* Группирует команды по доменам для отображения палитры */
-export function paletteByDomain(): { domain: TermDomain; commands: TermCommand[] }[] {
-  const groups: Record<string, TermCommand[]> = {};
-  TERM_COMMANDS.forEach((c) => {
-    if (!groups[c.domain]) groups[c.domain] = [];
-    groups[c.domain].push(c);
-  });
-  return Object.entries(groups)
-    .map(([domain, commands]) => ({
-      domain: domain as TermDomain,
-      commands: commands.sort((a, b) => a.id.localeCompare(b.id)),
-    }));
+  if (!q) {
+    const groups = paletteByDomain();
+    return { groups, flat: groups.flatMap((g) => g.commands) };
+  }
+  const flat = TERM_COMMANDS
+    .map((c) => ({ c, s: cmdScore(c, q) }))
+    .filter((x) => x.s >= 0)
+    .sort((a, b) => a.s - b.s)
+    .map((x) => x.c);
+  return { groups: [{ domain: null, commands: flat }], flat };
 }
 
 /* --- Рендер структурированного результата -------------------------------- */
@@ -543,139 +554,94 @@ export function TermResBlock({ r }: { r: TermRes }) {
 }
 
 /* ============================================================
-   Полноэкранная среда терминала. Поверх сайта (обычный UI остаётся),
-   Esc или ✕ возвращают назад. Слева — домены функционала, снизу —
-   строка с живыми подсказками, посередине — лента результатов.
+   Меню команд (.cmenu) — встроенный выпадающий список под/над
+   строкой ввода. ОДНА реализация на оба режима терминала:
+   модальных палитр больше нет, ввод остаётся в основной строке,
+   меню лишь фильтруется по ней. Управление — с клавиатуры
+   родителя (↑↓ / Tab / Enter / Esc), мышь дублирует.
    ============================================================ */
 
-const DOMAIN_META: { id: TermDomain; icon: typeof Sparkles; cmd: string }[] = [
-  { id: 'Обзор', icon: LayoutDashboard, cmd: 'обзор' },
-  { id: 'Аналитика', icon: LineChart, cmd: 'аналитика' },
-  { id: 'Финансы', icon: Wallet, cmd: 'финансы' },
-  { id: 'Безопасность', icon: ShieldCheck, cmd: 'безопасность' },
-  { id: 'Задачи', icon: ListChecks, cmd: 'задачи' },
-  { id: 'Кампус', icon: GraduationCap, cmd: 'расписание' },
-  { id: 'Люди', icon: Users, cmd: 'сотрудники' },
-  { id: 'Расписание', icon: Calendar, cmd: 'расписание' },
+const DOMAIN_ICON: Record<TermDomain, typeof Sparkles> = {
+  'Обзор': LayoutDashboard, 'Аналитика': LineChart, 'Финансы': Wallet,
+  'Безопасность': ShieldCheck, 'Задачи': ListChecks, 'Кампус': GraduationCap,
+  'Люди': Users, 'Расписание': Calendar,
+};
+
+const DOMAIN_META: { id: TermDomain; cmd: string }[] = [
+  { id: 'Обзор', cmd: 'обзор' },
+  { id: 'Аналитика', cmd: 'аналитика' },
+  { id: 'Финансы', cmd: 'финансы' },
+  { id: 'Безопасность', cmd: 'безопасность' },
+  { id: 'Задачи', cmd: 'задачи' },
+  { id: 'Кампус', cmd: 'расписание' },
+  { id: 'Люди', cmd: 'сотрудники' },
+  { id: 'Расписание', cmd: 'расписание' },
 ];
 
-/* Палитра терминала — всплывающее окно со всеми командами, сгруппированными по доменам.
-   Использует те же стили, что и омнибокс (cmd-item, cmd-section). */
-function TermPalette({ onSelect, onClose }: { onSelect: (cmd: string) => void; onClose: () => void }) {
-  const [q, setQ] = useState('');
-  const [sel, setSel] = useState(0);
-  const groups = useMemo(() => paletteByDomain(), []);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  // Фильтруем команды по вводу (поиск внутри палитры)
-  const filtered = useMemo(() => {
-    if (!q.trim()) return groups;
-    return groups.map((g) => ({
-      ...g,
-      commands: g.commands.filter((c) =>
-        c.id.toLowerCase().includes(q.toLowerCase()) || c.desc.toLowerCase().includes(q.toLowerCase())
-      ),
-    })).filter((g) => g.commands.length > 0);
-  }, [q, groups]);
-
-  // Сбрасываем выбор при изменении запроса
-  useEffect(() => { setSel(0); }, [q]);
-
-  // Натуральная навигация по подсказкам
-  const flat = useMemo(() => filtered.flatMap((g) => g.commands), [filtered]);
-
-  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Escape') { e.preventDefault(); onClose(); return; }
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setSel((s) => Math.min(s + 1, flat.length - 1));
-      return;
-    }
-    if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setSel((s) => Math.max(s - 1, 0));
-      return;
-    }
-    if (e.key === 'Enter' && flat[sel]) {
-      e.preventDefault();
-      const cmd = flat[sel];
-      if (cmd.arg) {
-        onSelect(cmd.id + ' ');
-      } else {
-        onSelect(cmd.id);
-      }
-      onClose();
-    }
-  };
-
-  // Фокус на ввод при открытии
-  useEffect(() => { inputRef.current?.focus(); }, []);
-
-  return createPortal(
-    <div className="term-palette-overlay" onClick={onClose}>
-      <div className="term-palette" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Палитра команд терминала">
-        <input
-          ref={inputRef}
-          className="term-palette-input"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          onKeyDown={onKeyDown}
-          placeholder="Поиск команды — ↑↓ для навигации, Enter для выбора"
-        />
-        <div className="term-palette-list">
-          {filtered.map((g) => {
-            // Иконка для секции домена
-            const domainIcons: Record<string, React.ReactNode> = {
-              'Обзор': <LayoutDashboard size={14} />,
-              'Аналитика': <LineChart size={14} />,
-              'Финансы': <Wallet size={14} />,
-              'Безопасность': <ShieldCheck size={14} />,
-              'Задачи': <ListChecks size={14} />,
-              'Кампус': <GraduationCap size={14} />,
-              'Люди': <Users size={14} />,
-              'Расписание': <Calendar size={14} />,
-            };
-            return (
-              <div key={g.domain}>
-                <div className="term-palette-section">{domainIcons[g.domain] || null}<span>{g.domain}</span></div>
-                {g.commands.map((c) => {
-                  const idx = flat.indexOf(c);
-                  return (
-                    <button
-                      key={c.id}
-                      className={`term-palette-item ${idx === sel ? 'sel' : ''} ${c.mutates ? 'mutate' : ''}`}
-                      onMouseEnter={() => setSel(idx)}
-                      onClick={() => {
-                        if (c.arg) {
-                          onSelect(c.id + ' ');
-                        } else {
-                          onSelect(c.id);
-                        }
-                        onClose();
-                      }}
-                    >
-                      {c.mutates && <span className="term-mutate-dot" title="Изменяет данные" />}
-                      <code>{c.id}{c.arg ? ' ' + c.arg : ''}</code>
-                      <span>{c.desc}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            );
-          })}
-          {flat.length === 0 && <div className="term-palette-empty">Команда не найдена.</div>}
-        </div>
-        <div className="term-palette-keys">
-          <span><kbd>Enter</kbd> выбрать</span>
-          <span><kbd>Esc</kbd> отмена</span>
-        </div>
+export function CmdMenu({ search, sel, onHover, onPick, up }: {
+  search: CmdSearch;
+  sel: number;
+  onHover: (i: number) => void;
+  onPick: (c: TermCommand) => void;
+  /* true — меню раскрывается вверх (компактный блок на «Главном») */
+  up?: boolean;
+}) {
+  return (
+    <div className={'cmenu' + (up ? ' up' : '')} role="listbox" aria-label="Команды терминала">
+      <div className="cmenu-list">
+        {search.groups.map((g, gi) => {
+          const Icon = g.domain ? DOMAIN_ICON[g.domain] : null;
+          return (
+            <div key={g.domain ?? 'найдено-' + gi}>
+              {g.domain && <div className="cmenu-sec">{Icon && <Icon size={13} />}<span>{g.domain}</span></div>}
+              {g.commands.map((c) => {
+                const idx = search.flat.indexOf(c);
+                return (
+                  <button
+                    type="button"
+                    key={c.id}
+                    role="option"
+                    aria-selected={idx === sel}
+                    /* выбранный пункт всегда в видимой области списка */
+                    ref={idx === sel ? (el) => el?.scrollIntoView({ block: 'nearest' }) : undefined}
+                    className={'cmenu-item' + (idx === sel ? ' sel' : '') + (c.mutates ? ' mutate' : '')}
+                    onMouseEnter={() => onHover(idx)}
+                    /* mousedown + preventDefault: фокус не уходит из строки ввода */
+                    onMouseDown={(e) => { e.preventDefault(); onPick(c); }}
+                  >
+                    <code>{c.id}{c.arg ? ' ' + c.arg : ''}</code>
+                    <span className="d">{c.desc}</span>
+                    {!g.domain && <span className="dom">{c.domain}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })}
+        {search.flat.length === 0 && <div className="cmenu-empty">Ничего не нашлось — Enter отправит строку как есть.</div>}
       </div>
-    </div>,
-    document.body,
+      <div className="cmenu-keys">
+        <span><kbd>↑</kbd><kbd>↓</kbd> выбор</span>
+        <span><kbd>Tab</kbd> подставить</span>
+        <span><kbd>Enter</kbd> выполнить</span>
+        <span><kbd>Esc</kbd> закрыть</span>
+      </div>
+    </div>
   );
 }
 
-interface WsMsg { who: 'u' | 'n'; text?: string; res?: TermRes; meta?: string; pending?: boolean }
+/* ============================================================
+   Полноэкранная среда терминала v2 — «командный центр».
+   Модель Raycast: командная строка СВЕРХУ, под ней доменные чипы
+   и лента результатов блоками — свежий блок появляется прямо под
+   строкой, скроллить к ответу не нужно. Меню команд — встроенное
+   (.cmenu), открывается по `/` и фильтруется тем же вводом.
+   Esc: сначала закрывает меню, потом среду. Поверх сайта, портал
+   в body (у карточек есть backdrop-filter — fixed внутри них
+   ведёт себя как absolute).
+   ============================================================ */
+
+interface WsBlock { id: number; cmd: string; res?: TermRes; meta?: string; pending?: boolean }
 
 export function TerminalWorkspace({ ctx, remote, onClose }: {
   ctx: EngineCtx;
@@ -684,64 +650,86 @@ export function TerminalWorkspace({ ctx, remote, onClose }: {
   onClose: () => void;
 }) {
   const { user } = useApp();
-  const [log, setLog] = useState<WsMsg[]>([]);
+  const [blocks, setBlocks] = useState<WsBlock[]>([]);
   const [q, setQ] = useState('');
   const [sel, setSel] = useState(0);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [hist, setHist] = useState<string[]>([]);
   const [hIdx, setHIdx] = useState<number | null>(null);
   const [domain, setDomain] = useState<TermDomain>('Обзор');
-  const bodyRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const seq = useRef(0);
 
-  const sugs = suggest(q);
+  const search = useMemo(() => searchCommands(q), [q]);
+  /* Пустой ввод — меню только по явному `/`; при наборе — живой список
+     совпадений (среда командная, свободного чата тут нет). */
+  const menuVisible = q.trim() ? search.flat.length > 0 : menuOpen;
 
   const runLine = async (line: string) => {
     const cmd = line.trim();
     if (!cmd) return;
-    setQ(''); setSel(0); setHIdx(null);
+    setQ(''); setSel(0); setHIdx(null); setMenuOpen(false);
     setHist((h) => (h[h.length - 1] === cmd ? h : [...h, cmd].slice(-40)));
-    if (cmd.toLowerCase() === 'очистить' || cmd.toLowerCase() === 'clear') { setLog([]); return; }
+    if (/^(очистить|clear)$/i.test(cmd)) { setBlocks([]); return; }
 
     const found = TERM_COMMANDS.find((c) => c.aliases.includes(cmd.split(/\s+/)[0].toLowerCase()));
     if (found) setDomain(found.domain);
 
+    const id = ++seq.current;
     const t0 = performance.now();
-    const stamp = () => {
-      const ms = Math.max(1, Math.round(performance.now() - t0));
-      return `${new Date().toLocaleTimeString('ru')} · ${ms} мс${remote ? ' · сервер' : ''}`;
-    };
+    const stamp = (src?: string) =>
+      `${new Date().toLocaleTimeString('ru')} · ${Math.max(1, Math.round(performance.now() - t0))} мс${src ? ' · ' + src : ''}`;
+
+    /* свежий блок — В НАЧАЛО ленты, прямо под строкой команд */
+    setBlocks((b) => [{ id, cmd, pending: true }, ...b].slice(0, 60));
+    const finish = (res: TermRes, meta: string) =>
+      setBlocks((b) => b.map((x) => (x.id === id ? { ...x, pending: false, res, meta } : x)));
 
     /* Бэкенд-режим: известные серверу команды идут на nexd — данные
        настоящие; при ошибке честно показываем её и падаем на демо. */
     if (remote && TERMINAL_BACKEND_TOKENS.has(cmd.split(/\s+/)[0].toLowerCase())) {
-      setLog((l) => [...l, { who: 'u', text: cmd }, { who: 'n', pending: true }]);
       try {
-        const res = await remote(cmd);
-        setLog((l) => [...l.slice(0, -1), { who: 'n', res, meta: stamp() }]);
+        finish(await remote(cmd), stamp('сервер'));
       } catch {
         const res = execRegistry(cmd, ctx);
-        setLog((l) => [...l.slice(0, -1), res
-          ? { who: 'n', res, meta: stamp() + ' · демо (сервер недоступен)' }
-          : { who: 'n', res: { kind: 'text', text: 'Сервер недоступен, а в демо такой команды нет.' } }]);
+        finish(
+          res ?? { kind: 'text', text: 'Сервер недоступен, а в демо такой команды нет.' },
+          stamp(res ? 'демо · сервер недоступен' : undefined),
+        );
       }
       return;
     }
 
     const res = execRegistry(cmd, ctx);
-    setLog((l) => [...l, { who: 'u', text: cmd },
-      res ? { who: 'n', res, meta: stamp() } : {
-        who: 'n',
-        res: { kind: 'text', text: 'Не понял команду — попробуйте подсказки под строкой или кликните домен слева.', hint: TERM_COMMANDS.slice(0, 5).map((c) => c.id).join(' · ') },
-      }]);
+    finish(res ?? {
+      kind: 'text',
+      text: 'Не понял команду. Нажмите `/` — откроются все команды, или кликните домен сверху.',
+      hint: TERM_COMMANDS.slice(0, 5).map((c) => c.id).join(' · '),
+    }, stamp());
   };
 
-  /* Esc — выход; автозапуск обзора при первом входе. */
+  /* Выбор из меню: без аргумента — исполняем сразу, с аргументом —
+     подставляем «команда␣» и оставляем курсор в строке. */
+  const pick = (c: TermCommand) => {
+    setMenuOpen(false); setSel(0);
+    if (c.arg) { setQ(c.id + ' '); inputRef.current?.focus(); }
+    else runLine(c.id);
+  };
+
+  /* Esc глобально: открытое меню закрывается первым, потом — среда. */
+  const menuRef = useRef(false);
+  menuRef.current = menuVisible;
   useEffect(() => {
-    const onKey = (e: globalThis.KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (menuRef.current) { setMenuOpen(false); setQ(''); setSel(0); }
+      else onClose();
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
-  /* защёлка от двойного вызова эффекта в StrictMode (dev) */
+
+  /* автозапуск обзора при первом входе (защёлка от StrictMode) */
   const booted = useRef(false);
   useEffect(() => {
     if (booted.current) return;
@@ -749,27 +737,17 @@ export function TerminalWorkspace({ ctx, remote, onClose }: {
     runLine('обзор'); inputRef.current?.focus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  useEffect(() => { const el = bodyRef.current; if (el) el.scrollTop = el.scrollHeight; }, [log]);
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    // `/` в начале пустой строке — палитра всех команд
-    if (e.key === '/' && !q && !sugs.length) {
-      e.preventDefault();
-      setPaletteOpen(true);
-      return;
-    }
-
-    if (sugs.length) {
-      if (e.key === 'ArrowDown') { e.preventDefault(); setSel((s) => Math.min(s + 1, sugs.length - 1)); return; }
+    if (e.key === '/' && !q) { e.preventDefault(); setMenuOpen(true); setSel(0); return; }
+    if (menuVisible) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setSel((s) => Math.min(s + 1, search.flat.length - 1)); return; }
       if (e.key === 'ArrowUp') { e.preventDefault(); setSel((s) => Math.max(s - 1, 0)); return; }
-      if (e.key === 'Tab') { e.preventDefault(); setQ(sugs[sel].id + (sugs[sel].arg ? ' ' : '')); return; }
-      if (e.key === 'Enter' && sugs[sel] && !q.trim().includes(' ') && !sugs[sel].arg) {
-        /* Enter по подсказке без аргументов — запускаем её сразу */
-        e.preventDefault(); runLine(sugs[sel].id); return;
-      }
+      if (e.key === 'Tab') { e.preventDefault(); const c = search.flat[sel]; if (c) setQ(c.id + (c.arg ? ' ' : '')); return; }
+      if (e.key === 'Enter') { e.preventDefault(); const c = search.flat[sel]; if (c) pick(c); else runLine(q); return; }
       return;
     }
-    /* без подсказок стрелки листают историю команд, как в консоли */
+    /* меню закрыто: стрелки листают историю команд, как в консоли */
     if (e.key === 'ArrowUp') {
       if (!hist.length) return;
       e.preventDefault();
@@ -783,91 +761,85 @@ export function TerminalWorkspace({ ctx, remote, onClose }: {
     }
   };
 
-  const submit = (e: FormEvent) => { e.preventDefault(); runLine(q); };
-  const domainCmds = TERM_COMMANDS.filter((c) => c.domain === domain);
+  const degraded = services.some((s) => s.status !== 'ok');
 
-  /* Портал в body: у карточек сайта есть backdrop-filter, а такой предок
-     превращает position:fixed в «absolute относительно себя» — среда
-     должна жить поверх всего документа, вне стеклянных контейнеров. */
   return createPortal(
-    <div className="term-ws" role="dialog" aria-label="Терминал NEX">
-      <div className="term-ws-head">
+    <div className="tws" role="dialog" aria-label="Терминал NEX">
+      <div className="tws-head">
         <span className="ai-orb sm"><Sparkles size={12} /></span>
         <b>NEX Терминал</b>
         <span className="alpha-badge">альфа</span>
-        <span className="term-ws-user">{user?.name || ctx.userName} · {ctx.userRole}</span>
+        <span className="tws-pulse"><i className={degraded ? 'warn' : ''} />{degraded ? 'есть деградация' : 'система в норме'}</span>
+        <span className="tws-user">{user?.name || ctx.userName} · {ctx.userRole}</span>
         <button className="icon-btn" title="Выйти из терминала (Esc)" onClick={onClose}><X size={17} /></button>
       </div>
 
-      <div className="term-ws-main">
-        <div className="term-ws-rail">
-          {DOMAIN_META.map((d) => { const Icon = d.icon; return (
-            <button key={d.id} className={domain === d.id ? 'on' : ''} onClick={() => { setDomain(d.id); runLine(d.cmd); }}>
-              <Icon size={15} /><span>{d.id}</span>
-            </button>
-          ); })}
-          {/* Кнопка всех команд */}
-          <button type="button" className="icon-btn" title="Все команды" onClick={() => setPaletteOpen(true)} style={{ marginTop: 'auto' }}>
-            <SearchIcon size={16} />
-          </button>
-          {/* живой пульс системы — снизу рейла, как строка статуса */}
-          <div className="term-ws-pulse">
-            <i className={services.some((s) => s.status !== 'ok') ? 'warn' : ''} />
-            <span>{services.some((s) => s.status !== 'ok') ? 'есть деградация' : 'система в норме'}</span>
+      <div className="tws-col">
+        <form className="tws-bar" onSubmit={(e) => { e.preventDefault(); runLine(q); }}>
+          <div className="tws-bar-line">
+            <span className="term-prompt">›</span>
+            <input
+              ref={inputRef} value={q}
+              onChange={(e) => { setQ(e.target.value); setSel(0); setHIdx(null); }}
+              onKeyDown={onKeyDown}
+              placeholder="Команда: финансы, риск, долги, сессии… — или нажмите /"
+            />
+            <button type="button" className="tws-slash" title="Все команды (/)"
+              onMouseDown={(e) => { e.preventDefault(); setMenuOpen((v) => !v); setSel(0); inputRef.current?.focus(); }}>/</button>
+            <button className="console-send" type="submit" aria-label="Выполнить"><CornerDownLeft size={15} /></button>
           </div>
+          {menuVisible && <CmdMenu search={search} sel={sel} onHover={setSel} onPick={pick} />}
+        </form>
+
+        <div className="tws-domains">
+          {DOMAIN_META.map((d) => {
+            const Icon = DOMAIN_ICON[d.id];
+            return (
+              /* mousedown + preventDefault: фокус остаётся в строке команд —
+                 `/` и история работают сразу после клика по чипу */
+              <button key={d.id} type="button" className={domain === d.id ? 'on' : ''}
+                onMouseDown={(e) => { e.preventDefault(); runLine(d.cmd); }}>
+                <Icon size={14} /><span>{d.id}</span>
+              </button>
+            );
+          })}
         </div>
 
-        <div className="term-ws-work">
-          <div className="term-ws-body" ref={bodyRef}>
-            {log.map((m, i) => m.who === 'u' ? (
-              <div className="term-u" key={i}><span className="term-prompt">›</span><b className="term-cmd">{m.text}</b></div>
-            ) : (
-              <div className="term-n" key={i}>
-                {m.pending
-                  ? <span className="term-busy"><span className="term-cursor" />выполняю…</span>
-                  : m.res && <TermResBlock r={m.res} />}
-                {m.meta && !m.pending && <div className="term-meta">{m.meta}</div>}
-              </div>
-            ))}
-          </div>
-
-          {/* команды активного домена — всегда на виду, кликабельны */}
-          <div className="term-ws-cmds">
-            {domainCmds.map((c) => (
-              <button key={c.id} onClick={() => (c.arg ? (setQ(c.id + ' '), inputRef.current?.focus()) : runLine(c.id))}>
-                <code>{c.id}{c.arg ? ' ' + c.arg : ''}</code><span>{c.desc}</span>
-              </button>
-            ))}
-          </div>
-
-          <form className="term-ws-input" onSubmit={submit}>
-            {sugs.length > 0 && (
-              <div className="term-sug">
-                {sugs.map((s, i) => (
-                  <button type="button" key={s.id} className={i === sel ? 'sel' : ''}
-                    onMouseEnter={() => setSel(i)}
-                    onClick={() => (s.arg ? (setQ(s.id + ' '), inputRef.current?.focus()) : runLine(s.id))}>
-                    <code>{s.id}{s.arg ? ' ' + s.arg : ''}</code><span>{s.desc}</span>
+        <div className="tws-feed">
+          {blocks.map((b) => (
+            <section className="tws-block" key={b.id}>
+              <div className="tws-block-h">
+                <span className="term-prompt">›</span>
+                <code>{b.cmd}</code>
+                {!b.pending && b.meta && <span className="meta">{b.meta}</span>}
+                {!b.pending && (
+                  <button type="button" className="tws-rerun" title="Выполнить ещё раз"
+                    onMouseDown={(e) => { e.preventDefault(); runLine(b.cmd); }}>
+                    <RotateCw size={13} />
                   </button>
-                ))}
+                )}
               </div>
-            )}
-            <span className="term-prompt">›</span>
-            <input ref={inputRef} value={q} onChange={(e) => { setQ(e.target.value); setSel(0); setHIdx(null); }} onKeyDown={onKeyDown}
-              placeholder="Команда или слово: финансы, риск, долги, сессии…" />
-            <button className="console-send" type="submit" aria-label="Выполнить"><CornerDownLeft size={15} /></button>
-          </form>
-          <div className="term-ws-keys">
-            <span><kbd>Tab</kbd> дополнить</span>
-            <span><kbd>↑</kbd><kbd>↓</kbd> история и выбор</span>
-            <span><kbd>Enter</kbd> выполнить</span>
-            <span><kbd>Esc</kbd> выйти</span>
-            <span><kbd>/</kbd> все команды</span>
-          </div>
+              <div className="tws-block-b">
+                {b.pending
+                  ? <span className="term-busy"><span className="term-cursor" />выполняю…</span>
+                  : b.res && <TermResBlock r={b.res} />}
+              </div>
+            </section>
+          ))}
+          {blocks.length === 0 && (
+            <div className="tws-empty">Нажмите <kbd>/</kbd> — все команды, или начните печатать.</div>
+          )}
+        </div>
+
+        <div className="tws-foot">
+          <span><kbd>/</kbd> все команды</span>
+          <span><kbd>Tab</kbd> дополнить</span>
+          <span><kbd>↑</kbd><kbd>↓</kbd> история и выбор</span>
+          <span><kbd>Enter</kbd> выполнить</span>
+          <span><kbd>Esc</kbd> выйти</span>
         </div>
       </div>
     </div>,
     document.body,
   );
-  {paletteOpen && <TermPalette onSelect={(cmd) => { setQ(cmd); inputRef.current?.focus(); }} onClose={() => setPaletteOpen(false)} />}
 }

@@ -124,12 +124,12 @@ type EntryRow struct {
 // собирает composition root. Любое nil-поле честно отключает команду.
 type Deps struct {
 	Tasks    func(ctx context.Context, status string, limit int) ([]TaskRow, error)
-	AddTask  func(ctx context.Context, title string) error            // через шину
-	DoneTask func(ctx context.Context, id string) error               // через шину
-	Users    func(ctx context.Context, limit int) ([]UserRow, error)  //
+	AddTask  func(ctx context.Context, title string) error                   // через шину
+	DoneTask func(ctx context.Context, id string) error                      // через шину
+	Users    func(ctx context.Context, limit int) ([]UserRow, error)         //
 	Notify   func(ctx context.Context, userIDs []string, title string) error // через шину
-	Audit    func(ctx context.Context, limit int) ([]AuditRow, error) //
-	Unread   func(ctx context.Context, userID string) (int64, error)  //
+	Audit    func(ctx context.Context, limit int) ([]AuditRow, error)        //
+	Unread   func(ctx context.Context, userID string) (int64, error)         //
 
 	// Аналитика: учебный контингент и журнал (модуль campus).
 	Groups   func(ctx context.Context) ([]GroupRow, error)
@@ -304,8 +304,8 @@ func rubKop(kop int64) string {
 
 func (d Deps) help() Result {
 	return Result{
-		Kind:  "table",
-		Title: "Команды терминала",
+		Kind:    "table",
+		Title:   "Команды терминала",
 		Columns: []string{"Команда", "Что делает"},
 		Rows: [][]string{
 			{"обзор", "сводка системы: задачи, люди, уведомления"},

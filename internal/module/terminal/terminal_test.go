@@ -31,8 +31,8 @@ func deps(t *testing.T) (Deps, *[]string) {
 			}
 			return out, nil
 		},
-		AddTask:  func(_ context.Context, title string) error { return nil },
-		DoneTask: func(_ context.Context, id string) error { return nil },
+		AddTask:  func(_ context.Context, _ string) error { return nil },
+		DoneTask: func(_ context.Context, _ string) error { return nil },
 		Users: func(_ context.Context, _ int) ([]UserRow, error) {
 			return []UserRow{
 				{ID: "u1", Email: "admin@nex.ru", Name: "Админ", Roles: []string{"admin"}},
@@ -43,7 +43,7 @@ func deps(t *testing.T) (Deps, *[]string) {
 			notified = append(notified, ids...)
 			return nil
 		},
-		Audit: func(_ context.Context, limit int) ([]AuditRow, error) {
+		Audit: func(_ context.Context, _ int) ([]AuditRow, error) {
 			return []AuditRow{{Command: "tasks.create", Outcome: "ok", ActorID: "u1", OccurredAt: time.Now()}}, nil
 		},
 		Unread: func(_ context.Context, _ string) (int64, error) { return 3, nil },
