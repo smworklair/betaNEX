@@ -718,53 +718,55 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .inline-veil { position: fixed; inset: 0; z-index: 500; background: transparent; }
 /* Нейтральная подпись состояния («ИИ» у плана в агентах и т.п.) */
 .inline-badge { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-2); background: var(--surface-2); padding: 2px 7px; border-radius: 999px; }
-/* Запрос → ответ, а не переписка и не командная строка. Вопрос — как
-   отправленный поисковый запрос: аккуратная нейтральная плашка. Ответ —
-   читаемый текст с комфортной шириной строки (чтобы не «уезжал» криво
-   на всю ширину карточки). */
-.inline-msg.u { align-self: flex-start; max-width: 100%; display: inline-flex; align-items: center; gap: 8px;
-  padding: 7px 13px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border);
-  color: var(--text); font-size: 13px; font-weight: 600; line-height: 1.4; }
-.inline-msg.u .qi { color: var(--ai); flex-shrink: 0; }
-.inline-msg.n .nb { font-size: 13.5px; line-height: 1.62; color: var(--text); max-width: 640px; }
+/* Обычные чатовые реплики — но в приглушённом цветокоре: свой вопрос —
+   акцентный пузырь справа, ответ NEX — нейтральный пузырь surface-2
+   слева с маленькой иконкой. Ничего не «горит» кроме пузыря вопроса. */
+.inline-msg.u { align-self: flex-end; background: var(--accent); color: var(--accent-fg); padding: 8px 12px; border-radius: 14px 14px 4px 14px; max-width: 85%; font-size: 13px; line-height: 1.5; }
+.inline-msg.n { display: flex; gap: 8px; align-items: flex-start; }
+.inline-msg.n .ic { width: 22px; height: 22px; border-radius: 7px; background: var(--ai-weak); color: var(--ai); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.inline-msg.n .nb { flex: 1; min-width: 0; font-size: 13px; line-height: 1.55; background: var(--surface-2); padding: 9px 12px; border-radius: 4px 14px 14px 14px; }
 .inline-nav { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
 .inline-nav .chip-btn { font-size: 12px; padding: 5px 10px; }
 .inline-nav .chip-btn .ic { color: inherit; }
 .inline-act { margin-top: 9px; }
 .inline-quick { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 13px 10px; }
 .chip-btn.sm { font-size: 12px; padding: 5px 11px; }
-/* Поле — как строка запроса/поиска (скруглённое, приглашающее), а не
-   голый ввод терминала. */
-.inline-foot { display: flex; gap: 8px; align-items: center; padding: 10px 0 2px; border-top: 1px solid var(--border); }
-.inline-foot input { flex: 1; height: 38px; border: 1px solid var(--border-2); border-radius: 999px; padding: 0 15px; background: var(--surface); color: var(--text); outline: none; font-size: 13px; }
+.inline-foot { display: flex; gap: 8px; align-items: center; padding: 10px 0 0; border-top: 1px solid var(--border); }
+.inline-foot input { flex: 1; height: 36px; border: 1px solid var(--border-2); border-radius: 999px; padding: 0 14px; background: var(--surface); color: var(--text); outline: none; font-size: 13px; }
 .inline-foot input:focus { border-color: var(--ai); box-shadow: 0 0 0 3px var(--ai-weak); }
 .ask-send.sm { width: 34px; height: 34px; border-radius: 9px; }
 
 /* ============================================================
-   In-page inline panel: opens in the page flow, under the clicked
-   block, and pushes the rest of the content down.
+   Мини-чат (M): логика всплывания «чат = сам блок».
+   Панель НЕ вставляется в поток карточки (это раздувало её и весь ряд
+   сетки — соседние карточки тянулись по высоте «пустыми»), а накрывает
+   карточку-хост поверх: тот же стеклянный материал, что у .card, и те
+   же скругления (border-radius: inherit) — открылся чат, а блок и
+   страница вокруг не сдвинулись ни на пиксель. Если разговор длиннее
+   блока, панель растёт вниз поверх контента, оставаясь частью блока.
    ============================================================ */
-/* «Разбор» — не окно чата, а раскрывшаяся секция-аннотация той карточки,
-   из которой позвали NEX: без своей рамки, фона и тени, отделяется
-   только тонкой линией и заголовком-подписью, как приложение к тексту. */
-.nex-inline { display: flex; flex-direction: column; max-height: 440px; overflow: hidden;
-  margin: 13px 0 2px; border-top: 1px solid var(--border);
-  animation: inlineGrow .2s cubic-bezier(.2,0,0,1); }
+.inline-host { position: relative; }
+.nex-inline { position: absolute; top: -1px; left: -1px; right: -1px; z-index: 40;
+  display: flex; flex-direction: column; min-height: calc(100% + 2px); max-height: 480px;
+  padding: 12px 14px; border: 1px solid var(--border-2); border-radius: inherit; overflow: hidden;
+  /* непрозрачный «материал карточки»: слой surface поверх слоя bg —
+     контент блока под панелью не просвечивает и не создаёт шум */
+  background: linear-gradient(var(--surface), var(--surface)), var(--bg);
+  box-shadow: var(--gloss), var(--shadow-md); animation: inlineGrow .18s cubic-bezier(.2,0,0,1); }
 @keyframes inlineGrow { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
-.nex-inline-head { display: flex; align-items: center; gap: 7px; padding: 10px 0 4px; }
-.nex-inline-head .cap-spark { color: var(--ai); flex-shrink: 0; }
-.nex-inline-cap { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); margin-right: auto; }
+.nex-inline-head { display: flex; align-items: center; gap: 8px; padding: 0 0 9px; border-bottom: 1px solid var(--border); }
+.nex-inline-head b { font-size: 13.5px; margin-right: auto; }
 .nex-inline-head .icon-btn { width: 26px; height: 26px; }
-.nex-inline-body { flex: 1; overflow-y: auto; padding: 6px 0 12px; display: flex; flex-direction: column; gap: 10px; }
+.nex-inline-body { flex: 1; overflow-y: auto; padding: 11px 1px; display: flex; flex-direction: column; gap: 10px; }
 .nex-inline-quick { display: flex; flex-wrap: wrap; gap: 7px; padding: 0 0 10px; }
 .nex-inline-quick .chip-btn .ic { color: var(--ai); }
 
-/* Иконка ИИ в заголовке карточки AiBox — контейнерный бейдж (как у
+/* Иконка ИИ в шапках встроенных панелей — контейнерный бейдж (как у
    fin-copilot-orb), а не голая цветная иконка вплотную к тексту. */
 .ai-orb { display: flex; align-items: center; justify-content: center; flex-shrink: 0;
   width: 26px; height: 26px; border-radius: 9px; background: var(--ai); color: #fff;
   box-shadow: 0 3px 10px color-mix(in srgb, var(--ai) 40%, transparent); }
-.card.ai-box .card-title .ai-orb { width: 22px; height: 22px; border-radius: 7px; box-shadow: none; }
+.ai-orb.sm, .card.ai-box .card-title .ai-orb { width: 22px; height: 22px; border-radius: 7px; box-shadow: none; }
 
 /* Объяснение выделенного — словарная сноска: заглавное «слово» и
    определение, без шапки-чата, бейджей и аватарок. Плавает над
@@ -784,6 +786,7 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
    ============================================================ */
 .soon-badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; background: var(--warn-weak); color: var(--warn); border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent); white-space: nowrap; vertical-align: middle; }
 .beta-badge { display: inline-flex; align-items: center; padding: 1px 7px; border-radius: 999px; font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; background: var(--ai-weak); color: var(--ai); border: 1px solid color-mix(in srgb, var(--ai) 30%, transparent); white-space: nowrap; vertical-align: middle; }
+.alpha-badge { display: inline-flex; align-items: center; padding: 1px 7px; border-radius: 999px; font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; background: var(--warn-weak); color: var(--warn); border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent); white-space: nowrap; vertical-align: middle; cursor: help; }
 .nav-item .beta-badge { margin-left: auto; }
 
 /* ============================================================
@@ -926,10 +929,9 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
    что у .nex-inline/.inline-badge (см. ai.tsx): ответ должен читаться
    как часть страницы, а не как отдельный подсвеченный ИИ-виджет. */
 .ai-box-quick { display: flex; flex-wrap: wrap; gap: 7px; }
-/* AiBox — «умная строка запроса» раздела: обычное скруглённое поле-запрос
-   (как поиск), ответ — читаемый текст под тонкой линией, без заливки
-   блоком-сообщением и без командного вида. */
-.ai-box-answer { margin-top: 12px; padding: 12px 2px 0; border-top: 1px solid var(--border); font-size: 13.5px; line-height: 1.62; color: var(--text); max-width: 660px; }
+/* AiBox — вопрос-ответ в карточке раздела: ответ приходит чатовым
+   пузырём NEX (нейтральный surface-2), тем же, что в мини-чатах. */
+.ai-box-answer { margin-top: 12px; padding: 11px 14px; border-radius: 4px 14px 14px 14px; background: var(--surface-2); font-size: 13.5px; line-height: 1.6; max-width: 660px; }
 
 /* индикатор «печатает» */
 .typing { display: inline-flex; gap: 5px; padding: 6px 2px; }
@@ -1008,9 +1010,6 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .nex-strip-ic { width: 30px; height: 30px; border-radius: 9px; background: var(--ai); color: #fff;
   box-shadow: 0 3px 10px color-mix(in srgb, var(--ai) 40%, transparent); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .nex-strip-main { flex: 1; min-width: 260px; }
-/* инлайн-панель, раскрытая внутри полосы, занимает всю ширину снизу,
-   а не сжимает текст полосы в столбик */
-.nex-strip .nex-inline { flex-basis: 100%; width: 100%; margin: 4px 0 0; }
 .nex-strip-text { font-size: 13.5px; line-height: 1.55; color: var(--text); }
 .nex-strip-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
 
@@ -2082,6 +2081,10 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .term-busy { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 13px; color: var(--text-2); }
 .term-cursor { width: 8px; height: 15px; background: var(--ai); animation: termBlink 1s step-end infinite; }
 @keyframes termBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+/* Структурированный результат команды: заголовок-подпись и подсказка
+   следующего шага (то, что делает консоль экосистемой, а не Q&A). */
+.term-res-title { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); margin-bottom: 7px; }
+.term-hint { margin-top: 9px; font-size: 11.5px; color: var(--text-3); font-family: var(--font-mono); }
 @media (max-width: 620px) { .term-body { max-height: 260px; } }
 
 /* --- Панель --- */
@@ -2242,17 +2245,17 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .fin-live i { width: 6px; height: 6px; border-radius: 999px; background: var(--success); box-shadow: 0 0 0 0 var(--success);
   animation: finPulse 1.8s infinite; }
 @keyframes finPulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--success) 60%, transparent); } 70% { box-shadow: 0 0 0 6px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
-/* Журнал расчётов, не переписка: каждый расчёт — «запрос → ответ числами/
-   графиком», записи разделены тонкими линиями. Запрос — плашка запроса,
-   как в поиске, а не эхо командной строки. */
-.fin-copilot-log { margin: 14px 0 6px; display: flex; flex-direction: column; gap: 14px; max-height: 420px; overflow-y: auto; }
-.fin-co-turn { display: flex; flex-direction: column; gap: 9px; padding-top: 14px; border-top: 1px solid var(--border); }
-.fin-co-turn:first-child { padding-top: 0; border-top: none; }
-.fin-co-q { align-self: flex-start; max-width: 100%; display: inline-flex; align-items: center; gap: 8px;
-  padding: 7px 13px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border);
-  color: var(--text); font-size: 13px; font-weight: 600; line-height: 1.4; }
-.fin-co-q .qi { color: var(--ai); flex-shrink: 0; }
-.fin-co-a .bd { font-size: 13.5px; line-height: 1.62; color: var(--text); max-width: 660px; }
+/* Чатовые реплики в приглушённом цветокоре — тот же язык, что у
+   .inline-msg: вопрос — акцентный пузырь справа, ответ — нейтральный
+   пузырь слева с маленькой иконкой; графики и кнопки внутри пузыря. */
+.fin-copilot-log { margin: 14px 0 6px; display: flex; flex-direction: column; gap: 12px; max-height: 420px; overflow-y: auto; }
+.fin-co-turn { display: flex; flex-direction: column; gap: 8px; }
+.fin-co-q { align-self: flex-end; background: var(--accent); color: var(--accent-fg); font-size: 13px; font-weight: 500;
+  padding: 8px 13px; border-radius: 14px 14px 4px 14px; max-width: 84%; }
+.fin-co-a { display: flex; gap: 9px; align-items: flex-start; max-width: 94%; }
+.fin-co-a .ic { width: 22px; height: 22px; border-radius: 7px; background: var(--ai-weak); color: var(--ai);
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+.fin-co-a .bd { font-size: 13.5px; line-height: 1.55; background: var(--surface-2); padding: 10px 13px; border-radius: 4px 14px 14px 14px; }
 .fin-co-chart { margin-top: 10px; padding: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); }
 .fin-copilot-chips { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
 .fin-co-chip { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border: 1px solid var(--border-2);
