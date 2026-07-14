@@ -2161,24 +2161,23 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 }
 
 /* ============================================================
-   macOS Sequoia Spotlight-style палитра терминала (по /)
-   Максимально приближён к нативному Spotlight: резкий blur, анимация,
-   иконки секций, выделение выбранного.
+   macOS Sequoia Spotlight Palette
+   Clean glass redesign с neon-акцентами и плавными анимациями
    ============================================================ */
 .term-palette-overlay {
   position: fixed; inset: 0;
-  background: radial-gradient(ellipse at center, rgba(20,22,24,.4) 0%, transparent 70%);
-  backdrop-filter: blur(24px);
+  background: rgba(0,0,0,.45);
+  backdrop-filter: blur(30px);
   z-index: 250;
   display: flex;
   justify-content: center;
   align-items: center;
-  animation: spotlightZoom .16s cubic-bezier(.25,.1,.25,1);
-  padding: 0 16px;
+  animation: spotlightFade .18s cubic-bezier(.22,1,.36,1);
+  padding: 0 20px;
 }
-@keyframes spotlightZoom {
-  from { opacity: 0; transform: scale(.8) translateY(40px); filter: brightness(.8); }
-  to { opacity: 1; transform: scale(1) translateY(0); filter: brightness(1); }
+@keyframes spotlightFade {
+  from { opacity: 0; transform: scale(.8) translateY(20px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
 }
 
 .term-palette {
