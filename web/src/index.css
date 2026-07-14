@@ -2098,11 +2098,20 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .term-ws-head b { font-size: 14.5px; }
 .term-ws-user { margin-left: auto; font-size: 12px; color: var(--text-3); }
 .term-ws-main { flex: 1; display: flex; min-height: 0; }
-.term-ws-rail { display: flex; flex-direction: column; gap: 3px; padding: 14px 10px; border-right: 1px solid var(--border); min-width: 168px; }
-.term-ws-rail button { display: flex; align-items: center; gap: 9px; padding: 9px 12px; border: none; border-radius: 10px;
-  background: transparent; color: var(--text-2); font-size: 13px; font-weight: 600; cursor: pointer; text-align: left; transition: .12s; }
-.term-ws-rail button:hover { background: var(--surface-2); color: var(--text); }
-.term-ws-rail button.on { background: var(--ai-weak); color: var(--ai); }
+.term-ws-rail {
+  display: flex; flex-direction: column; gap: 4px; padding: 16px 12px;
+  border-right: 1px solid color-mix(in srgb, var(--ai) 12%, var(--border));
+  min-width: 180px; background: color-mix(in srgb, var(--surface) 40%, transparent);
+  backdrop-filter: blur(20px);
+}
+.term-ws-rail button {
+  display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+  border: none; border-radius: 12px; background: transparent;
+  color: var(--text-2); font-size: 13.5px; font-weight: 500; cursor: pointer;
+  text-align: left; transition: .14s, transform .1s;
+}
+.term-ws-rail button:hover { background: color-mix(in srgb, var(--ai) 10%, transparent); color: var(--text); }
+.term-ws-rail button.on { background: var(--ai-weak); color: var(--ai); font-weight: 600; }
 /* пульс системы внизу рейла: живая точка + вердикт одним словом */
 .term-ws-pulse { margin-top: auto; display: flex; align-items: center; gap: 7px; padding: 9px 12px; font-size: 11px; color: var(--text-3); }
 .term-ws-pulse i { width: 7px; height: 7px; border-radius: 999px; background: var(--success); animation: finPulse 1.8s infinite; flex-shrink: 0; }
@@ -2123,10 +2132,14 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .term-ws-cmds button:hover { border-color: var(--ai); color: var(--text); }
 .term-ws-cmds button code { font-family: var(--font-mono); font-size: 11.5px; color: var(--ai); font-weight: 700; }
 .term-ws-cmds button span { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.term-ws-input { position: relative; display: flex; align-items: center; gap: 10px; padding: 12px 0 16px; }
-.term-ws-input input { flex: 1; height: 44px; border: 1px solid var(--border-2); border-radius: 12px; padding: 0 15px;
-  background: var(--surface); color: var(--text); outline: none; font-size: 14px; font-family: var(--font-mono); }
-.term-ws-input input:focus { border-color: var(--ai); box-shadow: 0 0 0 3px var(--ai-weak); }
+.term-ws-input { position: relative; display: flex; align-items: center; gap: 12px; padding: 16px 0 20px; }
+.term-ws-input input {
+  flex: 1; height: 48px; border: 1px solid color-mix(in srgb, var(--ai) 20%, var(--border-2));
+  border-radius: 14px; padding: 0 18px; background: color-mix(in srgb, var(--surface) 60%, transparent);
+  color: var(--text); outline: none; font-size: 14.5px; font-family: var(--font-mono);
+  backdrop-filter: blur(20px);
+}
+.term-ws-input input:focus { border-color: var(--ai); box-shadow: 0 0 0 4px var(--ai-weak); }
 /* Живые подсказки над строкой: команда + что делает. Фон непрозрачный
    (слой elevated поверх bg) — список не смешивается с контентом под ним. */
 .term-sug { position: absolute; left: 26px; right: 60px; bottom: 100%; margin-bottom: 6px; display: flex; flex-direction: column;
@@ -2147,24 +2160,70 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
   .term-ws-keys { display: none; }
 }
 
-/* --- Палитра команд терминала (по /) --- */
-.term-palette-overlay { position: fixed; inset: 0; background: rgba(10,11,12,.45); backdrop-filter: blur(2px); z-index: 250; display: flex; justify-content: center; align-items: flex-start; padding-top: 12vh; animation: fadeIn .14s ease-out; }
-.term-palette { width: 100%; max-width: 580px; background: var(--elevated); border: 1px solid var(--border-2); border-radius: var(--r-lg); box-shadow: var(--shadow-md); overflow: hidden; display: flex; flex-direction: column; }
-.term-palette-input { width: 100%; height: 44px; border: none; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); font-size: 14px; padding: 0 16px; outline: none; font-family: var(--font-mono); }
+/* --- macOS Sequoia Spotlight-style палитра терминала (по /) --- */
+.term-palette-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.35);
+  backdrop-filter: blur(12px);
+  z-index: 250; display: flex; justify-content: center; align-items: center;
+  animation: spotlightIn .18s cubic-bezier(.2,.7,.2,1);
+}
+@keyframes spotlightIn { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
+
+.term-palette {
+  width: 100%; max-width: 580px;
+  background: color-mix(in srgb, var(--elevated) 85%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ai) 25%, var(--border-2));
+  border-radius: 20px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.4), inset 0 1px rgba(255,255,255,.05);
+  overflow: hidden; display: flex; flex-direction: column;
+}
+.term-palette-input {
+  width: 100%; height: 50px; border: none;
+  background: transparent; color: var(--text);
+  font-size: 15px; padding: 0 20px; outline: none; font-family: var(--font-mono);
+  backdrop-filter: blur(20px);
+}
 .term-palette-input::placeholder { color: var(--text-3); }
-.term-palette-list { max-height: 380px; overflow-y: auto; padding: 6px; }
-.term-palette-section { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); padding: 8px 12px 4px; }
-.term-palette-item { display: flex; align-items: center; gap: 11px; width: 100%; border: none; background: transparent; padding: 9px 12px; border-radius: 9px; cursor: pointer; font-size: 13.5px; color: var(--text-2); text-align: left; }
-.term-palette-item.sel, .term-palette-item:hover { background: var(--surface-2); color: var(--text); }
-.term-palette-item code { font-family: var(--font-mono); font-size: 12.5px; color: var(--ai); font-weight: 700; white-space: nowrap; }
+.term-palette-input:focus { outline: none; }
+
+.term-palette-list { max-height: 420px; overflow-y: auto; padding: 8px; }
+.term-palette-section {
+  font-size: 10px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--text-3); padding: 10px 14px 6px;
+}
+
+.term-palette-item {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; border: none; background: transparent;
+  padding: 11px 14px; border-radius: 12px; cursor: pointer;
+  font-size: 14px; color: var(--text); text-align: left;
+  transition: background .12s, transform .1s;
+}
+.term-palette-item.sel, .term-palette-item:hover {
+  background: color-mix(in srgb, var(--ai) 12%, transparent);
+  transform: translateX(2px);
+}
+.term-palette-item code {
+  font-family: var(--font-mono); font-size: 13px; color: var(--ai);
+  font-weight: 600; white-space: nowrap; min-width: 80px;
+}
 .term-palette-item.mutate code { color: var(--accent); }
-.term-palette-item.mutate { border-left: 2px solid var(--accent); }
-.term-palette-item.mutate:hover code { color: var(--accent); }
-.term-palette-item .term-mutate-dot { width: 6px; height: 6px; border-radius: 999px; background: var(--accent); flex-shrink: 0; margin-right: 4px; }
-.term-palette-item span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
-.term-palette-empty { padding: 20px; text-align: center; color: var(--text-3); font-size: 13px; }
-.term-palette-keys { display: flex; gap: 14px; justify-content: center; padding: 8px 0 10px; font-size: 10.5px; color: var(--text-3); }
-.term-palette-keys kbd { font-size: 10px; padding: 1px 5px; border: 1px solid var(--border-2); border-radius: 5px; background: var(--surface-2); font-family: inherit; margin-right: 3px; }
+.term-palette-item span {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; font-size: 13px; color: var(--text-2);
+}
+.term-palette-item:hover span { color: var(--text); }
+.term-palette-empty { padding: 30px; text-align: center; color: var(--text-3); font-size: 14px; }
+
+.term-palette-keys {
+  display: flex; gap: 16px; justify-content: center;
+  padding: 10px 0 12px; font-size: 11px; color: var(--text-3);
+}
+.term-palette-keys kbd {
+  font-size: 10.5px; padding: 2px 7px;
+  border: 1px solid var(--border-2); border-radius: 7px;
+  background: var(--surface-2); font-family: inherit;
+}
 @media (max-width: 580px) {
   .term-palette { max-width: 96vw; }
   .term-palette-list { max-height: 50vh; }
