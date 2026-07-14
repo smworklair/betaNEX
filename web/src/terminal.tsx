@@ -10,7 +10,7 @@ import {
   students, staff, sessions, auditEvents, failedLogins, services, finance, groups,
 } from './data';
 import { atRisk, attendanceRate, avgGrade, groupAvg, PAGE_TITLES } from './nexbrain';
-import { type TermResult } from './api/terminal';
+import { TERMINAL_BACKEND_TOKENS, type TermResult } from './api/terminal';
 import { type Entity } from './beta/store';
 
 /* ============================================================
@@ -426,29 +426,64 @@ const DOMAIN_META: { id: TermDomain; icon: typeof Sparkles; cmd: string }[] = [
   { id: 'Задачи', icon: ListChecks, cmd: 'задачи' },
 ];
 
-interface WsMsg { who: 'u' | 'n'; text?: string; res?: TermRes }
+interface WsMsg { who: 'u' | 'n'; text?: string; res?: TermRes; meta?: string; pending?: boolean }
 
-export function TerminalWorkspace({ ctx, onClose }: { ctx: EngineCtx; onClose: () => void }) {
+export function TerminalWorkspace({ ctx, remote, onClose }: {
+  ctx: EngineCtx;
+  /* бэкенд-исполнитель (POST /terminal/exec); undefined = демо-режим */
+  remote?: (line: string) => Promise<TermResult>;
+  onClose: () => void;
+}) {
   const { user } = useApp();
   const [log, setLog] = useState<WsMsg[]>([]);
   const [q, setQ] = useState('');
   const [sel, setSel] = useState(0);
+  const [hist, setHist] = useState<string[]>([]);
+  const [hIdx, setHIdx] = useState<number | null>(null);
   const [domain, setDomain] = useState<TermDomain>('Обзор');
   const bodyRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const sugs = suggest(q);
 
-  const runLine = (line: string) => {
+  const runLine = async (line: string) => {
     const cmd = line.trim();
     if (!cmd) return;
-    setQ(''); setSel(0);
+    setQ(''); setSel(0); setHIdx(null);
+    setHist((h) => (h[h.length - 1] === cmd ? h : [...h, cmd].slice(-40)));
     if (cmd.toLowerCase() === 'очистить' || cmd.toLowerCase() === 'clear') { setLog([]); return; }
-    const res = execRegistry(cmd, ctx);
+
     const found = TERM_COMMANDS.find((c) => c.aliases.includes(cmd.split(/\s+/)[0].toLowerCase()));
     if (found) setDomain(found.domain);
+
+    const t0 = performance.now();
+    const stamp = () => {
+      const ms = Math.max(1, Math.round(performance.now() - t0));
+      return `${new Date().toLocaleTimeString('ru')} · ${ms} мс${remote ? ' · сервер' : ''}`;
+    };
+
+    /* Бэкенд-режим: известные серверу команды идут на nexd — данные
+       настоящие; при ошибке честно показываем её и падаем на демо. */
+    if (remote && TERMINAL_BACKEND_TOKENS.has(cmd.split(/\s+/)[0].toLowerCase())) {
+      setLog((l) => [...l, { who: 'u', text: cmd }, { who: 'n', pending: true }]);
+      try {
+        const res = await remote(cmd);
+        setLog((l) => [...l.slice(0, -1), { who: 'n', res, meta: stamp() }]);
+      } catch {
+        const res = execRegistry(cmd, ctx);
+        setLog((l) => [...l.slice(0, -1), res
+          ? { who: 'n', res, meta: stamp() + ' · демо (сервер недоступен)' }
+          : { who: 'n', res: { kind: 'text', text: 'Сервер недоступен, а в демо такой команды нет.' } }]);
+      }
+      return;
+    }
+
+    const res = execRegistry(cmd, ctx);
     setLog((l) => [...l, { who: 'u', text: cmd },
-      res ? { who: 'n', res } : { who: 'n', res: { kind: 'text', text: 'Не понял команду — попробуйте подсказки под строкой или кликните домен слева.', hint: TERM_COMMANDS.slice(0, 5).map((c) => c.id).join(' · ') } }]);
+      res ? { who: 'n', res, meta: stamp() } : {
+        who: 'n',
+        res: { kind: 'text', text: 'Не понял команду — попробуйте подсказки под строкой или кликните домен слева.', hint: TERM_COMMANDS.slice(0, 5).map((c) => c.id).join(' · ') },
+      }]);
   };
 
   /* Esc — выход; автозапуск обзора при первом входе. */
@@ -468,13 +503,27 @@ export function TerminalWorkspace({ ctx, onClose }: { ctx: EngineCtx; onClose: (
   useEffect(() => { const el = bodyRef.current; if (el) el.scrollTop = el.scrollHeight; }, [log]);
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (!sugs.length) return;
-    if (e.key === 'ArrowDown') { e.preventDefault(); setSel((s) => Math.min(s + 1, sugs.length - 1)); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); setSel((s) => Math.max(s - 1, 0)); }
-    else if (e.key === 'Tab') { e.preventDefault(); setQ(sugs[sel].id + (sugs[sel].arg ? ' ' : '')); }
-    else if (e.key === 'Enter' && sugs[sel] && !q.trim().includes(' ') && !sugs[sel].arg) {
-      /* Enter по подсказке без аргументов — запускаем её сразу */
-      e.preventDefault(); runLine(sugs[sel].id);
+    if (sugs.length) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setSel((s) => Math.min(s + 1, sugs.length - 1)); return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setSel((s) => Math.max(s - 1, 0)); return; }
+      if (e.key === 'Tab') { e.preventDefault(); setQ(sugs[sel].id + (sugs[sel].arg ? ' ' : '')); return; }
+      if (e.key === 'Enter' && sugs[sel] && !q.trim().includes(' ') && !sugs[sel].arg) {
+        /* Enter по подсказке без аргументов — запускаем её сразу */
+        e.preventDefault(); runLine(sugs[sel].id); return;
+      }
+      return;
+    }
+    /* без подсказок стрелки листают историю команд, как в консоли */
+    if (e.key === 'ArrowUp') {
+      if (!hist.length) return;
+      e.preventDefault();
+      const i = hIdx === null ? hist.length - 1 : Math.max(0, hIdx - 1);
+      setHIdx(i); setQ(hist[i]);
+    } else if (e.key === 'ArrowDown') {
+      if (hIdx === null) return;
+      e.preventDefault();
+      const i = hIdx + 1;
+      if (i >= hist.length) { setHIdx(null); setQ(''); } else { setHIdx(i); setQ(hist[i]); }
     }
   };
 
@@ -501,6 +550,11 @@ export function TerminalWorkspace({ ctx, onClose }: { ctx: EngineCtx; onClose: (
               <Icon size={15} /><span>{d.id}</span>
             </button>
           ); })}
+          {/* живой пульс системы — снизу рейла, как строка статуса */}
+          <div className="term-ws-pulse">
+            <i className={services.some((s) => s.status !== 'ok') ? 'warn' : ''} />
+            <span>{services.some((s) => s.status !== 'ok') ? 'есть деградация' : 'система в норме'}</span>
+          </div>
         </div>
 
         <div className="term-ws-work">
@@ -508,7 +562,12 @@ export function TerminalWorkspace({ ctx, onClose }: { ctx: EngineCtx; onClose: (
             {log.map((m, i) => m.who === 'u' ? (
               <div className="term-u" key={i}><span className="term-prompt">›</span><b className="term-cmd">{m.text}</b></div>
             ) : (
-              <div className="term-n" key={i}>{m.res && <TermResBlock r={m.res} />}</div>
+              <div className="term-n" key={i}>
+                {m.pending
+                  ? <span className="term-busy"><span className="term-cursor" />выполняю…</span>
+                  : m.res && <TermResBlock r={m.res} />}
+                {m.meta && !m.pending && <div className="term-meta">{m.meta}</div>}
+              </div>
             ))}
           </div>
 
@@ -534,10 +593,16 @@ export function TerminalWorkspace({ ctx, onClose }: { ctx: EngineCtx; onClose: (
               </div>
             )}
             <span className="term-prompt">›</span>
-            <input ref={inputRef} value={q} onChange={(e) => { setQ(e.target.value); setSel(0); }} onKeyDown={onKeyDown}
-              placeholder="Команда или слово: финансы, риск, долги, сессии… (Tab — дополнить)" />
+            <input ref={inputRef} value={q} onChange={(e) => { setQ(e.target.value); setSel(0); setHIdx(null); }} onKeyDown={onKeyDown}
+              placeholder="Команда или слово: финансы, риск, долги, сессии…" />
             <button className="console-send" type="submit" aria-label="Выполнить"><CornerDownLeft size={15} /></button>
           </form>
+          <div className="term-ws-keys">
+            <span><kbd>Tab</kbd> дополнить</span>
+            <span><kbd>↑</kbd><kbd>↓</kbd> история и выбор</span>
+            <span><kbd>Enter</kbd> выполнить</span>
+            <span><kbd>Esc</kbd> выйти</span>
+          </div>
         </div>
       </div>
     </div>,

@@ -29,3 +29,16 @@ export function terminalExec(line: string): Promise<TermResult> {
     body: JSON.stringify({ line }),
   });
 }
+
+/** Первые слова команд, которые понимает бэкенд-модуль terminal (зеркало
+    его alias-карты). В API-режиме такие строки идут на сервер — данные
+    настоящие; остальное исполняет локальный демо-реестр. */
+export const TERMINAL_BACKEND_TOKENS = new Set([
+  'status', 'статус', 'обзор', 'сводка', 'whoami', 'кто',
+  'tasks', 'задачи', 'task', 'задача', 'новая', 'готово',
+  'users', 'люди', 'пользователи', 'notify', 'уведомить',
+  'audit', 'аудит', 'журнал',
+  'analytics', 'аналитика', 'groups', 'группы', 'students', 'студенты', 'grades', 'оценки',
+  'finance', 'финансы', 'accounts', 'счета', 'entries', 'проводки',
+  'security', 'безопасность',
+]);

@@ -12,7 +12,7 @@ import { Md } from '../md';
 import { DataBlock } from '../nexdata';
 import { useCollection } from '../beta/store';
 import { TASK_SEED } from './tasks';
-import { terminalExec } from '../api/terminal';
+import { terminalExec, TERMINAL_BACKEND_TOKENS } from '../api/terminal';
 import { API_CONFIGURED, ApiError } from '../api/client';
 import {
   TerminalWorkspace, TermResBlock, execRegistry, TERM_COMMANDS,
@@ -78,11 +78,11 @@ const STATUS_COMMANDS: Record<string, string> = {
   security: 'безопасность', 'безопасность': 'безопасность',
 };
 
-/* Команды экосистемы (бэкенд-режим): при VITE_API_URL эти токены идут в
-   POST /terminal/exec — чтения через модульные репозитории, мутации через
-   шину команд с аудитом. В демо все команды исполняет общий реестр
-   TERM_COMMANDS (см. src/terminal.tsx). */
-const ECO_TOKENS = new Set(['tasks', 'task', 'users', 'notify', 'audit', 'whoami']);
+/* Команды экосистемы (бэкенд-режим): при VITE_API_URL токены из
+   TERMINAL_BACKEND_TOKENS идут в POST /terminal/exec — чтения через
+   модульные репозитории, мутации через шину команд с аудитом. В демо
+   все команды исполняет общий реестр TERM_COMMANDS (src/terminal.tsx). */
+const ECO_TOKENS = TERMINAL_BACKEND_TOKENS;
 
 /* Список для подсказки под строкой ввода. */
 const STATUS_COMMAND_LIST = ['обзор', 'аналитика', 'финансы', 'безопасность', 'задачи'];
@@ -183,19 +183,10 @@ function NexTerminal({ disabled, chips }: { disabled: boolean; chips: { label: s
     const open = low.match(/^(?:open|открой|открыть)\s+(.+)$/);
     if (open) { push(openSection(open[1])); return; }
 
-    // Именованные команды состояния — считаются без ИИ, отвечают
-    // мгновенно готовым срезом данных. Проверяются до похода к LLM:
-    // это инженерные примитивы консоли, а не тема для диалога.
-    const status = STATUS_COMMANDS[low];
-    if (status) {
-      const a = nexReply(status, { page: 'home' });
-      push({ who: 'n', text: a.text, nav: a.nav, action: a.action, data: a.data });
-      return;
-    }
-
     // Команды экосистемы. С бэкендом токены terminal-модуля идут в
-    // POST /terminal/exec (шина команд + аудит); в демо всё исполняет
-    // общий реестр TERM_COMMANDS поверх тех же данных, что и разделы.
+    // POST /terminal/exec (шина команд + аудит) — проверяются раньше
+    // мок-команд состояния, чтобы «финансы»/«безопасность» отвечали
+    // настоящими данными сервера, а не демо-срезом.
     if (API_CONFIGURED && ECO_TOKENS.has(low.split(/\s+/)[0])) {
       setBusy(true);
       push({ who: 'n', text: '', pending: true });
@@ -208,6 +199,16 @@ function NexTerminal({ disabled, chips }: { disabled: boolean; chips: { label: s
       } finally { setBusy(false); }
       return;
     }
+
+    // Именованные команды состояния — считаются без ИИ, отвечают
+    // мгновенно готовым срезом данных (демо-режим).
+    const status = STATUS_COMMANDS[low];
+    if (status) {
+      const a = nexReply(status, { page: 'home' });
+      push({ who: 'n', text: a.text, nav: a.nav, action: a.action, data: a.data });
+      return;
+    }
+
     const reg = execRegistry(cmd, engineCtx);
     if (reg) { push({ who: 'n', text: '', res: reg }); return; }
 
@@ -308,7 +309,7 @@ function NexTerminal({ disabled, chips }: { disabled: boolean; chips: { label: s
         </div>
       )}
     </form>
-    {wsOpen && <TerminalWorkspace ctx={engineCtx} onClose={() => setWsOpen(false)} />}
+    {wsOpen && <TerminalWorkspace ctx={engineCtx} remote={API_CONFIGURED ? terminalExec : undefined} onClose={() => setWsOpen(false)} />}
     </>
   );
 }
