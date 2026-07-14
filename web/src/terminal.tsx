@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef, type ReactNode, type FormEvent, type KeyboardEvent } from 'react';
+import { useState, useEffect, useRef, useMemo, type ReactNode, type FormEvent, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Sparkles, X, CornerDownLeft, LayoutDashboard, LineChart, Wallet, ShieldCheck, ListChecks,
-  Users, Calendar, GraduationCap,
+  Users, Calendar, GraduationCap, Search as SearchIcon,
 } from 'lucide-react';
 import { useApp } from './ui';
 import { Md } from './md';
@@ -564,7 +564,7 @@ const DOMAIN_META: { id: TermDomain; icon: typeof Sparkles; cmd: string }[] = [
 function TermPalette({ onSelect, onClose }: { onSelect: (cmd: string) => void; onClose: () => void }) {
   const [q, setQ] = useState('');
   const [sel, setSel] = useState(0);
-  const groups = paletteByDomain();
+  const groups = useMemo(() => paletteByDomain(), []);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Фильтруем команды по вводу (поиск внутри палитры)
@@ -793,6 +793,10 @@ export function TerminalWorkspace({ ctx, remote, onClose }: {
               <Icon size={15} /><span>{d.id}</span>
             </button>
           ); })}
+          {/* Кнопка всех команд */}
+          <button type="button" className="icon-btn" title="Все команды" onClick={() => setPaletteOpen(true)} style={{ marginTop: 'auto' }}>
+            <SearchIcon size={16} />
+          </button>
           {/* живой пульс системы — снизу рейла, как строка статуса */}
           <div className="term-ws-pulse">
             <i className={services.some((s) => s.status !== 'ok') ? 'warn' : ''} />

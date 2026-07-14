@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, Fragment, createPortal, type FormEvent, ty
 import {
   ArrowUp, ArrowRight, Wallet, Users, Sun, Sunrise, Moon,
   Sparkles, CornerDownLeft, ChevronRight, ChevronLeft, ChevronUp, ChevronDown,
-  ListChecks, Settings2, Check, RotateCcw, EyeOff, Plus, X, Eraser, ExternalLink, Maximize2,
+  ListChecks, Settings2, Check, RotateCcw, EyeOff, Plus, X, Eraser, ExternalLink, Maximize2, Search as SearchIcon,
 } from 'lucide-react';
 import { useApp } from '../ui';
 import { finance, aiInsights, failedLogins, students } from '../data';
@@ -253,7 +253,7 @@ function NexTerminal({ disabled, chips }: { disabled: boolean; chips: { label: s
   function CompactPalette() {
     const [pq, setPq] = useState('');
     const [psel, setPsel] = useState(0);
-    const groups = paletteByDomain();
+    const groups = useMemo(() => paletteByDomain(), []);
     const inputRef2 = useRef<HTMLInputElement>(null);
 
     const filtered = pq.trim()
@@ -395,6 +395,7 @@ function NexTerminal({ disabled, chips }: { disabled: boolean; chips: { label: s
         <span className="term-prompt">›</span>
         <input ref={inputRef} value={q} onChange={(e) => { setQ(e.target.value); setHIdx(null); }} onKeyDown={onKeyDown} disabled={disabled || busy}
           placeholder={log.length ? 'Следующая команда — или help' : 'Скомандуйте: tasks · task add <текст> · notify all <текст> — или спросите своими словами'} />
+        <button type="button" className="icon-btn" title="Все команды" onClick={(e) => { e.stopPropagation(); if (!disabled && !busy) setPaletteOpen(true); }} style={{ marginLeft: 4 }}><SearchIcon size={15} /></button>
         <button className="console-send" type="submit" aria-label="Выполнить"><CornerDownLeft size={15} /></button>
       </div>
 
