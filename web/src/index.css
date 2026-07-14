@@ -2160,73 +2160,161 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
   .term-ws-keys { display: none; }
 }
 
-/* --- macOS Sequoia Spotlight-style палитра терминала (по /) --- */
+/* ============================================================
+   macOS Sequoia Spotlight-style палитра терминала (по /)
+   Максимально приближён к нативному Spotlight: резкий blur, анимация,
+   иконки секций, выделение выбранного.
+   ============================================================ */
 .term-palette-overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,.35);
-  backdrop-filter: blur(12px);
-  z-index: 250; display: flex; justify-content: center; align-items: center;
-  animation: spotlightIn .18s cubic-bezier(.2,.7,.2,1);
+  position: fixed; inset: 0;
+  background: radial-gradient(ellipse at center, rgba(20,22,24,.4) 0%, transparent 70%);
+  backdrop-filter: blur(24px);
+  z-index: 250;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  animation: spotlightZoom .16s cubic-bezier(.25,.1,.25,1);
+  padding: 0 16px;
 }
-@keyframes spotlightIn { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes spotlightZoom {
+  from { opacity: 0; transform: scale(.88) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
 
 .term-palette {
-  width: 100%; max-width: 580px;
-  background: color-mix(in srgb, var(--elevated) 85%, transparent);
-  border: 1px solid color-mix(in srgb, var(--ai) 25%, var(--border-2));
-  border-radius: 20px;
-  box-shadow: 0 20px 60px rgba(0,0,0,.4), inset 0 1px rgba(255,255,255,.05);
-  overflow: hidden; display: flex; flex-direction: column;
+  width: 100%;
+  max-width: 620px;
+  background: rgba(20,22,24,.72);
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 24px;
+  box-shadow:
+    0 32px 120px rgba(0,0,0,.5),
+    inset 0 1px 0 rgba(255,255,255,.05),
+    inset 0 -1px 0 rgba(0,0,0,.2);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  backdrop-filter: blur(32px);
 }
+
 .term-palette-input {
-  width: 100%; height: 50px; border: none;
-  background: transparent; color: var(--text);
-  font-size: 15px; padding: 0 20px; outline: none; font-family: var(--font-mono);
-  backdrop-filter: blur(20px);
+  width: 100%;
+  height: 54px;
+  border: none;
+  background: transparent;
+  color: #fff;
+  font-size: 16px;
+  padding: 0 22px;
+  outline: none;
+  font-family: var(--font-system);
+  font-weight: 400;
 }
-.term-palette-input::placeholder { color: var(--text-3); }
+.term-palette-input::placeholder { color: rgba(255,255,255,.35); }
 .term-palette-input:focus { outline: none; }
 
-.term-palette-list { max-height: 420px; overflow-y: auto; padding: 8px; }
+.term-palette-list {
+  max-height: 480px;
+  overflow-y: auto;
+  padding: 0 8px 8px;
+}
+
 .term-palette-section {
-  font-size: 10px; font-weight: 600; text-transform: uppercase;
-  letter-spacing: .08em; color: var(--text-3); padding: 10px 14px 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: rgba(255,255,255,.5);
+  padding: 14px 16px 8px;
+}
+.term-palette-section svg {
+  width: 14px;
+  height: 14px;
+  opacity: .6;
 }
 
 .term-palette-item {
-  display: flex; align-items: center; gap: 12px;
-  width: 100%; border: none; background: transparent;
-  padding: 11px 14px; border-radius: 12px; cursor: pointer;
-  font-size: 14px; color: var(--text); text-align: left;
-  transition: background .12s, transform .1s;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 12px 16px;
+  border-radius: 14px;
+  cursor: pointer;
+  font-size: 14.5px;
+  color: rgba(255,255,255,.9);
+  text-align: left;
+  transition: all .14s cubic-bezier(.25,.1,.25,1);
+  position: relative;
 }
 .term-palette-item.sel, .term-palette-item:hover {
-  background: color-mix(in srgb, var(--ai) 12%, transparent);
-  transform: translateX(2px);
+  background: rgba(99,102,241,.22);
+  transform: translateX(4px);
+}
+.term-palette-item.sel {
+  background: rgba(99,102,241,.28);
 }
 .term-palette-item code {
-  font-family: var(--font-mono); font-size: 13px; color: var(--ai);
-  font-weight: 600; white-space: nowrap; min-width: 80px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: #6366f1;
+  font-weight: 600;
+  white-space: nowrap;
+  min-width: 90px;
+  flex-shrink: 0;
 }
-.term-palette-item.mutate code { color: var(--accent); }
+.term-palette-item.mutate code { color: #a7f378; }
+.term-palette-item.mutate {
+  border-left: 2px solid rgba(167,243,120,.4);
+}
 .term-palette-item span {
-  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
-  white-space: nowrap; font-size: 13px; color: var(--text-2);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  color: rgba(255,255,255,.7);
 }
-.term-palette-item:hover span { color: var(--text); }
-.term-palette-empty { padding: 30px; text-align: center; color: var(--text-3); font-size: 14px; }
+.term-palette-item:hover span { color: #fff; }
+.term-palette-item .term-mutate-dot {
+  width: 6px; height: 6px; border-radius: 999px;
+  background: #a7f378; flex-shrink: 0; margin-right: 4px;
+}
+
+.term-palette-empty {
+  padding: 40px;
+  text-align: center;
+  color: rgba(255,255,255,.4);
+  font-size: 14px;
+}
 
 .term-palette-keys {
-  display: flex; gap: 16px; justify-content: center;
-  padding: 10px 0 12px; font-size: 11px; color: var(--text-3);
+  display: flex;
+  gap: 18px;
+  justify-content: center;
+  padding: 12px 0 16px;
+  font-size: 11px;
+  color: rgba(255,255,255,.45);
 }
 .term-palette-keys kbd {
-  font-size: 10.5px; padding: 2px 7px;
-  border: 1px solid var(--border-2); border-radius: 7px;
-  background: var(--surface-2); font-family: inherit;
+  font-size: 10.5px;
+  padding: 3px 8px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 8px;
+  background: rgba(255,255,255,.08);
+  font-family: inherit;
+  color: rgba(255,255,255,.8);
 }
-@media (max-width: 580px) {
-  .term-palette { max-width: 96vw; }
-  .term-palette-list { max-height: 50vh; }
+
+@media (max-width: 720px) {
+  .term-palette { max-width: 94vw; border-radius: 20px; }
+  .term-palette-input { height: 48px; font-size: 15px; padding: 0 18px; }
+  .term-palette-list { max-height: 42vh; }
 }
 
 /* --- Панель --- */

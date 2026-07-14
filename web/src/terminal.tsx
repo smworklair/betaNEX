@@ -568,21 +568,21 @@ function TermPalette({ onSelect, onClose }: { onSelect: (cmd: string) => void; o
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Фильтруем команды по вводу (поиск внутри палитры)
-  const filtered = q.trim()
-    ? groups.map((g) => ({
-        ...g,
-        commands: g.commands.filter((c) =>
-          c.id.toLowerCase().includes(q.toLowerCase()) || c.desc.toLowerCase().includes(q.toLowerCase())
-        ),
-      })
-    ).filter((g) => g.commands.length > 0)
-    : groups;
+  const filtered = useMemo(() => {
+    if (!q.trim()) return groups;
+    return groups.map((g) => ({
+      ...g,
+      commands: g.commands.filter((c) =>
+        c.id.toLowerCase().includes(q.toLowerCase()) || c.desc.toLowerCase().includes(q.toLowerCase())
+      ),
+    })).filter((g) => g.commands.length > 0);
+  }, [q, groups]);
 
   // Сбрасываем выбор при изменении запроса
   useEffect(() => { setSel(0); }, [q]);
 
   // Натуральная навигация по подсказкам
-  const flat = filtered.flatMap((g) => g.commands);
+  const flat = useMemo(() => filtered.flatMap((g) => g.commands), [filtered]);
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Escape') { e.preventDefault(); onClose(); return; }
@@ -623,33 +623,46 @@ function TermPalette({ onSelect, onClose }: { onSelect: (cmd: string) => void; o
           placeholder="Поиск команды — ↑↓ для навигации, Enter для выбора"
         />
         <div className="term-palette-list">
-          {filtered.map((g) => (
-            <div key={g.domain}>
-              <div className="term-palette-section">{g.domain}</div>
-              {g.commands.map((c) => {
-                const idx = flat.indexOf(c);
-                return (
-                  <button
-                    key={c.id}
-                    className={`term-palette-item ${idx === sel ? 'sel' : ''} ${c.mutates ? 'mutate' : ''}`}
-                    onMouseEnter={() => setSel(idx)}
-                    onClick={() => {
-                      if (c.arg) {
-                        onSelect(c.id + ' ');
-                      } else {
-                        onSelect(c.id);
-                      }
-                      onClose();
-                    }}
-                  >
-                    {c.mutates && <span className="term-mutate-dot" title="Изменяет данные" />}
-                    <code>{c.id}{c.arg ? ' ' + c.arg : ''}</code>
-                    <span>{c.desc}</span>
-                  </button>
-                );
-              })}
-            </div>
-          ))}
+          {filtered.map((g) => {
+            // Иконка для секции домена
+            const domainIcons: Record<string, React.ReactNode> = {
+              'Обзор': <LayoutDashboard size={14} />,
+              'Аналитика': <LineChart size={14} />,
+              'Финансы': <Wallet size={14} />,
+              'Безопасность': <ShieldCheck size={14} />,
+              'Задачи': <ListChecks size={14} />,
+              'Кампус': <GraduationCap size={14} />,
+              'Люди': <Users size={14} />,
+              'Расписание': <Calendar size={14} />,
+            };
+            return (
+              <div key={g.domain}>
+                <div className="term-palette-section">{domainIcons[g.domain] || null}<span>{g.domain}</span></div>
+                {g.commands.map((c) => {
+                  const idx = flat.indexOf(c);
+                  return (
+                    <button
+                      key={c.id}
+                      className={`term-palette-item ${idx === sel ? 'sel' : ''} ${c.mutates ? 'mutate' : ''}`}
+                      onMouseEnter={() => setSel(idx)}
+                      onClick={() => {
+                        if (c.arg) {
+                          onSelect(c.id + ' ');
+                        } else {
+                          onSelect(c.id);
+                        }
+                        onClose();
+                      }}
+                    >
+                      {c.mutates && <span className="term-mutate-dot" title="Изменяет данные" />}
+                      <code>{c.id}{c.arg ? ' ' + c.arg : ''}</code>
+                      <span>{c.desc}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
           {flat.length === 0 && <div className="term-palette-empty">Команда не найдена.</div>}
         </div>
         <div className="term-palette-keys">
