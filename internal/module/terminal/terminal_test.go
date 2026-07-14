@@ -47,8 +47,103 @@ func deps(t *testing.T) (Deps, *[]string) {
 			return []AuditRow{{Command: "tasks.create", Outcome: "ok", ActorID: "u1", OccurredAt: time.Now()}}, nil
 		},
 		Unread: func(_ context.Context, _ string) (int64, error) { return 3, nil },
+		Groups: func(_ context.Context) ([]GroupRow, error) {
+			return []GroupRow{{Code: "ПИ-21-1", Name: "Прикладная информатика", Students: 12}}, nil
+		},
+		Students: func(_ context.Context, query string, _ int) ([]StudentRow, error) {
+			all := []StudentRow{
+				{Name: "Иванов Алексей", Group: "ПИ-21-1", Status: "active", Email: "ivanov@stud.ru"},
+				{Name: "Петрова Мария", Group: "ПИ-21-1", Status: "active", Email: "petrova@stud.ru"},
+			}
+			if query == "" {
+				return all, nil
+			}
+			var out []StudentRow
+			for _, s := range all {
+				if strings.Contains(strings.ToLower(s.Name), strings.ToLower(query)) {
+					out = append(out, s)
+				}
+			}
+			return out, nil
+		},
+		Grades: func(_ context.Context, _ int) ([]GradeRow, error) {
+			return []GradeRow{
+				{Student: "Иванов Алексей", Group: "ПИ-21-1", Subject: "Базы данных", Grade: 5, On: time.Now()},
+				{Student: "Петрова Мария", Group: "ПИ-21-1", Subject: "Базы данных", Grade: 4, On: time.Now()},
+			}, nil
+		},
+		Balances: func(_ context.Context) ([]BalanceRow, error) {
+			return []BalanceRow{
+				{Code: "50", Name: "Касса", Type: "asset", Amount: 1_250_00},
+				{Code: "90", Name: "Выручка", Type: "income", Amount: 62_000_00},
+			}, nil
+		},
+		Entries: func(_ context.Context, _ int) ([]EntryRow, error) {
+			return []EntryRow{{Memo: "оплата обучения, июнь", PostedBy: "u1", PostedAt: time.Now(), Amount: 62_000_00}}, nil
+		},
 	}
 	return d, &notified
+}
+
+func TestExecRussianAliases(t *testing.T) {
+	d, _ := deps(t)
+	for _, line := range []string{"обзор", "задачи", "люди", "аудит"} {
+		if _, err := d.Exec(identity.WithActor(context.Background(), identity.Actor{ID: "u1"}), line); err != nil {
+			t.Fatalf("%q: %v", line, err)
+		}
+	}
+	res, err := d.Exec(context.Background(), "новая задача Проверить отчёт")
+	if err != nil || !strings.Contains(res.Text, "Проверить отчёт") {
+		t.Fatalf("новая задача: res=%+v err=%v", res, err)
+	}
+}
+
+func TestExecAnalyticsDomain(t *testing.T) {
+	d, _ := deps(t)
+	res, err := d.Exec(context.Background(), "аналитика")
+	if err != nil || res.Kind != "kpi" || len(res.KPIs) != 3 {
+		t.Fatalf("аналитика: res=%+v err=%v", res, err)
+	}
+	if res.KPIs[2].Value != "4.5" {
+		t.Fatalf("средний балл = %s, want 4.5", res.KPIs[2].Value)
+	}
+	res, err = d.Exec(context.Background(), "студенты иванов")
+	if err != nil || len(res.Rows) != 1 || res.Rows[0][0] != "Иванов Алексей" {
+		t.Fatalf("студенты иванов: res=%+v err=%v", res, err)
+	}
+	if res, _ = d.Exec(context.Background(), "группы"); len(res.Rows) != 1 {
+		t.Fatalf("группы: %+v", res)
+	}
+}
+
+func TestExecFinanceDomain(t *testing.T) {
+	d, _ := deps(t)
+	res, err := d.Exec(context.Background(), "финансы")
+	if err != nil || res.Kind != "kpi" {
+		t.Fatalf("финансы: res=%+v err=%v", res, err)
+	}
+	if res.KPIs[1].Value != "1250.00 ₽" { // активы из кассы
+		t.Fatalf("активы = %s", res.KPIs[1].Value)
+	}
+	res, _ = d.Exec(context.Background(), "счета")
+	if len(res.Rows) != 2 || res.Rows[1][3] != "62000.00 ₽" {
+		t.Fatalf("счета: %+v", res.Rows)
+	}
+	res, _ = d.Exec(context.Background(), "проводки")
+	if len(res.Rows) != 1 || res.Rows[0][1] != "оплата обучения, июнь" {
+		t.Fatalf("проводки: %+v", res.Rows)
+	}
+}
+
+func TestExecSecurityDomain(t *testing.T) {
+	d, _ := deps(t)
+	res, err := d.Exec(context.Background(), "безопасность")
+	if err != nil || res.Kind != "kpi" || len(res.KPIs) != 3 {
+		t.Fatalf("безопасность: res=%+v err=%v", res, err)
+	}
+	if res.KPIs[1].Value != "1" { // один admin в стенде
+		t.Fatalf("администраторов = %s, want 1", res.KPIs[1].Value)
+	}
 }
 
 func TestExecHelp(t *testing.T) {

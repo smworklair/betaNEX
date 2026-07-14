@@ -205,19 +205,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const openStudent = (id: number) => setObjStudent(id);
   const closeObject = () => setObjStudent(null);
-  /* Мини-чат не вставляется В поток карточки (это раздувало её и весь
-     ряд сетки: соседние карточки тянулись по высоте «пустыми»), а
-     накрывает карточку-хост поверх — блок сам «становится» чатом, ничего
-     вокруг не двигается. Класс на хосте даёт якорь позиционирования. */
+  /* Мини-чат раскрывается В потоке карточки — блок расширяется и
+     двигает страницу вниз (не накрывает контент). Побочный эффект
+     сетки (соседние карточки ряда тянулись по высоте «пустыми» за
+     хостом) снимается классом на контейнере ряда: пока чат открыт,
+     ряд выравнивается по верху. */
   const openInlineAt = (host: HTMLElement | null, seed?: string, title?: string) => {
     setExplain(null); setInlineSeed(seed ?? null); setInlineTitle(title ?? null);
     setInlineHost((prev) => {
-      if (prev && prev !== host) prev.classList.remove('inline-host');
+      if (prev && prev !== host) {
+        prev.classList.remove('inline-host');
+        prev.parentElement?.classList.remove('inline-row');
+      }
       host?.classList.add('inline-host');
+      host?.parentElement?.classList.add('inline-row');
       return host;
     });
   };
-  const closeInline = () => setInlineHost((prev) => { prev?.classList.remove('inline-host'); return null; });
+  const closeInline = () => setInlineHost((prev) => {
+    prev?.classList.remove('inline-host');
+    prev?.parentElement?.classList.remove('inline-row');
+    return null;
+  });
   const openChat = (q?: string) => { if (q) setPendingAsk(q); setInlineHost(null); setNavOpen(false); setPage('chat'); };
   const clearPendingAsk = () => setPendingAsk(null);
   const setSidebarEnabled = (v: boolean) => { setSidebarEnabledState(v); localStorage.setItem('nex-sidebar', v ? 'on' : 'off'); };
