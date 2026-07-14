@@ -205,8 +205,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const openStudent = (id: number) => setObjStudent(id);
   const closeObject = () => setObjStudent(null);
-  const openInlineAt = (host: HTMLElement | null, seed?: string, title?: string) => { setExplain(null); setInlineSeed(seed ?? null); setInlineTitle(title ?? null); setInlineHost(host); };
-  const closeInline = () => setInlineHost(null);
+  /* Мини-чат не вставляется В поток карточки (это раздувало её и весь
+     ряд сетки: соседние карточки тянулись по высоте «пустыми»), а
+     накрывает карточку-хост поверх — блок сам «становится» чатом, ничего
+     вокруг не двигается. Класс на хосте даёт якорь позиционирования. */
+  const openInlineAt = (host: HTMLElement | null, seed?: string, title?: string) => {
+    setExplain(null); setInlineSeed(seed ?? null); setInlineTitle(title ?? null);
+    setInlineHost((prev) => {
+      if (prev && prev !== host) prev.classList.remove('inline-host');
+      host?.classList.add('inline-host');
+      return host;
+    });
+  };
+  const closeInline = () => setInlineHost((prev) => { prev?.classList.remove('inline-host'); return null; });
   const openChat = (q?: string) => { if (q) setPendingAsk(q); setInlineHost(null); setNavOpen(false); setPage('chat'); };
   const clearPendingAsk = () => setPendingAsk(null);
   const setSidebarEnabled = (v: boolean) => { setSidebarEnabledState(v); localStorage.setItem('nex-sidebar', v ? 'on' : 'off'); };

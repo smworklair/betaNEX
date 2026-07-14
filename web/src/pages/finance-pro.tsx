@@ -3,7 +3,7 @@ import {
   Sparkles, TrendingUp, ArrowDownLeft, ArrowUpRight, Receipt, CheckCircle2,
   Download, Wand2, ArrowUp, ShieldCheck, AlertTriangle, Landmark, Wallet,
   Link2, Unlink, PiggyBank, Scale, Gauge as GaugeIcon, Flame,
-  Building2, HandCoins, FileCheck2, Lock, Zap, Percent, RefreshCw, Info, Search,
+  Building2, HandCoins, FileCheck2, Lock, Zap, Percent, RefreshCw, Info,
 } from 'lucide-react';
 import { PageHead, NexAsk, Chip, useApp } from '../ui';
 import { Line, DualLine, Donut, Legend, Gauge, HBars, Waterfall, type Segment } from '../charts';
@@ -137,8 +137,9 @@ function FinCopilot() {
         <div className="fin-copilot-log">
           {log.map((m, i) => (
             <div key={i} className="fin-co-turn">
-              <div className="fin-co-q"><Search size={12} className="qi" />{m.q}</div>
+              <div className="fin-co-q">{m.q}</div>
               <div className="fin-co-a">
+                <div className="ic"><Sparkles size={12} /></div>
                 <div className="bd">
                   <div>{m.a.text}</div>
                   {m.a.chart && <div className="fin-co-chart">{m.a.chart}</div>}

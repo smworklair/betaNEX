@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, type FormEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Sparkles, X, ArrowUp, ArrowRight, Quote, ExternalLink, Search,
+  Sparkles, X, ArrowUp, ArrowRight, Quote, ExternalLink,
   MessageSquare, Mail, CheckSquare, StickyNote, CalendarPlus, Wand2, Copy, Languages, ScrollText,
 } from 'lucide-react';
 import { useApp, Chip, NexAsk } from './ui';
@@ -122,17 +122,18 @@ function InlinePanel() {
   return (
     <div className="nex-inline" ref={rootRef}>
       <div className="nex-inline-head">
-        <Sparkles size={12} className="cap-spark" />
-        <span className="nex-inline-cap">NEX · {inlineTitle || 'разбор'}</span>
+        <span className="ai-orb sm"><Sparkles size={12} /></span>
+        <b>{inlineTitle || 'NEX'}</b>
         <button className="icon-btn" title="Открыть в полном чате" onClick={() => openChat(inlineSeed || undefined)}><ExternalLink size={14} /></button>
         <button className="icon-btn" title="Закрыть" onClick={closeInline}><X size={15} /></button>
       </div>
 
       <div className="nex-inline-body">
         {msgs.map((m, i) => m.who === 'u'
-          ? <div className="inline-msg u" key={i}><Search size={12} className="qi" />{m.text}</div>
+          ? <div className="inline-msg u" key={i}>{m.text}</div>
           : (
             <div className="inline-msg n" key={i}>
+              <div className="ic"><Sparkles size={12} /></div>
               <div className="nb">
                 <Md text={m.text} />
                 {m.nav && m.nav.length > 0 && (
