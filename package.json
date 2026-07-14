@@ -2,6 +2,10 @@
   "name": "betanex",
   "private": true,
   "version": "0.0.0",
+  "packageManager": "pnpm@9.15.4",
+  "engines": {
+    "node": "20.x"
+  },
   "scripts": {
     "dev": "pnpm -C web dev",
     "build": "pnpm -C web build",
