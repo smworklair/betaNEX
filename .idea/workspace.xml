@@ -1,19 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="AutoImportSettings">
-    <option name="autoReloadType" value="ALL" />
+    <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="e35398d5-6b87-4485-8b28-16efdd86ba30" name="Изменения" comment="" />
+    <list default="true" id="81f15d5b-4d4c-4edd-82fe-179c9ae2b750" name="Изменения" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
-  <component name="EmbeddingIndexingInfo">
-    <option name="cachedIndexableFilesCount" value="264" />
-  </component>
-  <component name="GOROOT" url="file://$PROJECT_DIR$/../Program Files/Go" />
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
@@ -21,152 +19,12 @@
     <commands />
     <urls />
   </component>
-  <component name="NextEditCompletionFeaturesState">
-    <decayedCancelled>
-      <entry key="MS100" value="1.3585117499070685" />
-      <entry key="MS500" value="2.1809757853549105" />
-      <entry key="S2" value="6.131222005783649" />
-      <entry key="S5" value="9.729909251856185" />
-      <entry key="S10" value="12.553452720053993" />
-      <entry key="S30" value="24.236283599123016" />
-      <entry key="S60" value="39.441279012352716" />
-      <entry key="M2" value="58.37726736984697" />
-      <entry key="M5" value="85.34594363830696" />
-      <entry key="M10" value="104.65629860756366" />
-      <entry key="M15" value="114.06813871973183" />
-      <entry key="M30" value="125.88089808564132" />
-      <entry key="H1" value="132.95697023930097" />
-      <entry key="H2" value="136.84738765116094" />
-      <entry key="H4" value="138.88953655860925" />
-      <entry key="D1" value="140.6433894263394" />
-      <entry key="W1" value="140.94893481343928" />
-    </decayedCancelled>
-    <decayedSelected>
-      <entry key="MS100" value="3.044780080952346E-190" />
-      <entry key="MS500" value="1.2494278607219184E-38" />
-      <entry key="S2" value="3.3433188465969453E-10" />
-      <entry key="S5" value="1.620582402105991E-4" />
-      <entry key="S10" value="0.012730209747313644" />
-      <entry key="S30" value="0.23349550249756928" />
-      <entry key="S60" value="0.4832137234160154" />
-      <entry key="M2" value="0.6951357589823846" />
-      <entry key="M5" value="0.8646251260020545" />
-      <entry key="M10" value="0.9298522065371759" />
-      <entry key="M15" value="0.9526702808209958" />
-      <entry key="M30" value="0.9760482984058713" />
-      <entry key="H1" value="0.9879515668320338" />
-      <entry key="H2" value="0.9939575276801492" />
-      <entry key="H4" value="0.9969741860650896" />
-      <entry key="D1" value="0.9994950606972417" />
-      <entry key="W1" value="0.9999278501989887" />
-    </decayedSelected>
-    <decayedShown>
-      <entry key="MS100" value="1.2852303505829201" />
-      <entry key="MS500" value="2.1539484711943926" />
-      <entry key="S2" value="6.10252836751162" />
-      <entry key="S5" value="9.71042270077356" />
-      <entry key="S10" value="12.546399147717187" />
-      <entry key="S30" value="24.426322883149552" />
-      <entry key="S60" value="39.88135661624857" />
-      <entry key="M2" value="59.04062663688307" />
-      <entry key="M5" value="86.193870554323" />
-      <entry key="M10" value="105.57680408472673" />
-      <entry key="M15" value="115.01429974070106" />
-      <entry key="M30" value="126.85353019025918" />
-      <entry key="H1" value="133.94316780757643" />
-      <entry key="H2" value="137.84045586844584" />
-      <entry key="H4" value="139.8860628962323" />
-      <entry key="D1" value="141.6428093917597" />
-      <entry key="W1" value="141.94885192448731" />
-    </decayedShown>
-  </component>
-  <component name="ProjectColorInfo">{
-  &quot;associatedIndex&quot;: 7,
-  &quot;fromUser&quot;: false
-}</component>
-  <component name="ProjectId" id="3GPIhjhzYTFyQXvPax96WVi6wlk" />
-  <component name="ProjectViewState">
-    <option name="hideEmptyMiddlePackages" value="true" />
-    <option name="showLibraryContents" value="true" />
-  </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.GoLinterPluginOnboardingV2&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.GoLinterPluginStorageMigration&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.MCP Project settings loaded&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.go.analysis.ui.options.defaults&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.go.formatter.settings.were.checked&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.go.modules.go.list.on.any.changes.was.set&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
-    &quot;codeWithMe.voiceChat.enabledByDefault&quot;: &quot;false&quot;,
-    &quot;com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
-    &quot;go.sdk.automatically.set&quot;: &quot;true&quot;,
-    &quot;ignore.virus.scanning.warn.message&quot;: &quot;true&quot;,
-    &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
-    &quot;last_opened_file_path&quot;: &quot;C:/betaNEX&quot;,
-    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
-    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
-    &quot;nodejs_package_manager_path&quot;: &quot;pnpm&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;com.jetbrains.tbe.client.settings.TbeApplicationConfigurable&quot;,
-    &quot;to.speed.mode.migration.done&quot;: &quot;true&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "git-widget-placeholder": "claude/backend-session-improvements-mfonkr"
   }
-}</component>
-  <component name="RunManager">
-    <configuration name="go build nexd/" type="GoApplicationRunConfiguration" factoryName="Go Application" nameIsGenerated="true">
-      <module name="betaNEX" />
-      <working_directory value="$PROJECT_DIR$" />
-      <kind value="PACKAGE" />
-      <package value="github.com/smworklair/betakis/cmd/nexd" />
-      <directory value="$PROJECT_DIR$" />
-      <auto_managed_config_id value="$PROJECT_DIR$/cmd/nexd" />
-      <method v="2" />
-    </configuration>
-  </component>
-  <component name="SharedIndexes">
-    <attachedChunks>
-      <set>
-        <option value="bundled-gosdk-72a9cf600ed8-3dd3895e5e08-org.jetbrains.plugins.go.sharedIndexes.bundled-GO-261.26222.72" />
-        <option value="bundled-js-predefined-d6986cc7102b-31caf2ab9e3c-JavaScript-GO-261.26222.72" />
-      </set>
-    </attachedChunks>
-  </component>
+}]]></component>
   <component name="TaskManager">
-    <task active="true" id="Default" summary="Задача по умолчанию">
-      <changelist id="e35398d5-6b87-4485-8b28-16efdd86ba30" name="Изменения" comment="" />
-      <created>1783866898495</created>
-      <option name="number" value="Default" />
-      <option name="presentableId" value="Default" />
-      <updated>1783866898495</updated>
-    </task>
     <servers />
-  </component>
-  <component name="TypeScriptGeneratedFilesManager">
-    <option name="version" value="3" />
-  </component>
-  <component name="Vcs.Log.Tabs.Properties">
-    <option name="OPEN_GENERIC_TABS">
-      <map>
-        <entry key="141a9cf0-fdad-4f28-9c7f-0d6ed2e2727e" value="TOOL_WINDOW" />
-      </map>
-    </option>
-    <option name="TAB_STATES">
-      <map>
-        <entry key="141a9cf0-fdad-4f28-9c7f-0d6ed2e2727e">
-          <value>
-            <State />
-          </value>
-        </entry>
-        <entry key="MAIN">
-          <value>
-            <State />
-          </value>
-        </entry>
-      </map>
-    </option>
   </component>
 </project>
