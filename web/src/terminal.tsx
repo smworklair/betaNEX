@@ -1,13 +1,15 @@
-import { useState, useEffect, useRef, type ReactNode, type FormEvent, type KeyboardEvent } from 'react';
+import { useState, useEffect, useRef, useMemo, type ReactNode, type FormEvent, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Sparkles, X, CornerDownLeft, LayoutDashboard, LineChart, Wallet, ShieldCheck, ListChecks,
+  Users, Calendar, GraduationCap, Search as SearchIcon,
 } from 'lucide-react';
 import { useApp } from './ui';
 import { Md } from './md';
 import { Line, Donut, Legend, type Segment } from './charts';
 import {
   students, staff, sessions, auditEvents, failedLogins, services, finance, groups,
+  scheduleDays, scheduleSlots, charges, payroll, exams,
 } from './data';
 import { atRisk, attendanceRate, avgGrade, groupAvg, PAGE_TITLES } from './nexbrain';
 import { TERMINAL_BACKEND_TOKENS, type TermResult } from './api/terminal';
@@ -56,7 +58,7 @@ export function termAuditList(): TermAuditRow[] {
 
 /* --- Реестр команд ------------------------------------------------------- */
 
-export type TermDomain = 'Обзор' | 'Аналитика' | 'Финансы' | 'Безопасность' | 'Задачи';
+export type TermDomain = 'Обзор' | 'Аналитика' | 'Финансы' | 'Безопасность' | 'Задачи' | 'Кампус' | 'Люди' | 'Расписание';
 
 export interface EngineCtx {
   userName: string;
@@ -72,6 +74,7 @@ export interface TermCommand {
   aliases: string[];   // всё, что распознаём в первом слове (ru/en)
   arg?: string;        // подпись аргумента для подсказки, напр. "<текст>"
   desc: string;
+  mutates?: boolean;  // true — команда изменяет данные (требует подтверждения)
   run: (args: string[], ctx: EngineCtx) => TermRes;
 }
 
@@ -169,6 +172,44 @@ export const TERM_COMMANDS: TermCommand[] = [
       node: <Line data={[93, 92, 94, 91, 90, 92, 91, 89, 86, 90, 92, 91]} height={110} color="var(--ai)" />,
       hint: 'риск — кто тянет вниз',
     }),
+  },
+  {
+    id: 'студент', domain: 'Кампус', aliases: ['студент', 'student'], arg: '<фамилия|email>',
+    desc: 'найти студента по фамилии или email (разрешение неоднозначности)',
+    run: (args, ctx) => {
+      if (args.length === 0) return { kind: 'text', text: 'Укажите фамилию или email: студент иванов' };
+      const q = args.join(' ').toLowerCase().trim();
+      const matches = students.filter((s) =>
+        s.lastname.toLowerCase().includes(q) ||
+        s.firstname.toLowerCase().includes(q) ||
+        s.email.toLowerCase().includes(q)
+      );
+      if (matches.length === 0) return { kind: 'text', text: `Студент «${args.join(' ')}» не найден.`, hint: 'студенты — список всех' };
+      if (matches.length > 1) {
+        return {
+          kind: 'table',
+          title: 'Нашлось несколько студентов',
+          columns: ['ФИО', 'Группа', 'Email', 'Статус'],
+          rows: matches.map((s) => [s.lastname + ' ' + s.firstname, s.group, s.email, s.status]),
+          hint: 'укажите точнее фамилию или email',
+        };
+      }
+      const s = matches[0];
+      return {
+        kind: 'table',
+        title: `Студент: ${s.lastname} ${s.firstname}`,
+        columns: ['Поле', 'Значение'],
+        rows: [
+          ['Группа', s.group],
+          ['Форма', s.form],
+          ['Финансирование', s.finance],
+          ['Email', s.email],
+          ['Телефон', s.phone],
+          ['Статус', s.status],
+        ],
+        hint: `оценки ${s.lastname.toLowerCase()} — журнал оценок`,
+      };
+    },
   },
 
   /* ---------------- Финансы ---------------- */
@@ -316,7 +357,7 @@ export const TERM_COMMANDS: TermCommand[] = [
     },
   },
   {
-    id: 'новая задача', domain: 'Задачи', aliases: ['новая', 'task'], arg: '<текст>',
+    id: 'новая задача', domain: 'Задачи', aliases: ['новая', 'task'], arg: '<текст>', mutates: true,
     desc: 'создать задачу — сразу видна в разделе «Задачи»',
     run: (args, ctx) => {
       /* поддерживаем и «task add <текст>», и «новая задача <текст>» */
@@ -334,7 +375,7 @@ export const TERM_COMMANDS: TermCommand[] = [
     },
   },
   {
-    id: 'готово', domain: 'Задачи', aliases: ['готово', 'done', 'закрыть'], arg: '<№>',
+    id: 'готово', domain: 'Задачи', aliases: ['готово', 'done', 'закрыть'], arg: '<№>', mutates: true,
     desc: 'закрыть задачу по номеру из списка',
     run: (args, ctx) => {
       /* «task done 2» тоже работает */
@@ -361,6 +402,71 @@ export const TERM_COMMANDS: TermCommand[] = [
       return { kind: 'text', text: `Уведомление ушло **${targets.length} получателям** · записано в журнал.` };
     },
   },
+
+  /* ---------------- Кампус (учёба) ---------------- */
+  {
+    id: 'расписание', domain: 'Кампус', aliases: ['расписание', 'schedule'],
+    desc: 'расписание групп на текущую неделю',
+    run: () => ({
+      kind: 'table', title: 'Расписание',
+      columns: ['Время', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт'],
+      rows: scheduleSlots.map((s) => [s.time, s.mon, s.tue, s.wed, s.thu, s.fri]),
+    }),
+  },
+  {
+    id: 'экзамены', domain: 'Кампус', aliases: ['экзамены', 'exams'],
+    desc: 'сессия: экзамены и готовность',
+    run: () => ({
+      kind: 'table', title: 'Экзамены (сессия)',
+      columns: ['Группа', 'Предмет', 'Дата', 'Ауд.', 'Готово', 'Всего'],
+      rows: exams.map((e) => [e.group, e.subject, e.date, e.room, String(e.ready), String(e.total)]),
+      hint: 'расписание — обычное расписание',
+    }),
+  },
+  {
+    id: 'начисления', domain: 'Кампус', aliases: ['начисления', 'charges'],
+    desc: 'студенты со счётами за учёбу и услуги',
+    run: () => ({
+      kind: 'table', title: 'Начисления',
+      columns: ['Студент', 'Группа', 'Вид', 'Сумма', 'Срок', 'Статус'],
+      rows: charges.map((c) => [c.student, c.group, c.kind, rub(c.sum), c.due, c.paid ? 'Оплачено' : 'Долг']),
+      hint: 'долги — только просроченные',
+    }),
+  },
+
+  /* ---------------- Люди (сотрудники) ---------------- */
+  {
+    id: 'сотрудники', domain: 'Люди', aliases: ['сотрудники', 'staff', 'преподаватели'],
+    desc: 'преподаватели и их нагрузка',
+    run: () => ({
+      kind: 'table', title: 'Сотрудники',
+      columns: ['Имя', 'Роль', 'Отдел', 'Нагрузка', 'Email', 'Статус'],
+      rows: staff.map((s) => [s.name, s.role, s.dept, s.load ? `${s.load} ч` : '—', s.email, s.status]),
+    }),
+  },
+
+  /* ---------------- Расписание ---------------- */
+  {
+    id: 'новое окно', domain: 'Расписание', aliases: ['окно', 'free', 'free slot'], arg: '<день> <время>',
+    desc: 'найти свободное окно в расписании',
+    run: (args) => {
+      if (args.length < 2) {
+        return { kind: 'text', text: 'Укажите день и время: новое окно Пн 12:00' };
+      }
+      const day = args[0].toLowerCase();
+      const time = args[1];
+      const dayMap: Record<string, number> = { пн: 0, вт: 1, ср: 2, чт: 3, пт: 4 };
+      const slot = scheduleSlots.find((s) => s.mon.includes(time) || s.tue.includes(time) || s.wed.includes(time) || s.thu.includes(time) || s.fri.includes(time));
+      if (!slot) return { kind: 'text', text: `Время "${time}" не найдено в расписании.` };
+      const dayIdx = dayMap[day] || 0;
+      const times = [slot.mon, slot.tue, slot.wed, slot.thu, slot.fri];
+      const hit = times[dayIdx];
+      if (hit && hit.includes('— окно —')) {
+        return { kind: 'text', text: `Свободное окно: ${time} в ${scheduleDays[dayIdx]}` };
+      }
+      return { kind: 'text', text: `В это время уже есть занятие. Попробуйте другое время.` };
+    },
+  },
 ];
 
 /* Ищет команду по первому слову (или двум) строки. Возвращает null,
@@ -382,6 +488,30 @@ export function suggest(input: string): TermCommand[] {
   return TERM_COMMANDS
     .filter((c) => c.id.startsWith(q) || c.aliases.some((a) => a.startsWith(q)))
     .slice(0, 6);
+}
+
+/* Палитра всех команд: показывается при вводе `/` в начале пустой строки.
+   Группирует по доменам, сортирует команды внутри домена. */
+export function palette(): TermCommand[] {
+  return [...TERM_COMMANDS].sort((a, b) => {
+    // Сортируем: сначала по домену, потом по id
+    const d = a.domain.localeCompare(b.domain);
+    return d !== 0 ? d : a.id.localeCompare(b.id);
+  });
+}
+
+/* Группирует команды по доменам для отображения палитры */
+export function paletteByDomain(): { domain: TermDomain; commands: TermCommand[] }[] {
+  const groups: Record<string, TermCommand[]> = {};
+  TERM_COMMANDS.forEach((c) => {
+    if (!groups[c.domain]) groups[c.domain] = [];
+    groups[c.domain].push(c);
+  });
+  return Object.entries(groups)
+    .map(([domain, commands]) => ({
+      domain: domain as TermDomain,
+      commands: commands.sort((a, b) => a.id.localeCompare(b.id)),
+    }));
 }
 
 /* --- Рендер структурированного результата -------------------------------- */
@@ -424,7 +554,126 @@ const DOMAIN_META: { id: TermDomain; icon: typeof Sparkles; cmd: string }[] = [
   { id: 'Финансы', icon: Wallet, cmd: 'финансы' },
   { id: 'Безопасность', icon: ShieldCheck, cmd: 'безопасность' },
   { id: 'Задачи', icon: ListChecks, cmd: 'задачи' },
+  { id: 'Кампус', icon: GraduationCap, cmd: 'расписание' },
+  { id: 'Люди', icon: Users, cmd: 'сотрудники' },
+  { id: 'Расписание', icon: Calendar, cmd: 'расписание' },
 ];
+
+/* Палитра терминала — всплывающее окно со всеми командами, сгруппированными по доменам.
+   Использует те же стили, что и омнибокс (cmd-item, cmd-section). */
+function TermPalette({ onSelect, onClose }: { onSelect: (cmd: string) => void; onClose: () => void }) {
+  const [q, setQ] = useState('');
+  const [sel, setSel] = useState(0);
+  const groups = useMemo(() => paletteByDomain(), []);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Фильтруем команды по вводу (поиск внутри палитры)
+  const filtered = useMemo(() => {
+    if (!q.trim()) return groups;
+    return groups.map((g) => ({
+      ...g,
+      commands: g.commands.filter((c) =>
+        c.id.toLowerCase().includes(q.toLowerCase()) || c.desc.toLowerCase().includes(q.toLowerCase())
+      ),
+    })).filter((g) => g.commands.length > 0);
+  }, [q, groups]);
+
+  // Сбрасываем выбор при изменении запроса
+  useEffect(() => { setSel(0); }, [q]);
+
+  // Натуральная навигация по подсказкам
+  const flat = useMemo(() => filtered.flatMap((g) => g.commands), [filtered]);
+
+  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Escape') { e.preventDefault(); onClose(); return; }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSel((s) => Math.min(s + 1, flat.length - 1));
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSel((s) => Math.max(s - 1, 0));
+      return;
+    }
+    if (e.key === 'Enter' && flat[sel]) {
+      e.preventDefault();
+      const cmd = flat[sel];
+      if (cmd.arg) {
+        onSelect(cmd.id + ' ');
+      } else {
+        onSelect(cmd.id);
+      }
+      onClose();
+    }
+  };
+
+  // Фокус на ввод при открытии
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  return createPortal(
+    <div className="term-palette-overlay" onClick={onClose}>
+      <div className="term-palette" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Палитра команд терминала">
+        <input
+          ref={inputRef}
+          className="term-palette-input"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={onKeyDown}
+          placeholder="Поиск команды — ↑↓ для навигации, Enter для выбора"
+        />
+        <div className="term-palette-list">
+          {filtered.map((g) => {
+            // Иконка для секции домена
+            const domainIcons: Record<string, React.ReactNode> = {
+              'Обзор': <LayoutDashboard size={14} />,
+              'Аналитика': <LineChart size={14} />,
+              'Финансы': <Wallet size={14} />,
+              'Безопасность': <ShieldCheck size={14} />,
+              'Задачи': <ListChecks size={14} />,
+              'Кампус': <GraduationCap size={14} />,
+              'Люди': <Users size={14} />,
+              'Расписание': <Calendar size={14} />,
+            };
+            return (
+              <div key={g.domain}>
+                <div className="term-palette-section">{domainIcons[g.domain] || null}<span>{g.domain}</span></div>
+                {g.commands.map((c) => {
+                  const idx = flat.indexOf(c);
+                  return (
+                    <button
+                      key={c.id}
+                      className={`term-palette-item ${idx === sel ? 'sel' : ''} ${c.mutates ? 'mutate' : ''}`}
+                      onMouseEnter={() => setSel(idx)}
+                      onClick={() => {
+                        if (c.arg) {
+                          onSelect(c.id + ' ');
+                        } else {
+                          onSelect(c.id);
+                        }
+                        onClose();
+                      }}
+                    >
+                      {c.mutates && <span className="term-mutate-dot" title="Изменяет данные" />}
+                      <code>{c.id}{c.arg ? ' ' + c.arg : ''}</code>
+                      <span>{c.desc}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
+          {flat.length === 0 && <div className="term-palette-empty">Команда не найдена.</div>}
+        </div>
+        <div className="term-palette-keys">
+          <span><kbd>Enter</kbd> выбрать</span>
+          <span><kbd>Esc</kbd> отмена</span>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
 
 interface WsMsg { who: 'u' | 'n'; text?: string; res?: TermRes; meta?: string; pending?: boolean }
 
@@ -503,6 +752,13 @@ export function TerminalWorkspace({ ctx, remote, onClose }: {
   useEffect(() => { const el = bodyRef.current; if (el) el.scrollTop = el.scrollHeight; }, [log]);
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    // `/` в начале пустой строке — палитра всех команд
+    if (e.key === '/' && !q && !sugs.length) {
+      e.preventDefault();
+      setPaletteOpen(true);
+      return;
+    }
+
     if (sugs.length) {
       if (e.key === 'ArrowDown') { e.preventDefault(); setSel((s) => Math.min(s + 1, sugs.length - 1)); return; }
       if (e.key === 'ArrowUp') { e.preventDefault(); setSel((s) => Math.max(s - 1, 0)); return; }
@@ -550,6 +806,10 @@ export function TerminalWorkspace({ ctx, remote, onClose }: {
               <Icon size={15} /><span>{d.id}</span>
             </button>
           ); })}
+          {/* Кнопка всех команд */}
+          <button type="button" className="icon-btn" title="Все команды" onClick={() => setPaletteOpen(true)} style={{ marginTop: 'auto' }}>
+            <SearchIcon size={16} />
+          </button>
           {/* живой пульс системы — снизу рейла, как строка статуса */}
           <div className="term-ws-pulse">
             <i className={services.some((s) => s.status !== 'ok') ? 'warn' : ''} />
@@ -602,10 +862,12 @@ export function TerminalWorkspace({ ctx, remote, onClose }: {
             <span><kbd>↑</kbd><kbd>↓</kbd> история и выбор</span>
             <span><kbd>Enter</kbd> выполнить</span>
             <span><kbd>Esc</kbd> выйти</span>
+            <span><kbd>/</kbd> все команды</span>
           </div>
         </div>
       </div>
     </div>,
     document.body,
   );
+  {paletteOpen && <TermPalette onSelect={(cmd) => { setQ(cmd); inputRef.current?.focus(); }} onClose={() => setPaletteOpen(false)} />}
 }

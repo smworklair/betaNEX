@@ -2098,11 +2098,20 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .term-ws-head b { font-size: 14.5px; }
 .term-ws-user { margin-left: auto; font-size: 12px; color: var(--text-3); }
 .term-ws-main { flex: 1; display: flex; min-height: 0; }
-.term-ws-rail { display: flex; flex-direction: column; gap: 3px; padding: 14px 10px; border-right: 1px solid var(--border); min-width: 168px; }
-.term-ws-rail button { display: flex; align-items: center; gap: 9px; padding: 9px 12px; border: none; border-radius: 10px;
-  background: transparent; color: var(--text-2); font-size: 13px; font-weight: 600; cursor: pointer; text-align: left; transition: .12s; }
-.term-ws-rail button:hover { background: var(--surface-2); color: var(--text); }
-.term-ws-rail button.on { background: var(--ai-weak); color: var(--ai); }
+.term-ws-rail {
+  display: flex; flex-direction: column; gap: 4px; padding: 16px 12px;
+  border-right: 1px solid color-mix(in srgb, var(--ai) 12%, var(--border));
+  min-width: 180px; background: color-mix(in srgb, var(--surface) 40%, transparent);
+  backdrop-filter: blur(20px);
+}
+.term-ws-rail button {
+  display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+  border: none; border-radius: 12px; background: transparent;
+  color: var(--text-2); font-size: 13.5px; font-weight: 500; cursor: pointer;
+  text-align: left; transition: .14s, transform .1s;
+}
+.term-ws-rail button:hover { background: color-mix(in srgb, var(--ai) 10%, transparent); color: var(--text); }
+.term-ws-rail button.on { background: var(--ai-weak); color: var(--ai); font-weight: 600; }
 /* пульс системы внизу рейла: живая точка + вердикт одним словом */
 .term-ws-pulse { margin-top: auto; display: flex; align-items: center; gap: 7px; padding: 9px 12px; font-size: 11px; color: var(--text-3); }
 .term-ws-pulse i { width: 7px; height: 7px; border-radius: 999px; background: var(--success); animation: finPulse 1.8s infinite; flex-shrink: 0; }
@@ -2123,10 +2132,14 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
 .term-ws-cmds button:hover { border-color: var(--ai); color: var(--text); }
 .term-ws-cmds button code { font-family: var(--font-mono); font-size: 11.5px; color: var(--ai); font-weight: 700; }
 .term-ws-cmds button span { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.term-ws-input { position: relative; display: flex; align-items: center; gap: 10px; padding: 12px 0 16px; }
-.term-ws-input input { flex: 1; height: 44px; border: 1px solid var(--border-2); border-radius: 12px; padding: 0 15px;
-  background: var(--surface); color: var(--text); outline: none; font-size: 14px; font-family: var(--font-mono); }
-.term-ws-input input:focus { border-color: var(--ai); box-shadow: 0 0 0 3px var(--ai-weak); }
+.term-ws-input { position: relative; display: flex; align-items: center; gap: 12px; padding: 16px 0 20px; }
+.term-ws-input input {
+  flex: 1; height: 48px; border: 1px solid color-mix(in srgb, var(--ai) 20%, var(--border-2));
+  border-radius: 14px; padding: 0 18px; background: color-mix(in srgb, var(--surface) 60%, transparent);
+  color: var(--text); outline: none; font-size: 14.5px; font-family: var(--font-mono);
+  backdrop-filter: blur(20px);
+}
+.term-ws-input input:focus { border-color: var(--ai); box-shadow: 0 0 0 4px var(--ai-weak); }
 /* Живые подсказки над строкой: команда + что делает. Фон непрозрачный
    (слой elevated поверх bg) — список не смешивается с контентом под ним. */
 .term-sug { position: absolute; left: 26px; right: 60px; bottom: 100%; margin-bottom: 6px; display: flex; flex-direction: column;
@@ -2145,6 +2158,267 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
   .term-ws-rail button span, .term-ws-pulse span { display: none; }
   .term-ws-work { padding: 0 12px; }
   .term-ws-keys { display: none; }
+}
+
+/* ============================================================
+   macOS Sequoia Spotlight Palette
+   Clean glass redesign с neon-акцентами и плавными анимациями
+   ============================================================ */
+.term-palette-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.45);
+  backdrop-filter: blur(30px);
+  z-index: 250;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  animation: spotlightFade .18s cubic-bezier(.22,1,.36,1);
+  padding: 0 20px;
+}
+@keyframes spotlightFade {
+  from { opacity: 0; transform: scale(.8) translateY(20px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.term-palette {
+  width: 100%;
+  max-width: 720px;
+  background: linear-gradient(145deg, rgba(30,32,36,.85) 0%, rgba(22,24,28,.8) 100%);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 28px;
+  box-shadow:
+    0 40px 120px rgba(0,0,0,.6),
+    0 0 0 1px rgba(255,255,255,.05),
+    inset 0 1px 0 rgba(255,255,255,.1),
+    inset 0 -1px 0 rgba(0,0,0,.3);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  backdrop-filter: blur(50px);
+}
+
+.term-palette-input {
+  width: 100%;
+  height: 54px;
+  border: none;
+  background: transparent;
+  color: #fff;
+  font-size: 16px;
+  padding: 0 22px;
+  outline: none;
+  font-family: var(--font-system);
+  font-weight: 400;
+}
+.term-palette-input::placeholder { color: rgba(255,255,255,.35); }
+.term-palette-input:focus { outline: none; }
+
+/* Палитра - macOS Sequoia Spotlight максимум */
+.term-palette-list {
+  max-height: 480px;
+  overflow-y: auto;
+  padding: 0 8px 8px;
+}
+
+/* Секция с яркой иконкой */
+.term-palette-section {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: rgba(255,255,255,.55);
+  padding: 16px 20px 10px;
+}
+.term-palette-section svg {
+  width: 16px;
+  height: 16px;
+  opacity: .7;
+  filter: drop-shadow(0 0 6px rgba(99,102,241,.3));
+}
+
+/* Пункт команды с neon-границей */
+.term-palette-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 14px 20px;
+  border-radius: 16px;
+  cursor: pointer;
+  font-size: 15px;
+  color: rgba(255,255,255,.88);
+  text-align: left;
+  transition: all .2s cubic-bezier(.34,1.2,.64,1);
+  position: relative;
+  overflow: hidden;
+}
+.term-palette-item::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: transparent;
+  border-radius: 0 4px 4px 0;
+}
+.term-palette-item.sel::before,
+.term-palette-item:hover::before {
+  background: linear-gradient(180deg, #6366f1 0%, #8b5cf6 100%);
+}
+.term-palette-item.sel, .term-palette-item:hover {
+  background: linear-gradient(90deg, rgba(99,102,241,.25) 0%, rgba(99,102,241,.15) 100%);
+  transform: translateX(6px);
+  box-shadow: 0 4px 20px rgba(99,102,241,.25);
+}
+.term-palette-item.sel {
+  background: rgba(99,102,241,.3);
+}
+.term-palette-item.sel, .term-palette-item:hover {
+  background: rgba(99,102,241,.22);
+  transform: translateX(4px);
+}
+.term-palette-item.sel {
+  background: rgba(99,102,241,.28);
+}
+.term-palette-item code {
+  font-family: ui-monospace, var(--font-mono);
+  font-size: 14px;
+  color: #6366f1;
+  font-weight: 600;
+  white-space: nowrap;
+  min-width: 100px;
+  flex-shrink: 0;
+  letter-spacing: -0.02em;
+}
+.term-palette-item.sel code {
+  color: #8b5cf6;
+  text-shadow: 0 0 8px rgba(139,92,246,.5);
+}
+.term-palette-item.mutate code {
+  color: #a7f378;
+  text-shadow: 0 0 8px rgba(167,243,120,.4);
+}
+.term-palette-item span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14.5px;
+  color: rgba(255,255,255,.65);
+}
+.term-palette-item:hover span { color: #fff; }
+.term-palette-item .term-mutate-dot {
+  width: 7px; height: 7px; border-radius: 999px;
+  background: #a7f378; flex-shrink: 0; margin-right: 6px;
+  box-shadow: 0 0 8px #a7f378;
+}
+
+/* Сообщение не найдено с иконкой */
+.term-palette-empty {
+  padding: 50px 24px;
+  text-align: center;
+  color: rgba(255,255,255,.45);
+  font-size: 15px;
+}
+.term-palette-empty::before {
+  content: '🔍';
+  display: block;
+  font-size: 32px;
+  margin-bottom: 12px;
+  opacity: .3;
+}
+
+.term-palette-keys {
+  display: flex;
+  gap: 18px;
+  justify-content: center;
+  padding: 12px 0 16px;
+  font-size: 11px;
+  color: rgba(255,255,255,.45);
+}
+.term-palette-keys {
+  display: flex;
+  gap: 22px;
+  justify-content: center;
+  padding: 14px 0 18px;
+  font-size: 11.5px;
+  color: rgba(255,255,255,.5);
+  border-top: 1px solid rgba(255,255,255,.08);
+}
+.term-palette-keys kbd {
+  font-size: 11px;
+  padding: 4px 10px;
+  border: 1px solid rgba(255,255,255,.15);
+  border-radius: 10px;
+  background: rgba(255,255,255,.12);
+  font-family: inherit;
+  color: rgba(255,255,255,.9);
+}
+
+@media (max-width: 720px) {
+  .term-palette { max-width: 96vw; border-radius: 22px; }
+  .term-palette-input { height: 50px; font-size: 15px; padding: 0 20px; }
+  .term-palette-list { max-height: 44vh; }
+}
+
+/* Рейл fullscreen терминала в macOS-стиле */
+.term-ws-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 20px 16px;
+  border-right: 1px solid rgba(255,255,255,.08);
+  min-width: 200px;
+  background: linear-gradient(180deg, rgba(30,32,36,.6) 0%, rgba(25,27,31,.55) 100%);
+  backdrop-filter: blur(40px);
+}
+.term-ws-rail button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border: none;
+  border-radius: 14px;
+  background: transparent;
+  color: rgba(255,255,255,.7);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: all .18s cubic-bezier(.34,1.2,.64,1);
+}
+.term-ws-rail button:hover {
+  background: rgba(99,102,241,.2);
+  color: #fff;
+  transform: translateX(4px);
+}
+.term-ws-rail button.on {
+  background: rgba(99,102,241,.3);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* Инпут в fullscreen терминале */
+.term-ws-input input {
+  flex: 1;
+  height: 52px;
+  border: 1px solid rgba(255,255,255,.15);
+  border-radius: 16px;
+  padding: 0 20px;
+  background: rgba(255,255,255,.08);
+  color: #fff;
+  outline: none;
+  font-size: 15px;
+  font-family: -apple-system, var(--font-mono);
+  backdrop-filter: blur(30px);
+}
+.term-ws-input input:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 4px rgba(99,102,241,.3);
 }
 
 /* --- Панель --- */
