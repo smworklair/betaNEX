@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, Fragment, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { useState, useEffect, useRef, Fragment, createPortal, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import {
   ArrowUp, ArrowRight, Wallet, Users, Sun, Sunrise, Moon,
   Sparkles, CornerDownLeft, ChevronRight, ChevronLeft, ChevronUp, ChevronDown,
@@ -15,8 +15,8 @@ import { TASK_SEED } from './tasks';
 import { terminalExec, TERMINAL_BACKEND_TOKENS } from '../api/terminal';
 import { API_CONFIGURED, ApiError } from '../api/client';
 import {
-  TerminalWorkspace, TermResBlock, execRegistry, TERM_COMMANDS,
-  type TermRes, type TermTask, type EngineCtx,
+  TerminalWorkspace, TermResBlock, execRegistry, TERM_COMMANDS, palette, paletteByDomain,
+  type TermRes, type TermTask, type EngineCtx, TermDomain,
 } from '../terminal';
 import {
   HOME_BLOCK_CATALOG, HOME_BLOCK_BY_ID, DEFAULT_HOME_BLOCKS,
@@ -85,7 +85,7 @@ const STATUS_COMMANDS: Record<string, string> = {
 const ECO_TOKENS = TERMINAL_BACKEND_TOKENS;
 
 /* Список для подсказки под строкой ввода. */
-const STATUS_COMMAND_LIST = ['обзор', 'аналитика', 'финансы', 'безопасность', 'задачи'];
+const STATUS_COMMAND_LIST = ['обзор', 'аналитика', 'финансы', 'безопасность', 'задачи', 'расписание', 'сотрудники'];
 const KNOWN_TOKENS = new Set([
   'help', '?', 'помощь', 'clear', 'очистить', 'open', 'открой', 'открыть',
   ...ECO_TOKENS, ...Object.keys(STATUS_COMMANDS),
@@ -227,7 +227,15 @@ function NexTerminal({ disabled, chips }: { disabled: boolean; chips: { label: s
     push({ who: 'n', text: a.text, nav: a.nav, action: a.action, data: a.data });
   };
 
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    // `/` в начале пустой строке — палитра всех команд
+    if (e.key === '/' && !q && !busy && !disabled) {
+      e.preventDefault();
+      setPaletteOpen(true);
+      return;
+    }
     if (e.key === 'ArrowUp') {
       if (!hist.length) return;
       e.preventDefault();
@@ -240,6 +248,94 @@ function NexTerminal({ disabled, chips }: { disabled: boolean; chips: { label: s
       if (i >= hist.length) { setHIdx(null); setQ(''); } else { setHIdx(i); setQ(hist[i]); }
     }
   };
+
+  // Компонент палитры для компактного терминала
+  function CompactPalette() {
+    const [pq, setPq] = useState('');
+    const [psel, setPsel] = useState(0);
+    const groups = paletteByDomain();
+    const inputRef2 = useRef<HTMLInputElement>(null);
+
+    const filtered = pq.trim()
+      ? groups.map((g) => ({
+          ...g,
+          commands: g.commands.filter((c) =>
+            c.id.toLowerCase().includes(pq.toLowerCase()) || c.desc.toLowerCase().includes(pq.toLowerCase())
+          ),
+        })
+      ).filter((g) => g.commands.length > 0)
+      : groups;
+
+    const flat = filtered.flatMap((g) => g.commands);
+
+    useEffect(() => { setPsel(0); }, [pq]);
+    useEffect(() => { inputRef2.current?.focus(); }, []);
+
+    const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Escape') { setPaletteOpen(false); return; }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setPsel((s) => Math.min(s + 1, flat.length - 1));
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setPsel((s) => Math.max(s - 1, 0));
+        return;
+      }
+      if (e.key === 'Enter' && flat[psel]) {
+        e.preventDefault();
+        const cmd = flat[psel];
+        setQ(cmd.arg ? cmd.id + ' ' : cmd.id);
+        setPaletteOpen(false);
+      }
+    };
+
+    return createPortal(
+      <div className="term-palette-overlay" onClick={() => setPaletteOpen(false)}>
+        <div className="term-palette" onClick={(e) => e.stopPropagation()}>
+          <input
+            ref={inputRef2}
+            className="term-palette-input"
+            value={pq}
+            onChange={(e) => setPq(e.target.value)}
+            onKeyDown={onKey}
+            placeholder="Поиск команды — ↑↓ для навигации, Enter для выбора"
+          />
+          <div className="term-palette-list">
+            {filtered.map((g) => (
+              <div key={g.domain}>
+                <div className="term-palette-section">{g.domain}</div>
+                {g.commands.map((c) => {
+                  const idx = flat.indexOf(c);
+                  return (
+                    <button
+                      key={c.id}
+                      className={`term-palette-item ${idx === psel ? 'sel' : ''} ${c.mutates ? 'mutate' : ''}`}
+                      onMouseEnter={() => setPsel(idx)}
+                      onClick={() => {
+                        setQ(c.arg ? c.id + ' ' : c.id);
+                        setPaletteOpen(false);
+                      }}
+                    >
+                      {c.mutates && <span className="term-mutate-dot" title="Изменяет данные" />}
+                      <code>{c.id}{c.arg ? ' ' + c.arg : ''}</code>
+                      <span>{c.desc}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+          <div className="term-palette-keys">
+            <span><kbd>Enter</kbd> выбрать</span>
+            <span><kbd>Esc</kbd> отмена</span>
+          </div>
+        </div>
+      </div>,
+      document.body,
+    );
+  }
 
   return (
     <>
@@ -263,6 +359,7 @@ function NexTerminal({ disabled, chips }: { disabled: boolean; chips: { label: s
         {STATUS_COMMAND_LIST.map((c) => <code key={c}>{c}</code>)}
         <code>open &lt;раздел&gt;</code>
         <code>help</code>
+        <code>/</code> — все команды
       </div>
 
       {log.length > 0 && (
@@ -310,6 +407,7 @@ function NexTerminal({ disabled, chips }: { disabled: boolean; chips: { label: s
       )}
     </form>
     {wsOpen && <TerminalWorkspace ctx={engineCtx} remote={API_CONFIGURED ? terminalExec : undefined} onClose={() => setWsOpen(false)} />}
+    {paletteOpen && <CompactPalette />}
     </>
   );
 }
