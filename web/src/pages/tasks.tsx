@@ -76,7 +76,9 @@ const emptyTask = (): Omit<BTask, keyof Entity> => ({
 
 /* сид из прототипа → богатая модель (один раз при первом заходе) */
 const priorityOf = (due: string): Priority => (due === 'сегодня' || due === 'вчера' ? 'high' : 'normal');
-const SEED: BTask[] = seedTasks.map((t) => ({
+/* Сид общий с терминалом на «Главном»: обе поверхности смотрят в одну
+   коллекцию 'tasks' — экосистема, а не отдельные копии данных. */
+export const TASK_SEED: BTask[] = seedTasks.map((t) => ({
   id: t.id, createdAt: nowIso(), updatedAt: nowIso(),
   title: t.title, note: '', status: t.done ? 'done' : 'open', priority: priorityOf(t.due),
   category: 'Общее', tags: [], due: '', assignees: t.who === 'вы' ? [] : [t.who], watchers: [],
@@ -98,7 +100,7 @@ const DEFAULT_RULES: Rule[] = [
 /* ============================ Раздел «Задачи» ============================ */
 export function Tasks() {
   const { toast } = useApp();
-  const col = useCollection<BTask>('tasks', SEED);
+  const col = useCollection<BTask>('tasks', TASK_SEED);
   const [tab, setTab] = useState<'list' | 'templates' | 'rules'>('list');
 
   return (

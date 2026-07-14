@@ -44,6 +44,7 @@ import (
 	"github.com/smworklair/betakis/internal/module/finance"
 	"github.com/smworklair/betakis/internal/module/notifications"
 	"github.com/smworklair/betakis/internal/module/tasks"
+	"github.com/smworklair/betakis/internal/module/terminal"
 	"github.com/smworklair/betakis/internal/platform/blob"
 	"github.com/smworklair/betakis/internal/platform/cron"
 	"github.com/smworklair/betakis/internal/platform/httpapi"
@@ -137,6 +138,7 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		policy.Grant("accountant", perm)
 	}
 	policy.Grant("admin", files.PermWrite)
+	policy.Grant("admin", terminal.PermExec) // консоль администратора — только admin
 	policy.Grant("admin", finance.PermStatsRefresh)
 	policy.Grant("accountant", finance.PermStatsRefresh)
 	for _, perm := range []string{campus.PermGroupsWrite, campus.PermStudentsWrite, campus.PermGradesWrite} {
@@ -321,6 +323,69 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		}
 		mounts = append(mounts, tasks.Routes(bus, tasksRepo, guard))
 		searchSources = append(searchSources, tasksRepo)
+
+		// Терминал «Администратор · альфа»: AI-native консоль по всей
+		// системе. Модуль соседей не знает — адаптеры собираются здесь;
+		// мутации идут через шину (авторизация + аудит), чтения — через
+		// те же репозитории, что и обычные экраны.
+		if err := terminal.RegisterCommands(bus, notifier); err != nil {
+			return fmt.Errorf("register terminal commands: %w", err)
+		}
+		authStore := postgres.NewAuthStore(pgDB)
+		auditReader := postgres.NewAuditReader(pgDB)
+		termDeps := terminal.Deps{
+			Tasks: func(ctx context.Context, status string, limit int) ([]terminal.TaskRow, error) {
+				items, err := tasksRepo.List(ctx, tasks.Filter{Status: status, Limit: limit})
+				if err != nil {
+					return nil, err
+				}
+				rows := make([]terminal.TaskRow, 0, len(items))
+				for _, t := range items {
+					row := terminal.TaskRow{ID: t.ID, Title: t.Title, Status: t.Status}
+					if !t.DueOn.IsZero() {
+						row.DueOn = t.DueOn.Format("2006-01-02")
+					}
+					rows = append(rows, row)
+				}
+				return rows, nil
+			},
+			AddTask: func(ctx context.Context, title string) error {
+				return bus.Dispatch(ctx, tasks.Create{Title: title})
+			},
+			DoneTask: func(ctx context.Context, id string) error {
+				return bus.Dispatch(ctx, tasks.Complete{ID: id})
+			},
+			Users: func(ctx context.Context, limit int) ([]terminal.UserRow, error) {
+				users, err := authStore.ListUsers(ctx, limit)
+				if err != nil {
+					return nil, err
+				}
+				rows := make([]terminal.UserRow, 0, len(users))
+				for _, u := range users {
+					rows = append(rows, terminal.UserRow{ID: u.ID, Email: u.Email, Name: u.DisplayName, Roles: u.Roles})
+				}
+				return rows, nil
+			},
+			Notify: func(ctx context.Context, userIDs []string, title string) error {
+				return bus.Dispatch(ctx, terminal.Notify{UserIDs: userIDs, Title: title})
+			},
+			Audit: func(ctx context.Context, limit int) ([]terminal.AuditRow, error) {
+				entries, err := auditReader.Entries(ctx, audit.Filter{Limit: limit})
+				if err != nil {
+					return nil, err
+				}
+				rows := make([]terminal.AuditRow, 0, len(entries))
+				for _, e := range entries {
+					rows = append(rows, terminal.AuditRow{
+						Command: e.Command, Outcome: string(e.Outcome),
+						ActorID: e.ActorID, OccurredAt: e.OccurredAt,
+					})
+				}
+				return rows, nil
+			},
+			Unread: notifRepo.CountUnread,
+		}
+		mounts = append(mounts, terminal.Routes(termDeps, guard))
 	}
 	if len(searchSources) > 0 {
 		mounts = append(mounts, httpapi.SearchRoutes(guard, searchSources...))

@@ -140,6 +140,34 @@ paths:
         "401": { $ref: "#/components/responses/Problem" }
         "403": { $ref: "#/components/responses/Problem" }
 
+  /api/v1/terminal/exec:
+    post:
+      operationId: terminalExec
+      summary: Консоль «Администратор · альфа» — выполнить команду (право terminal:exec)
+      description: >
+        AI-native вход во всю систему: status, tasks, task add/done, users,
+        notify, audit, whoami, help. Чтения идут через модульные репозитории,
+        мутации — через шину команд с авторизацией и аудитом.
+      tags: [terminal]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [line]
+              properties:
+                line: { type: string, maxLength: 4000, example: "notify all собрание в 14:00" }
+      responses:
+        "200":
+          description: Структурированный результат команды
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TerminalResult" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+
   /api/v1/tasks:
     post:
       operationId: createTask
@@ -632,6 +660,31 @@ components:
           type: array
           items: { type: string }
         active: { type: boolean }
+
+    TerminalResult:
+      type: object
+      required: [kind]
+      properties:
+        kind: { type: string, enum: [text, table, kpi] }
+        title: { type: string }
+        text: { type: string }
+        columns:
+          type: array
+          items: { type: string }
+        rows:
+          type: array
+          items:
+            type: array
+            items: { type: string }
+        kpis:
+          type: array
+          items:
+            type: object
+            required: [label, value]
+            properties:
+              label: { type: string }
+              value: { type: string }
+        hint: { type: string, description: Подсказка следующего шага }
 
     Task:
       type: object
