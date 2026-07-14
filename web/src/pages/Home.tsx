@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, Fragment, createPortal, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { useState, useEffect, useRef, useMemo, Fragment, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import {
   ArrowUp, ArrowRight, Wallet, Users, Sun, Sunrise, Moon,
   Sparkles, CornerDownLeft, ChevronRight, ChevronLeft, ChevronUp, ChevronDown,
@@ -15,8 +15,8 @@ import { TASK_SEED } from './tasks';
 import { terminalExec, TERMINAL_BACKEND_TOKENS } from '../api/terminal';
 import { API_CONFIGURED, ApiError } from '../api/client';
 import {
-  TerminalWorkspace, TermResBlock, execRegistry, TERM_COMMANDS, palette, paletteByDomain,
-  type TermRes, type TermTask, type EngineCtx, TermDomain,
+  TerminalWorkspace, TermResBlock, execRegistry, TERM_COMMANDS, searchCommands, CmdMenu,
+  type TermRes, type TermTask, type EngineCtx, type TermCommand,
 } from '../terminal';
 import {
   HOME_BLOCK_CATALOG, HOME_BLOCK_BY_ID, DEFAULT_HOME_BLOCKS,
@@ -227,13 +227,34 @@ function NexTerminal({ disabled, chips }: { disabled: boolean; chips: { label: s
     push({ who: 'n', text: a.text, nav: a.nav, action: a.action, data: a.data });
   };
 
-  const [paletteOpen, setPaletteOpen] = useState(false);
+  /* Меню команд (.cmenu) — общее с полноэкранной средой. В компактном
+     блоке открывается только явно (`/` или кнопка): поле здесь двойного
+     назначения — свободный вопрос к NEX не должен перехватываться
+     подсказками. Открытое меню фильтруется тем же вводом. */
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [sel, setSel] = useState(0);
+  const search = useMemo(() => searchCommands(q), [q]);
+  const menuVisible = menuOpen && !disabled && (q.trim() ? search.flat.length > 0 : true);
+
+  const pickCmd = (c: TermCommand) => {
+    setMenuOpen(false); setSel(0);
+    if (c.arg) { setQ(c.id + ' '); inputRef.current?.focus(); }
+    else { setQ(''); run(c.id); }
+  };
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    // `/` в начале пустой строке — палитра всех команд
+    // `/` в начале пустой строки — меню всех команд
     if (e.key === '/' && !q && !busy && !disabled) {
       e.preventDefault();
-      setPaletteOpen(true);
+      setMenuOpen(true); setSel(0);
+      return;
+    }
+    if (menuVisible) {
+      if (e.key === 'Escape') { e.preventDefault(); setMenuOpen(false); return; }
+      if (e.key === 'ArrowDown') { e.preventDefault(); setSel((s) => Math.min(s + 1, search.flat.length - 1)); return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setSel((s) => Math.max(s - 1, 0)); return; }
+      if (e.key === 'Tab') { e.preventDefault(); const c = search.flat[sel]; if (c) setQ(c.id + (c.arg ? ' ' : '')); return; }
+      if (e.key === 'Enter') { e.preventDefault(); const c = search.flat[sel]; if (c) pickCmd(c); else { setMenuOpen(false); run(q); } return; }
       return;
     }
     if (e.key === 'ArrowUp') {
@@ -248,94 +269,6 @@ function NexTerminal({ disabled, chips }: { disabled: boolean; chips: { label: s
       if (i >= hist.length) { setHIdx(null); setQ(''); } else { setHIdx(i); setQ(hist[i]); }
     }
   };
-
-  // Компонент палитры для компактного терминала
-  function CompactPalette() {
-    const [pq, setPq] = useState('');
-    const [psel, setPsel] = useState(0);
-    const groups = useMemo(() => paletteByDomain(), []);
-    const inputRef2 = useRef<HTMLInputElement>(null);
-
-    const filtered = pq.trim()
-      ? groups.map((g) => ({
-          ...g,
-          commands: g.commands.filter((c) =>
-            c.id.toLowerCase().includes(pq.toLowerCase()) || c.desc.toLowerCase().includes(pq.toLowerCase())
-          ),
-        })
-      ).filter((g) => g.commands.length > 0)
-      : groups;
-
-    const flat = filtered.flatMap((g) => g.commands);
-
-    useEffect(() => { setPsel(0); }, [pq]);
-    useEffect(() => { inputRef2.current?.focus(); }, []);
-
-    const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === 'Escape') { setPaletteOpen(false); return; }
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        setPsel((s) => Math.min(s + 1, flat.length - 1));
-        return;
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        setPsel((s) => Math.max(s - 1, 0));
-        return;
-      }
-      if (e.key === 'Enter' && flat[psel]) {
-        e.preventDefault();
-        const cmd = flat[psel];
-        setQ(cmd.arg ? cmd.id + ' ' : cmd.id);
-        setPaletteOpen(false);
-      }
-    };
-
-    return createPortal(
-      <div className="term-palette-overlay" onClick={() => setPaletteOpen(false)}>
-        <div className="term-palette" onClick={(e) => e.stopPropagation()}>
-          <input
-            ref={inputRef2}
-            className="term-palette-input"
-            value={pq}
-            onChange={(e) => setPq(e.target.value)}
-            onKeyDown={onKey}
-            placeholder="Поиск команды — ↑↓ для навигации, Enter для выбора"
-          />
-          <div className="term-palette-list">
-            {filtered.map((g) => (
-              <div key={g.domain}>
-                <div className="term-palette-section">{g.domain}</div>
-                {g.commands.map((c) => {
-                  const idx = flat.indexOf(c);
-                  return (
-                    <button
-                      key={c.id}
-                      className={`term-palette-item ${idx === psel ? 'sel' : ''} ${c.mutates ? 'mutate' : ''}`}
-                      onMouseEnter={() => setPsel(idx)}
-                      onClick={() => {
-                        setQ(c.arg ? c.id + ' ' : c.id);
-                        setPaletteOpen(false);
-                      }}
-                    >
-                      {c.mutates && <span className="term-mutate-dot" title="Изменяет данные" />}
-                      <code>{c.id}{c.arg ? ' ' + c.arg : ''}</code>
-                      <span>{c.desc}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-          <div className="term-palette-keys">
-            <span><kbd>Enter</kbd> выбрать</span>
-            <span><kbd>Esc</kbd> отмена</span>
-          </div>
-        </div>
-      </div>,
-      document.body,
-    );
-  }
 
   return (
     <>
@@ -391,12 +324,17 @@ function NexTerminal({ disabled, chips }: { disabled: boolean; chips: { label: s
         </div>
       )}
 
-      <div className="console-line">
-        <span className="term-prompt">›</span>
-        <input ref={inputRef} value={q} onChange={(e) => { setQ(e.target.value); setHIdx(null); }} onKeyDown={onKeyDown} disabled={disabled || busy}
-          placeholder={log.length ? 'Следующая команда — или help' : 'Скомандуйте: tasks · task add <текст> · notify all <текст> — или спросите своими словами'} />
-        <button type="button" className="icon-btn" title="Все команды" onClick={(e) => { e.stopPropagation(); if (!disabled && !busy) setPaletteOpen(true); }} style={{ marginLeft: 4 }}><SearchIcon size={15} /></button>
-        <button className="console-send" type="submit" aria-label="Выполнить"><CornerDownLeft size={15} /></button>
+      <div className="cmenu-anchor">
+        {menuVisible && <CmdMenu search={search} sel={sel} onHover={setSel} onPick={pickCmd} up />}
+        <div className="console-line">
+          <span className="term-prompt">›</span>
+          <input ref={inputRef} value={q} onChange={(e) => { setQ(e.target.value); setSel(0); setHIdx(null); }} onKeyDown={onKeyDown} disabled={disabled || busy}
+            placeholder={log.length ? 'Следующая команда — или help' : 'Скомандуйте: tasks · task add <текст> · notify all <текст> — или спросите своими словами'} />
+          <button type="button" className="icon-btn" title="Все команды (/)"
+            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); if (!disabled && !busy) { setMenuOpen((v) => !v); setSel(0); inputRef.current?.focus(); } }}
+            style={{ marginLeft: 4 }}><SearchIcon size={15} /></button>
+          <button className="console-send" type="submit" aria-label="Выполнить"><CornerDownLeft size={15} /></button>
+        </div>
       </div>
 
       {chips.length > 0 && (
@@ -408,7 +346,6 @@ function NexTerminal({ disabled, chips }: { disabled: boolean; chips: { label: s
       )}
     </form>
     {wsOpen && <TerminalWorkspace ctx={engineCtx} remote={API_CONFIGURED ? terminalExec : undefined} onClose={() => setWsOpen(false)} />}
-    {paletteOpen && <CompactPalette />}
     </>
   );
 }
