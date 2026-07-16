@@ -8,3 +8,7 @@ pytest==9.1.1
 # (def), сами управляют event loop через asyncio.run(), как в
 # test_budget_service.py (см. пояснение в шапке того файла).
 respx==0.23.1
+# Статические проверки (CI, см. ../.github/workflows/ci.yml): ruff — линт
+# + форматирование, mypy — типы (только app/, см. [tool.mypy] в pyproject.toml).
+ruff==0.15.21
+mypy==2.3.0

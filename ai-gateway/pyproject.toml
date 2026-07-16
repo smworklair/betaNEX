@@ -16,3 +16,17 @@ dependencies = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_ignores = true
+warn_redundant_casts = true
+# tests/ намеренно не проверяем: **dict-фикстуры провайдеров и
+# ORM-подобные тестовые хелперы типизированы гораздо более свободно,
+# чем прод-код, и mypy там шумит на паттернах, которые для тестов
+# нормальны (см. CI-джобу ai-gateway в ../.github/workflows/ci.yml).
+files = ["app"]

@@ -1,5 +1,6 @@
-# CI бэкенда: линт + тесты на каждый PR и push в main.
-# Фронтенд-джоба добавится на вехе M7, деплой — на M9.
+# CI: бэкенд (Go), фронтенд (web/) и ai-gateway (Python) — линт + тесты
+# на каждый PR и push в main. Джобы независимы и идут параллельно.
+# Деплой — на M9.
 name: ci
 
 on:
@@ -65,3 +66,65 @@ jobs:
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
+
+  frontend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Версия pnpm берётся из "packageManager" в корневом package.json —
+      # один источник правды с локальной разработкой (см. package.json).
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Типы (tsc --noEmit)
+        run: pnpm -C web lint
+
+      - name: Тесты (Vitest)
+        run: pnpm -C web test
+
+      - name: Build
+        run: pnpm -C web build
+
+  ai-gateway:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai-gateway
+
+    # GIGACHAT_MOCK — тот же детерминированный мок-режим, что использует
+    # tests/test_budget_e2e.py: app/main.py собирает FastAPI-приложение
+    # на уровне модуля (см. `app = create_app()`), и ему нужен хотя бы
+    # один зарегистрированный провайдер даже для импорта модуля тестами —
+    # без реального ключа и без сетевых вызовов.
+    env:
+      GIGACHAT_MOCK: "true"
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: ai-gateway/requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: ruff
+        run: ruff check .
+
+      - name: mypy (app/)
+        run: mypy
+
+      - name: pytest
+        run: pytest -q
