@@ -88,6 +88,9 @@ jobs:
       - name: Типы (tsc --noEmit)
         run: pnpm -C web lint
 
+      - name: ESLint
+        run: pnpm -C web lint:eslint
+
       - name: Тесты (Vitest)
         run: pnpm -C web test
 

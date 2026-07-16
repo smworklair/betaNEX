@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { useApp } from './ui';
 import { students, finance, roleLabel } from './data';
-import { AtRiskList, ContextDrawer, attendanceRate, avgGrade } from './blocks';
+import { AtRiskList, ContextDrawer } from './blocks';
 
 /* ---------- in-prose interactive atoms ---------- */
 function StudentLink({ last, children }: { last: string; children?: ReactNode }) {

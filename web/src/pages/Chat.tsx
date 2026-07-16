@@ -4,7 +4,7 @@ import {
   Activity, GraduationCap, Calendar, Users, Plus, Copy, ThumbsUp, ThumbsDown,
   GitBranch, Paperclip, Boxes, AtSign, Check,
 } from 'lucide-react';
-import { useApp, Chip } from '../ui';
+import { useApp } from '../ui';
 import { nexReply, planFor, type NavLink } from '../nexbrain';
 import { llmReady, llmAsk, llmAskStream, LlmStreamError, type LlmTurn } from '../llm';
 import { Md } from '../md';

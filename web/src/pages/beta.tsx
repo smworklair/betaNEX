@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Search, Send, Paperclip, FileText, Download, Upload, Bell, Heart, MessageCircle,
-  Share2, BookOpen, GraduationCap, Library, Rss, Star, Megaphone, Sparkles, ChevronLeft,
+  Share2, Megaphone, Sparkles, ChevronLeft,
 } from 'lucide-react';
 import { PageHead, Chip, Avatar, Beta, NexAsk, useApp, useIsMobile } from '../ui';
 import { AiBox } from './aibox';
@@ -229,8 +229,6 @@ const CAL_EVENTS: { day: number; time: string; title: string; kind: 'para' | 'ex
   { day: 3, time: '15:00', title: 'Дедлайн: приказы на подпись', kind: 'deadline' },
   { day: 4, time: '11:00', title: 'Карьерная ярмарка', kind: 'meet' },
 ];
-const kindTone: Record<string, string> = { para: 'chip-info', exam: 'chip-warn', meet: 'chip-ai', deadline: 'chip-danger' };
-
 export function Calendar() {
   const today = 2; // среда — для подсветки
   return (

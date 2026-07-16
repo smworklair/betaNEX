@@ -4,7 +4,7 @@ import {
   Sparkles, X, ArrowUp, ArrowRight, Quote, ExternalLink,
   MessageSquare, Mail, CheckSquare, StickyNote, CalendarPlus, Wand2, Copy, Languages, ScrollText,
 } from 'lucide-react';
-import { useApp, Chip, NexAsk } from './ui';
+import { useApp, NexAsk } from './ui';
 import { students, finance } from './data';
 import { nexReply, attendanceRate, avgGrade, pageInsight, PAGE_TITLES } from './nexbrain';
 import { llmReady, llmAsk, type LlmTurn } from './llm';

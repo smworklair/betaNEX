@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   CheckCircle2, Circle, Sparkles, Plus, Trash2, Edit3, Send, Users, Repeat, LayoutTemplate,
-  Wand2, MessageSquare, History as HistoryIcon, Paperclip, ListChecks, Flag, Tag as TagIcon,
+  Wand2, MessageSquare, History as HistoryIcon, Paperclip, ListChecks, Flag,
   Eye, CalendarClock, X, Copy,
 } from 'lucide-react';
 import { PageHead, Chip, NexAsk, Beta, useApp } from '../ui';
@@ -476,7 +476,7 @@ function Templates({ col, toast }: { col: ReturnType<typeof useCollection<BTask>
   const tcol = useCollection<Template>('task-templates', DEFAULT_TEMPLATES);
   const [editing, setEditing] = useState<Template | 'new' | null>(null);
 
-  const useTemplate = (t: Template) => {
+  const applyTemplate = (t: Template) => {
     col.add({
       ...emptyTask(), title: t.title, note: t.note, priority: t.priority, category: t.category,
       checklist: t.checklist.map((text) => ({ id: uid('c'), text, done: false })),
@@ -498,7 +498,7 @@ function Templates({ col, toast }: { col: ReturnType<typeof useCollection<BTask>
             <div className="muted" style={{ fontSize: 13, margin: '8px 0' }}>{t.title}</div>
             {t.checklist.length > 0 && <ul className="bk-tpl-list">{t.checklist.map((c, i) => <li key={i}>{c}</li>)}</ul>}
             <div className="chips" style={{ marginTop: 10 }}>
-              <button className="btn btn-sm btn-primary" onClick={() => useTemplate(t)}><Copy size={14} />Создать задачу</button>
+              <button className="btn btn-sm btn-primary" onClick={() => applyTemplate(t)}><Copy size={14} />Создать задачу</button>
               <button className="btn btn-sm btn-ghost" onClick={() => setEditing(t)}><Edit3 size={14} /></button>
               <button className="btn btn-sm btn-ghost" onClick={() => { tcol.remove(t.id); toast('Шаблон удалён'); }}><Trash2 size={14} /></button>
             </div>

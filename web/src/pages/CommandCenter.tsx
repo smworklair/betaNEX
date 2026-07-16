@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import {
   Sparkles, ShieldAlert, Wallet, Users, CalendarCheck, FileText, AlertTriangle, LogIn,
-  Monitor, TrendingUp, TrendingDown, CheckCircle2, ArrowRight, Activity, ShieldCheck, BookOpen,
+  Monitor, TrendingUp, TrendingDown, CheckCircle2, Activity, ShieldCheck, BookOpen,
 } from 'lucide-react';
 import { useApp, Chip, Avatar, Sparkline, NexAsk, AskHero, severityTone, severityLabel } from '../ui';
 import { AtRiskList } from '../blocks';

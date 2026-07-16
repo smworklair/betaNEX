@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, type ReactNode, type FormEvent, type KeyboardEvent } from 'react';
+import { useState, useEffect, useRef, useMemo, type ReactNode, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Sparkles, X, CornerDownLeft, LayoutDashboard, LineChart, Wallet, ShieldCheck, ListChecks,
@@ -9,7 +9,7 @@ import { Md } from './md';
 import { Line, Donut, Legend, type Segment } from './charts';
 import {
   students, staff, sessions, auditEvents, failedLogins, services, finance, groups,
-  scheduleDays, scheduleSlots, charges, payroll, exams,
+  scheduleDays, scheduleSlots, charges, exams,
 } from './data';
 import { atRisk, attendanceRate, avgGrade, groupAvg, PAGE_TITLES } from './nexbrain';
 import { TERMINAL_BACKEND_TOKENS, type TermResult } from './api/terminal';
@@ -176,7 +176,7 @@ export const TERM_COMMANDS: TermCommand[] = [
   {
     id: 'студент', domain: 'Кампус', aliases: ['студент', 'student'], arg: '<фамилия|email>',
     desc: 'найти студента по фамилии или email (разрешение неоднозначности)',
-    run: (args, ctx) => {
+    run: (args, _ctx) => {
       if (args.length === 0) return { kind: 'text', text: 'Укажите фамилию или email: студент иванов' };
       const q = args.join(' ').toLowerCase().trim();
       const matches = students.filter((s) =>

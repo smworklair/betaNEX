@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Sparkles, GraduationCap } from 'lucide-react';
+import { GraduationCap } from 'lucide-react';
 import { PageHead, Chip, NexAsk } from '../ui';
 import { groups, gradesFor, finance } from '../data';
 import { Donut, Line, Legend, type Segment } from '../charts';

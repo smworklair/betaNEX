@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
-  ChevronLeft, ChevronRight, Plus, Users, Repeat, MapPin, Bell, Paperclip,
+  ChevronLeft, ChevronRight, Plus, Users, Repeat, MapPin, Bell,
   Send, Trash2, Edit3, CheckSquare, DoorOpen,
 } from 'lucide-react';
 import { PageHead, Chip, NexAsk, Beta, useApp } from '../ui';
