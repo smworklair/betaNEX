@@ -75,7 +75,7 @@ jobs:
 
       # Версия pnpm берётся из "packageManager" в корневом package.json —
       # один источник правды с локальной разработкой (см. package.json).
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
       - uses: actions/setup-node@v6
         with:
