@@ -49,6 +49,22 @@ class Settings(BaseSettings):
         "gemini", "custom", "openai", "deepseek", "qwen", "kimi", "gigachat", "yandexgpt"
     ] = "gemini"
 
+    # --- Цепочка fallback между провайдерами (см. app/services/ai_service.py) ---
+    # Через запятую, по приоритету: если первый провайдер недоступен/упал
+    # с ошибкой (таймаут, 5xx, невалидный ответ), пробуем следующий, и так
+    # далее. Работает только тогда, когда клиент НЕ указал provider явно в
+    # запросе — явный выбор провайдера (например, ru-restricted маршрут для
+    # ПДн, см. docs/ai/README.md §3) всегда уважается буквально, без
+    # автопереключения на другой провайдер. Имена, для которых нет ключа
+    # (провайдер не зарегистрирован в app/main.py:_build_service),
+    # молча пропускаются — так дефолт работает и при частично заполненном
+    # .env (например, настроен только Gemini).
+    #
+    # Дефолт — DeepSeek → Kimi → Gemini: два недорогих OpenAI-совместимых
+    # провайдера первыми (дешевле для учебной нагрузки), затем Gemini как
+    # более устойчивый запасной вариант с щедрым бесплатным тиром.
+    provider_fallback_chain: str = "deepseek,kimi,gemini"
+
     # --- Gemini (Google generativelanguage API) ---
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.5-flash"
@@ -148,6 +164,10 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def provider_fallback_chain_list(self) -> list[str]:
+        return [name.strip() for name in self.provider_fallback_chain.split(",") if name.strip()]
 
 
 @lru_cache

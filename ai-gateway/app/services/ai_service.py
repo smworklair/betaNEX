@@ -91,11 +91,20 @@ def _status_for(exc: ProviderError) -> int:
 
 class AIService:
     def __init__(
-        self, providers: dict[str, LLMProvider], default_provider: str, budget_service: BudgetService
+        self,
+        providers: dict[str, LLMProvider],
+        default_provider: str,
+        budget_service: BudgetService,
+        fallback_chain: list[str] | None = None,
     ) -> None:
         self._providers = providers
         self._default_provider = default_provider
         self._budget = budget_service
+        # Уже отфильтрована до реально зарегистрированных провайдеров и
+        # непустая (см. app/main.py:_build_service) — если по какой-то
+        # причине сюда попал пустой список, откатываемся на единственный
+        # default_provider, чтобы сервис не остался вообще без маршрута.
+        self._fallback_chain = fallback_chain or [default_provider]
 
     @property
     def provider_names(self) -> list[str]:
@@ -105,12 +114,33 @@ class AIService:
     def default_provider(self) -> str:
         return self._default_provider
 
+    @property
+    def fallback_chain(self) -> list[str]:
+        return list(self._fallback_chain)
+
     def _resolve(self, provider_name: str | None) -> LLMProvider:
         name = provider_name or self._default_provider
         provider = self._providers.get(name)
         if provider is None:
             raise AIServiceError(f"провайдер не настроен: {name!r}", status_code=400)
         return provider
+
+    def _resolve_chain(self, provider_name: str | None) -> list[LLMProvider]:
+        """
+        Список провайдеров для последовательных попыток.
+
+        Явный provider_name в запросе — это осознанный выбор клиента (в
+        т.ч. ru-restricted маршрут для ПДн, см. docs/ai/README.md §3) и
+        уважается буквально: цепочка из ОДНОГО элемента, без
+        автопереключения на другой провайдер при отказе. Автопереключение
+        применяется только тогда, когда клиент оставил выбор провайдера
+        серверу (provider не передан) — тогда пробуем self._fallback_chain
+        по порядку.
+        """
+        if provider_name:
+            return [self._resolve(provider_name)]
+        chain = [self._providers[name] for name in self._fallback_chain if name in self._providers]
+        return chain or [self._resolve(None)]
 
     async def ask(
         self,
@@ -125,15 +155,23 @@ class AIService:
         # Проверка лимита (check) сюда сознательно НЕ дублируется — она
         # уже выполнена на уровне Depends до вызова этого метода, см.
         # app/deps.py:enforce_budget и пояснение в шапке budget_service.py.
-        provider = self._resolve(provider_name)
+        chain = self._resolve_chain(provider_name)
         messages = [*history, ChatMessage(role="user", content=message)]
-        try:
-            result = await provider.complete(messages, _resolve_system(system, context))
-        except ProviderError as exc:
-            logger.warning("ai_service.ask: %s", exc)
-            raise AIServiceError(exc.message, status_code=_status_for(exc)) from exc
-        await self._budget.record(tenant_id, provider.name, result.usage)
-        return result
+        system_prompt = _resolve_system(system, context)
+        last_exc: ProviderError | None = None
+        for provider in chain:
+            try:
+                result = await provider.complete(messages, system_prompt)
+            except ProviderError as exc:
+                logger.warning(
+                    "ai_service.ask: %s недоступен (%s), пробуем следующий в цепочке", provider.name, exc
+                )
+                last_exc = exc
+                continue
+            await self._budget.record(tenant_id, provider.name, result.usage)
+            return result
+        assert last_exc is not None  # chain никогда не пуст, см. _resolve_chain
+        raise AIServiceError(last_exc.message, status_code=_status_for(last_exc)) from last_exc
 
     async def ask_stream(
         self,
@@ -145,19 +183,40 @@ class AIService:
         provider_name: str | None,
         tenant_id: str,
     ) -> AsyncIterator[StreamChunk]:
-        provider = self._resolve(provider_name)
+        chain = self._resolve_chain(provider_name)
         messages = [*history, ChatMessage(role="user", content=message)]
-        # Итоговый usage приходит только в последнем чанке потока
-        # (см. providers/gemini.py и openai_compat.py) — накапливаем
-        # его тут, чтобы записать в бюджет один раз в конце, а не по
-        # частям.
-        usage = Usage()
-        try:
-            async for chunk in provider.stream(messages, _resolve_system(system, context)):
-                if chunk.usage:
-                    usage = chunk.usage
-                yield chunk
-        except ProviderError as exc:
-            logger.warning("ai_service.ask_stream: %s", exc)
-            raise AIServiceError(exc.message, status_code=_status_for(exc)) from exc
-        await self._budget.record(tenant_id, provider.name, usage)
+        system_prompt = _resolve_system(system, context)
+        last_exc: ProviderError | None = None
+        for provider in chain:
+            # Итоговый usage приходит только в последнем чанке потока
+            # (см. providers/gemini.py и openai_compat.py) — накапливаем
+            # его тут, чтобы записать в бюджет один раз в конце, а не по
+            # частям.
+            usage = Usage()
+            # started=True, как только клиенту ушёл хотя бы один чанк —
+            # с этого момента переключаться на следующий провайдер уже
+            # нельзя: часть ответа уже показана пользователю, начинать
+            # его текст заново от другой модели было бы хуже, чем просто
+            # оборвать поток ошибкой (см. api/routes.py: event "error").
+            started = False
+            try:
+                async for chunk in provider.stream(messages, system_prompt):
+                    started = True
+                    if chunk.usage:
+                        usage = chunk.usage
+                    yield chunk
+            except ProviderError as exc:
+                if started:
+                    logger.warning("ai_service.ask_stream: %s", exc)
+                    raise AIServiceError(exc.message, status_code=_status_for(exc)) from exc
+                logger.warning(
+                    "ai_service.ask_stream: %s недоступен до начала потока (%s), пробуем следующий",
+                    provider.name,
+                    exc,
+                )
+                last_exc = exc
+                continue
+            await self._budget.record(tenant_id, provider.name, usage)
+            return
+        assert last_exc is not None  # chain никогда не пуст, см. _resolve_chain
+        raise AIServiceError(last_exc.message, status_code=_status_for(last_exc)) from last_exc

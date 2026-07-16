@@ -198,7 +198,24 @@ def _build_service(settings: Settings, budget_service: BudgetService) -> AIServi
             "(см. .env.example) либо GIGACHAT_MOCK/YANDEXGPT_MOCK=true для дев-режима"
         )
     default = settings.default_provider if settings.default_provider in providers else next(iter(providers))
-    return AIService(providers=providers, default_provider=default, budget_service=budget_service)
+
+    # Цепочка fallback — только реально зарегистрированные провайдеры, в
+    # заданном порядке (см. Settings.provider_fallback_chain). Если после
+    # фильтрации ничего не осталось (например, в PROVIDER_FALLBACK_CHAIN
+    # опечатка или там только незарегистрированные провайдеры) — не
+    # оставляем сервис вообще без маршрута, откатываемся на [default].
+    fallback_chain = [name for name in settings.provider_fallback_chain_list if name in providers]
+    if not fallback_chain:
+        fallback_chain = [default]
+    elif default not in fallback_chain:
+        # default_provider должен быть достижим даже если его забыли
+        # вписать в цепочку явно — иначе поведение "провайдер не указан
+        # клиентом" неожиданно перестало бы совпадать с DEFAULT_PROVIDER.
+        fallback_chain = [default, *fallback_chain]
+
+    return AIService(
+        providers=providers, default_provider=default, budget_service=budget_service, fallback_chain=fallback_chain
+    )
 
 
 def create_app() -> FastAPI:
@@ -238,9 +255,10 @@ def create_app() -> FastAPI:
     app.add_exception_handler(BudgetExceededError, budget_exceeded_handler)
 
     logger.info(
-        "ai-gateway готов: провайдеры=%s, по умолчанию=%s",
+        "ai-gateway готов: провайдеры=%s, по умолчанию=%s, fallback-цепочка=%s",
         app.state.ai_service.provider_names,
         app.state.ai_service.default_provider,
+        app.state.ai_service.fallback_chain,
     )
     return app
 
