@@ -1,8 +1,8 @@
 """
-Тесты InMemoryRateLimiter (app/core/ratelimit.py) — единственная
-реализация RateLimiter, реально используемая сегодня; RedisRateLimiter —
-заготовка под будущий multi-instance деплой (см. её docstring), которую
-здесь тестировать нечего — она сознательно поднимает NotImplementedError.
+Тесты InMemoryRateLimiter (app/core/ratelimit.py) — backend по
+умолчанию. RedisRateLimiter (тот же алгоритм через общий Redis/Valkey)
+покрыт отдельно в test_redis_backends.py — там же объяснение, почему
+эти тесты требуют настоящего сервера, а не мокаются.
 """
 
 from __future__ import annotations

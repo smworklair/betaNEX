@@ -138,6 +138,19 @@ class Settings(BaseSettings):
     response_cache_ttl_seconds: float = 300.0   # 5 минут — короткий TTL: правильнее для меняющихся данных
     response_cache_max_entries: int = 1000      # граница памяти для InMemoryResponseCache, см. её докстринг
 
+    # --- Backend кэша ответов и rate-limiter'а ---
+    # "memory" (по умолчанию) — оба живут в памяти процесса, как и было;
+    # не общий между инстансами/воркерами (см. докстринги InMemoryRateLimiter/
+    # InMemoryResponseCache). "redis" — общий Redis/Valkey (см.
+    # core/ratelimit.py:RedisRateLimiter, core/response_cache.py:RedisResponseCache),
+    # нужен, когда ai-gateway работает больше чем одним процессом. Тот же
+    # переключатель и тот же принцип, что у Go-стороны NEX
+    # (NEX_CACHE_BACKEND, internal/config/config.go) — можно указывать
+    # один и тот же Redis/Valkey для обоих сервисов, ключи не пересекаются
+    # (разные префиксы, см. докстринг RedisResponseCache).
+    cache_backend: Literal["memory", "redis"] = "memory"
+    redis_url: str = "redis://localhost:6379/0"
+
     # --- Бюджеты по тенантам (per-tenant budgets) ---
     # Путь к JSON-файлу с персональными лимитами по тенантам, см.
     # tenants.example.json. Если файла нет — все тенанты (включая

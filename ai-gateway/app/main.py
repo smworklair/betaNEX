@@ -17,9 +17,13 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+if TYPE_CHECKING:
+    from redis.asyncio import Redis
 
 from app.api.routes import router
 from app.config import Settings, get_settings
@@ -33,9 +37,9 @@ from app.core.errors import (
 from app.core.limits import MaxBodySizeMiddleware
 from app.core.logging import setup_logging
 from app.core.metrics import MetricsMiddleware
-from app.core.ratelimit import InMemoryRateLimiter
+from app.core.ratelimit import InMemoryRateLimiter, RateLimiter, RedisRateLimiter
 from app.core.request_id import RequestIDMiddleware
-from app.core.response_cache import InMemoryResponseCache, ResponseCache
+from app.core.response_cache import InMemoryResponseCache, RedisResponseCache, ResponseCache
 from app.providers.base import LLMProvider
 from app.providers.gemini import GeminiProvider
 from app.providers.gigachat import GigaChatProvider
@@ -113,7 +117,33 @@ def _build_budget_service(settings: Settings) -> BudgetService:
     )
 
 
-def _build_service(settings: Settings, budget_service: BudgetService) -> AIService:
+def _build_cache_backend(settings: Settings) -> tuple[ResponseCache | None, RateLimiter, "Redis | None"]:
+    """
+    Response cache и rate limiter выбираются одним переключателем
+    (settings.cache_backend, см. app/config.py) и при backend=redis
+    делят один и тот же клиент — они обращаются к разным префиксам
+    ключей ("llmcache:"/"ratelimit:", см. докстринги реализаций), так
+    что общий клиент не создаёт коллизий, а лишний TCP-коннекшн на
+    процесс не нужен.
+
+    Третий элемент кортежа — сам клиент (нужен только для того, чтобы
+    composition root мог его закрыть/убедиться, что он создан), либо
+    None при backend=memory.
+    """
+    if settings.cache_backend == "redis":
+        from redis.asyncio import Redis
+
+        redis_client = Redis.from_url(settings.redis_url)
+        cache: ResponseCache | None = RedisResponseCache(redis_client) if settings.response_cache_enabled else None
+        rate_limiter: RateLimiter = RedisRateLimiter(redis_client, settings.rate_limit_per_minute)
+        return cache, rate_limiter, redis_client
+
+    cache = InMemoryResponseCache(max_entries=settings.response_cache_max_entries) if settings.response_cache_enabled else None
+    rate_limiter = InMemoryRateLimiter(settings.rate_limit_per_minute)
+    return cache, rate_limiter, None
+
+
+def _build_service(settings: Settings, budget_service: BudgetService, cache: ResponseCache | None) -> AIService:
     providers: dict[str, LLMProvider] = {}
     # Провайдер регистрируется, только если для него задан ключ — так
     # сервис стартует даже с одним настроенным провайдером, а не падает
@@ -217,10 +247,6 @@ def _build_service(settings: Settings, budget_service: BudgetService) -> AIServi
         # клиентом" неожиданно перестало бы совпадать с DEFAULT_PROVIDER.
         fallback_chain = [default, *fallback_chain]
 
-    cache: ResponseCache | None = None
-    if settings.response_cache_enabled:
-        cache = InMemoryResponseCache(max_entries=settings.response_cache_max_entries)
-
     return AIService(
         providers=providers,
         default_provider=default,
@@ -265,13 +291,23 @@ def create_app() -> FastAPI:
     # и обработчиков исключений (они — внутренние слои относительно него).
     app.add_middleware(RequestIDMiddleware)
 
+    # cache/rate_limiter — оба переключаются одним CACHE_BACKEND (см.
+    # _build_cache_backend); redis_client, если он создан, живёт до конца
+    # процесса — отдельного шага очистки нет: uvicorn останавливает
+    # процесс по сигналу, ОС закрывает сокет, а у сервиса и так нет
+    # другой lifecycle-инфраструктуры, которую стоило бы заводить ради
+    # этого одного клиента.
+    cache, rate_limiter, redis_client = _build_cache_backend(settings)
+    if redis_client is not None:
+        app.state.redis_client = redis_client
+        logger.info("cache backend: redis")
+    else:
+        logger.info("cache backend: memory")
+
     budget_service = _build_budget_service(settings)
     app.state.budget_service = budget_service
-    app.state.ai_service = _build_service(settings, budget_service)
-    # RateLimiter — абстракция (app/core/ratelimit.py): по умолчанию
-    # in-memory, готова смениться на RedisRateLimiter, когда появится
-    # больше одного инстанса сервиса (см. docstring RedisRateLimiter).
-    app.state.rate_limiter = InMemoryRateLimiter(settings.rate_limit_per_minute)
+    app.state.ai_service = _build_service(settings, budget_service, cache)
+    app.state.rate_limiter = rate_limiter
 
     app.include_router(router)
     # Starlette типизирует add_exception_handler инвариантно по Exception —

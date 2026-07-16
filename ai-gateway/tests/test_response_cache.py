@@ -2,6 +2,9 @@
 Юнит-тесты InMemoryResponseCache: попадание/промах, TTL, эвикция при
 переполнении. Без pytest-asyncio — как и в test_budget_service.py, тесты
 обычные (def), сами управляют event loop через asyncio.run().
+
+RedisResponseCache (тот же контракт через общий Redis/Valkey) покрыт
+отдельно в test_redis_backends.py.
 """
 
 from __future__ import annotations

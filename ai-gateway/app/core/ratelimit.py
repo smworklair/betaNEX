@@ -1,14 +1,14 @@
 """
-Rate-limit запросов: абстракция + in-memory реализация по умолчанию.
+Rate-limit запросов: абстракция + in-memory реализация по умолчанию,
+плюс Redis-реализация для нескольких инстансов (см. RedisRateLimiter).
 
 Та же граница и тот же приём, что у core/budget_store.py (см. шапку
 того файла) — при нескольких инстансах ai-gateway за балансировщиком
-(или `uvicorn --workers N`, несколько ОС-процессов) счётчик в памяти
-процесса НЕ общий: лимит станет "мягче" в N раз, потому что каждый
-процесс считает попадания отдельно. Прод-реализация — Redis (INCR на
-ключ "{key}:{window}" + EXPIRE, или sliding-window через Lua-скрипт);
-ей достаточно реализовать протокол RateLimiter ниже, ничего в вызывающем
-коде (app/deps.py) менять не придётся.
+(или `uvicorn --workers N`, несколько ОС-процессов) счётчик InMemoryRateLimiter
+НЕ общий: лимит станет "мягче" в N раз, потому что каждый процесс считает
+попадания отдельно. RedisRateLimiter снимает это ограничение, разделяя
+счётчик через общий Redis/Valkey (см. app/main.py: включается конфигом
+CACHE_BACKEND=redis, см. app/config.py).
 """
 
 from __future__ import annotations
@@ -16,6 +16,10 @@ from __future__ import annotations
 import time
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from redis.asyncio import Redis
 
 
 class RateLimiter(ABC):
@@ -46,35 +50,25 @@ class InMemoryRateLimiter(RateLimiter):
 
 class RedisRateLimiter(RateLimiter):
     """
-    Прод-реализация для нескольких инстансов — НЕ реализована здесь
-    (учебный сервис, см. app/README.md про границы проекта), но
-    протокол уже готов принять её без изменений в app/deps.py/app/main.py:
+    Fixed-window счётчик через общий Redis/Valkey — тот же алгоритм, что
+    и у InMemoryRateLimiter (окно в 60 секунд), но счётчик один на все
+    инстансы ai-gateway, а не по одному на процесс.
 
-        limiter: RateLimiter = RedisRateLimiter(redis_client, limit_per_minute=...)
-        app.state.rate_limiter = limiter
-
-    Набросок реализации (INCR + EXPIRE, тот же fixed-window, что и у
-    InMemoryRateLimiter, но через общий Redis):
-
-        async def allow(self, key: str) -> bool:
-            window = int(time.time() // 60)
-            redis_key = f"ratelimit:{key}:{window}"
-            count = await self._redis.incr(redis_key)
-            if count == 1:
-                await self._redis.expire(redis_key, 60)
-            return count <= self._limit
-
-    Требует зависимости `redis` (redis.asyncio) — намеренно не добавлена
-    в requirements.txt, пока не появится реальный Redis/Valkey в стеке
-    (тот же принцип, что и у Go-плана NEX, docs/architecture-go.md, §7:
-    "Valkey только когда появится вторая реплика").
+    INCR + EXPIRE, а не Lua-скрипт для атомарности: гонка возможна только
+    в первую миллисекунду нового окна (несколько параллельных запросов
+    видят count==1 и все шлют EXPIRE) — EXPIRE идемпотентен (просто
+    переустанавливает тот же TTL), поэтому лишний вызов не портит
+    корректность, а Lua усложнил бы код ради выгоды, которая здесь не нужна.
     """
 
-    def __init__(self, *_args: object, **_kwargs: object) -> None:
-        raise NotImplementedError(
-            "RedisRateLimiter — заготовка под будущий multi-instance деплой, "
-            "см. docstring класса. Пока используйте InMemoryRateLimiter."
-        )
+    def __init__(self, redis_client: Redis, limit_per_minute: int) -> None:
+        self._redis = redis_client
+        self._limit = limit_per_minute
 
-    async def allow(self, key: str) -> bool:  # pragma: no cover - недостижимо, __init__ уже поднял исключение
-        raise NotImplementedError
+    async def allow(self, key: str) -> bool:
+        window = int(time.time() // 60)
+        redis_key = f"ratelimit:{key}:{window}"
+        count = await self._redis.incr(redis_key)
+        if count == 1:
+            await self._redis.expire(redis_key, 60)
+        return count <= self._limit
