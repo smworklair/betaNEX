@@ -74,6 +74,15 @@ func MountAIGateway(cfg AIGatewayConfig, log *slog.Logger) func(mux *http.ServeM
 		// requireActor/tenancy до вызова proxy.ServeHTTP.
 		tenant, _ := tenancy.TenantFrom(r.Context())
 		r.Header.Set("X-Tenant-Id", tenant)
+		// Тот же request_id, что nexd использует в своих логах (requestID
+		// middleware, requestid.go) — сквозной идентификатор запроса
+		// пробрасывается в ai-gateway тем же заголовком, чтобы одна
+		// строка в логах nexd и одна строка в логах ai-gateway отвечали
+		// одному и тому же запросу пользователя. Перезаписываем заголовок
+		// явно (а не полагаемся на то, что клиент его уже прислал):
+		// requestID мог сгенерировать новый id, если входящий был пуст
+		// или подозрительно длинный.
+		r.Header.Set(requestIDHeader, RequestIDFrom(r.Context()))
 		if cfg.Secret != "" {
 			r.Header.Set(gatewaySecretHeader, cfg.Secret)
 		}

@@ -48,4 +48,7 @@ EXPOSE 8090
 HEALTHCHECK --interval=15s --timeout=3s --start-period=5s --retries=3 \
     CMD curl -fsS http://localhost:8090/healthz || exit 1
 
-ENTRYPOINT ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8090"]
+# --no-access-log: RequestIDMiddleware (app/core/request_id.py) уже
+# логирует каждый запрос в едином JSON-формате с request_id — встроенный
+# access-лог uvicorn дублировал бы её в своём текстовом формате.
+ENTRYPOINT ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8090", "--no-access-log"]

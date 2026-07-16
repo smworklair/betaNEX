@@ -33,6 +33,7 @@ from app.core.errors import (
 from app.core.limits import MaxBodySizeMiddleware
 from app.core.logging import setup_logging
 from app.core.ratelimit import InMemoryRateLimiter
+from app.core.request_id import RequestIDMiddleware
 from app.core.response_cache import InMemoryResponseCache, ResponseCache
 from app.providers.base import LLMProvider
 from app.providers.gemini import GeminiProvider
@@ -252,6 +253,13 @@ def create_app() -> FastAPI:
             allow_headers=["Content-Type"],
         )
 
+    # Добавлен последним — в Starlette последний добавленный middleware
+    # становится самым внешним слоем (см. docstring RequestIDMiddleware):
+    # request_id проставляется раньше любой другой обработки и виден в
+    # логе итоговый статус ответа, включая ответы MaxBodySizeMiddleware
+    # и обработчиков исключений (они — внутренние слои относительно него).
+    app.add_middleware(RequestIDMiddleware)
+
     budget_service = _build_budget_service(settings)
     app.state.budget_service = budget_service
     app.state.ai_service = _build_service(settings, budget_service)
@@ -285,4 +293,7 @@ if __name__ == "__main__":
     import uvicorn
 
     _settings = get_settings()
-    uvicorn.run("app.main:app", host=_settings.host, port=_settings.port, reload=False)
+    # access_log=False: RequestIDMiddleware уже логирует каждый запрос в
+    # едином JSON-формате с request_id (см. core/request_id.py) —
+    # встроенный access-лог uvicorn дублировал бы её в своём формате.
+    uvicorn.run("app.main:app", host=_settings.host, port=_settings.port, reload=False, access_log=False)

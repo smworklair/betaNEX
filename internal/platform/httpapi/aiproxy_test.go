@@ -71,6 +71,32 @@ func TestMountAIGateway_ForwardsTenantAndSecret(t *testing.T) {
 	}
 }
 
+func TestMountAIGateway_ForwardsRequestID(t *testing.T) {
+	var gotRequestID string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotRequestID = r.Header.Get(requestIDHeader)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	mount := MountAIGateway(AIGatewayConfig{URL: upstream.URL}, discardLogger())
+	mux := http.NewServeMux()
+	mount(mux)
+
+	req := withActorAndTenant(httptest.NewRequest(http.MethodPost, "/api/v1/ai/ask", nil), "t1")
+	ctx := context.WithValue(req.Context(), requestIDKey{}, "req-abc123")
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if gotRequestID != "req-abc123" {
+		t.Errorf("%s пришёл в ai-gateway как %q, want %q", requestIDHeader, gotRequestID, "req-abc123")
+	}
+}
+
 func TestMountAIGateway_HealthzPathRewritten(t *testing.T) {
 	var gotPath string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
