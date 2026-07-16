@@ -24,7 +24,7 @@
      • "1" или "true" → реальные вызовы через nexd → ai-gateway.
    ============================================================ */
 
-import { API_BASE } from './api/client';
+import { API_BASE } from '../../api/client';
 
 const RAW_ENABLED = (import.meta.env.VITE_AI_ENABLED ?? '').trim().toLowerCase();
 

@@ -6,7 +6,7 @@ import {
   Building2, HandCoins, FileCheck2, Lock, Zap, Percent, RefreshCw, Info,
 } from 'lucide-react';
 import { PageHead, NexAsk, Chip, useApp } from '../ui';
-import { Line, DualLine, Donut, Legend, Gauge, HBars, Waterfall, type Segment } from '../charts';
+import { Line, DualLine, Donut, Legend, Gauge, HBars, Waterfall, type Segment } from '../components/charts';
 import { payroll, budgetLines } from '../data';
 import { useCollection, type Entity } from '../beta/store';
 

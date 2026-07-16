@@ -5,7 +5,7 @@ import {
   ArrowDownLeft, ArrowUpRight,
 } from 'lucide-react';
 import { PageHead, Chip, NexAsk, Beta, useApp } from '../ui';
-import { Donut, Legend, Line, type Segment } from '../charts';
+import { Donut, Legend, Line, type Segment } from '../components/charts';
 import { finance, charges, payroll, budgetLines, reports, students } from '../data';
 import { useCollection, type Entity } from '../beta/store';
 import { EntityManager } from '../beta/manager';

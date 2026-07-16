@@ -19,7 +19,7 @@ import { auth as authApi, ApiError } from './api';
 import { DOCK_BY_ID, DEFAULT_DOCK, DEFAULT_TOPBAR } from './dock';
 import { roleLabel, students, type Role } from './data';
 import { ContextDrawer } from './blocks';
-import { AiLayer } from './ai';
+import { AiLayer } from './features/ai/ai';
 import { MiniMessenger } from './pages/social';
 
 /* ---- Ленивая загрузка страниц: код каждого раздела попадает в свой чанк

@@ -4,12 +4,12 @@ import {
   Sparkles, X, ArrowUp, ArrowRight, Quote, ExternalLink,
   MessageSquare, Mail, CheckSquare, StickyNote, CalendarPlus, Wand2, Copy, Languages, ScrollText,
 } from 'lucide-react';
-import { useApp, NexAsk } from './ui';
-import { students, finance } from './data';
+import { useApp, NexAsk } from '../../ui';
+import { students, finance } from '../../data';
 import { nexReply, attendanceRate, avgGrade, pageInsight, PAGE_TITLES } from './nexbrain';
 import { llmReady, llmAsk, type LlmTurn } from './llm';
-import { Md } from './md';
-import { useCollection, uid, nowIso, type Entity } from './beta/store';
+import { Md } from '../../components/md';
+import { useCollection, uid, nowIso, type Entity } from '../../beta/store';
 
 /* ---------- Proactive strip: NEX speaks first on every screen ---------- */
 export function ProactiveStrip() {

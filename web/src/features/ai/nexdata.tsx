@@ -1,7 +1,7 @@
-import { useApp } from './ui';
+import { useApp } from '../../ui';
 import { atRisk, type NexData } from './nexbrain';
-import { finance } from './data';
-import { Donut, Legend, type Segment } from './charts';
+import { finance } from '../../data';
+import { Donut, Legend, type Segment } from '../../components/charts';
 
 /* ============================================================
    Рендер структурированных данных NEX (NexReply.data): таблица

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Sparkles, ArrowUp, Eraser } from 'lucide-react';
-import { llmReady, llmAsk, llmAskStream, LlmStreamError, type LlmTurn } from '../llm';
-import { Md } from '../md';
+import { llmReady, llmAsk, llmAskStream, LlmStreamError, type LlmTurn } from '../features/ai/llm';
+import { Md } from '../components/md';
 
 /* ============================================================
    AiBox — встраиваемый мини-чат для раздела страницы.

@@ -1,4 +1,4 @@
-# web/src/nexdata.tsx
+# web/src/features/ai/nexdata.tsx
 
 Компонент рендера «структурированных данных» в ответах NEX — если `NexReply.data` (из `nexbrain.ts`) указывает тип блока, этот файл превращает его в таблицу, диаграмму или KPI-панель под текстом ответа. Существует как общий источник правды для того, как выглядит «настоящий», не просто текстовый ответ ИИ — используется и в полноценном чате, и во встроенном терминале на главном экране, чтобы визуализация не отличалась между этими двумя местами.
 
@@ -16,4 +16,4 @@
 
 ## Связи
 
-Зависит от `web/src/ui.tsx` (`useApp`), `web/src/nexbrain.ts` (`atRisk`, тип `NexData`), `web/src/data.ts` (`finance`) и `web/src/charts.tsx` (`Donut`, `Legend`, `Segment`). Используется в `web/src/pages/Chat.tsx` и, ожидаемо, во встроенном терминале на `web/src/pages/Home.tsx`/`web/src/terminal.tsx`, когда ответ NEX содержит поле `data`.
+Зависит от `web/src/ui.tsx` (`useApp`), `web/src/features/ai/nexbrain.ts` (`atRisk`, тип `NexData`), `web/src/data.ts` (`finance`) и `web/src/components/charts.tsx` (`Donut`, `Legend`, `Segment`). Используется в `web/src/pages/Chat.tsx` и, ожидаемо, во встроенном терминале на `web/src/pages/Home.tsx`/`web/src/features/terminal/terminal.tsx`, когда ответ NEX содержит поле `data`.

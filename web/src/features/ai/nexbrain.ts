@@ -1,4 +1,4 @@
-import { students, finance, gradesFor } from './data';
+import { students, finance, gradesFor } from '../../data';
 
 /* ============================================================
    NEX brain — one shared intelligence used by both the narrow

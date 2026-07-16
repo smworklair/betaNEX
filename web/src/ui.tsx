@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, type ReactNode, type Fo
 import { useLocation } from 'wouter';
 import { Sparkles, ArrowUp, AlertTriangle, Wallet, ShieldCheck } from 'lucide-react';
 import type { Role, Severity } from './data';
-import type { NexReply } from './nexbrain';
+import type { NexReply } from './features/ai/nexbrain';
 import { apiMe, authConfigured, primaryRole } from './api/auth';
 import { DEFAULT_HOME_BLOCKS, DEFAULT_HOME_SHORTCUTS } from './home';
 

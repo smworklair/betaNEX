@@ -17,7 +17,7 @@
 
 ## Связи
 
-Зависит от `wouter` (`useLocation`), `./data` (типы `Role`, `Severity`), `./nexbrain` (тип `NexReply`), `./api/auth` (`apiMe`, `authConfigured`, `primaryRole`) и `./home` (`DEFAULT_HOME_BLOCKS`, `DEFAULT_HOME_SHORTCUTS`). Практически весь фронтенд — обратная зависимость: все файлы из `pages/*`, а также `terminal.tsx` и `stream.tsx`, импортируют `useApp`, `PageHead`, `Chip`, `NexAsk` и другие экспорты этого модуля.
+Зависит от `wouter` (`useLocation`), `./data` (типы `Role`, `Severity`), `./features/ai/nexbrain` (тип `NexReply`), `./api/auth` (`apiMe`, `authConfigured`, `primaryRole`) и `./home` (`DEFAULT_HOME_BLOCKS`, `DEFAULT_HOME_SHORTCUTS`). Практически весь фронтенд — обратная зависимость: все файлы из `pages/*`, а также `terminal.tsx` и `stream.tsx`, импортируют `useApp`, `PageHead`, `Chip`, `NexAsk` и другие экспорты этого модуля.
 
 ## На что обратить внимание
 

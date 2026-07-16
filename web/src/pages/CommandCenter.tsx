@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { useApp, Chip, Avatar, Sparkline, NexAsk, AskHero, severityTone, severityLabel } from '../ui';
 import { AtRiskList } from '../blocks';
-import { Donut, Bars, Line, Legend, type Segment } from '../charts';
+import { Donut, Bars, Line, Legend, type Segment } from '../components/charts';
 import {
   sessions, failedLogins, failedLoginTrend, notifications, auditEvents, roleLabel,
   groups, gradesFor, type Severity,

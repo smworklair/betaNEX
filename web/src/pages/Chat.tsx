@@ -5,10 +5,10 @@ import {
   GitBranch, Paperclip, Boxes, AtSign, Check,
 } from 'lucide-react';
 import { useApp } from '../ui';
-import { nexReply, planFor, type NavLink } from '../nexbrain';
-import { llmReady, llmAsk, llmAskStream, LlmStreamError, type LlmTurn } from '../llm';
-import { Md } from '../md';
-import { DataBlock } from '../nexdata';
+import { nexReply, planFor, type NavLink } from '../features/ai/nexbrain';
+import { llmReady, llmAsk, llmAskStream, LlmStreamError, type LlmTurn } from '../features/ai/llm';
+import { Md } from '../components/md';
+import { DataBlock } from '../features/ai/nexdata';
 
 /* NEX performs an action as a visible agentic run (plan → steps → audit). */
 function AgentRun({ label }: { label: string }) {

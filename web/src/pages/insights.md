@@ -15,4 +15,4 @@
 
 ## Связи
 
-Зависит от `../ui` (`PageHead`, `Chip`, `NexAsk`), `../data` (`groups`, `gradesFor`, `finance`) и `../charts` (`Donut`, `Line`, `Legend`, `Segment`). Это не-бета версия аналитики; более развитая бета-версия с конструктором отчётов и прогнозом — `pages/analytics-beta.tsx`.
+Зависит от `../ui` (`PageHead`, `Chip`, `NexAsk`), `../data` (`groups`, `gradesFor`, `finance`) и `../components/charts` (`Donut`, `Line`, `Legend`, `Segment`). Это не-бета версия аналитики; более развитая бета-версия с конструктором отчётов и прогнозом — `pages/analytics-beta.tsx`.

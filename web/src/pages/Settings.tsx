@@ -4,7 +4,7 @@ import { PageHead, Chip, Avatar, Soon, Beta, useApp, type Prefs } from '../ui';
 import { DOCK_CATALOG, DEFAULT_DOCK, DOCK_MIN, DOCK_MAX, TOPBAR_CATALOG, DEFAULT_TOPBAR, TOPBAR_MIN } from '../dock';
 import { HOME_BLOCK_CATALOG, DEFAULT_HOME_BLOCKS } from '../home';
 import { roleLabel } from '../data';
-import { getProvider, setProvider, fetchProviders, checkGateway, llmReady, type LlmProvider } from '../llm';
+import { getProvider, setProvider, fetchProviders, checkGateway, llmReady, type LlmProvider } from '../features/ai/llm';
 
 /* Человекочитаемые названия провайдеров ai-gateway (см. ai-gateway/README.md, «Провайдеры») */
 const PROVIDER_LABELS: Record<LlmProvider, string> = {

@@ -6,10 +6,10 @@ import {
 } from 'lucide-react';
 import { useApp } from '../ui';
 import { finance, aiInsights, failedLogins, students } from '../data';
-import { attendanceRate, nexReply, PAGE_TITLES, type NavLink, type NexData } from '../nexbrain';
-import { llmReady, llmAsk } from '../llm';
-import { Md } from '../md';
-import { DataBlock } from '../nexdata';
+import { attendanceRate, nexReply, PAGE_TITLES, type NavLink, type NexData } from '../features/ai/nexbrain';
+import { llmReady, llmAsk } from '../features/ai/llm';
+import { Md } from '../components/md';
+import { DataBlock } from '../features/ai/nexdata';
 import { useCollection } from '../beta/store';
 import { TASK_SEED } from './tasks';
 import { terminalExec, TERMINAL_BACKEND_TOKENS } from '../api/terminal';
@@ -17,7 +17,7 @@ import { API_CONFIGURED, ApiError } from '../api/client';
 import {
   TerminalWorkspace, TermResBlock, execRegistry, TERM_COMMANDS, searchCommands, CmdMenu,
   type TermRes, type TermTask, type EngineCtx, type TermCommand,
-} from '../terminal';
+} from '../features/terminal/terminal';
 import {
   HOME_BLOCK_CATALOG, HOME_BLOCK_BY_ID, DEFAULT_HOME_BLOCKS,
   HOME_SHORTCUT_CATALOG, HOME_SHORTCUT_BY_ID, DEFAULT_HOME_SHORTCUTS, moveInArray,

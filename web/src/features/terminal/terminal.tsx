@@ -4,16 +4,16 @@ import {
   Sparkles, X, CornerDownLeft, LayoutDashboard, LineChart, Wallet, ShieldCheck, ListChecks,
   Users, Calendar, GraduationCap, RotateCw,
 } from 'lucide-react';
-import { useApp } from './ui';
-import { Md } from './md';
-import { Line, Donut, Legend, type Segment } from './charts';
+import { useApp } from '../../ui';
+import { Md } from '../../components/md';
+import { Line, Donut, Legend, type Segment } from '../../components/charts';
 import {
   students, staff, sessions, auditEvents, failedLogins, services, finance, groups,
   scheduleDays, scheduleSlots, charges, exams,
-} from './data';
-import { atRisk, attendanceRate, avgGrade, groupAvg, PAGE_TITLES } from './nexbrain';
-import { TERMINAL_BACKEND_TOKENS, type TermResult } from './api/terminal';
-import { type Entity } from './beta/store';
+} from '../../data';
+import { atRisk, attendanceRate, avgGrade, groupAvg, PAGE_TITLES } from '../ai/nexbrain';
+import { TERMINAL_BACKEND_TOKENS, type TermResult } from '../../api/terminal';
+import { type Entity } from '../../beta/store';
 
 /* ============================================================
    «NEX Терминал» (альфа) — экосистема администратора: весь

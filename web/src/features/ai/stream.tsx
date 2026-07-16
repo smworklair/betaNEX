@@ -3,9 +3,9 @@ import {
   ShieldAlert, TrendingDown, Wallet, Link2, CheckCircle2, CalendarClock, Sparkles,
   ArrowUp, Sun, Moon, LogOut, ShieldCheck, BookOpen,
 } from 'lucide-react';
-import { useApp } from './ui';
-import { students, finance, roleLabel } from './data';
-import { AtRiskList, ContextDrawer } from './blocks';
+import { useApp } from '../../ui';
+import { students, finance, roleLabel } from '../../data';
+import { AtRiskList, ContextDrawer } from '../../blocks';
 
 /* ---------- in-prose interactive atoms ---------- */
 function StudentLink({ last, children }: { last: string; children?: ReactNode }) {

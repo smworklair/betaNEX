@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { PageHead, Chip, Avatar, Beta, NexAsk, useApp, useIsMobile } from '../ui';
 import { AiBox } from './aibox';
-import { llmReady, llmAsk } from '../llm';
+import { llmReady, llmAsk } from '../features/ai/llm';
 
 function BetaNote({ text }: { text: string }) {
   return (

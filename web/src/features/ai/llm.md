@@ -1,4 +1,4 @@
-# web/src/llm.ts
+# web/src/features/ai/llm.ts
 
 Единая точка входа к ИИ для фронтенда NEX. Браузер НЕ обращается к `ai-gateway/` (Python, см. `ai-gateway/README.md`) напрямую — только к своему же бэкенду `nexd`, тем же origin и той же cookie-сессией, что и весь остальной `/api/v1/*` (см. `web/src/api/client.ts`). `nexd` сам проксирует `/api/v1/ai/*` в `ai-gateway` по внутренней сети (`internal/platform/httpapi/aiproxy.go`), подставляя `tenant_id` из аутентифицированной сессии и подписывая запрос секретом, общим с `ai-gateway`. Так `X-Tenant-Id` перестаёт быть самопредставлением клиента: раньше браузер бил в `ai-gateway` напрямую и мог вписать в этот заголовок чужого тенанта, обходя его бюджет. Ключи провайдеров (Gemini/OpenAI/DeepSeek/...) по-прежнему живут только в переменных окружения `ai-gateway`. Конфигурация — переменная `VITE_AI_ENABLED` (см. `.env.example`), это ФЛАГ, а не URL: пусто — демо-режим без сети, `1`/`true` — реальные вызовы через `nexd`.
 
@@ -22,7 +22,7 @@
 
 ## Связи
 
-Зависит от `web/src/api/client.ts` (`API_BASE` — тот же origin, что и у REST API). Используется компонентами, которые обращаются к ИИ-помощнику NEX: `web/src/nexbrain.ts` (локальный фолбэк), `web/src/pages/Settings.tsx` (выбор провайдера из списка сервера + статус шлюза), `web/src/pages/aibox.tsx` и `web/src/ai.tsx` (мини-чаты с контекстом раздела и своей историей), `web/src/pages/Chat.tsx`, `web/src/terminal.tsx`, `web/src/pages/Home.tsx`.
+Зависит от `web/src/api/client.ts` (`API_BASE` — тот же origin, что и у REST API). Используется компонентами, которые обращаются к ИИ-помощнику NEX: `web/src/features/ai/nexbrain.ts` (локальный фолбэк), `web/src/pages/Settings.tsx` (выбор провайдера из списка сервера + статус шлюза), `web/src/pages/aibox.tsx` и `web/src/features/ai/ai.tsx` (мини-чаты с контекстом раздела и своей историей), `web/src/pages/Chat.tsx`, `web/src/features/terminal/terminal.tsx`, `web/src/pages/Home.tsx`.
 
 ## На что обратить внимание
 

@@ -15,4 +15,4 @@
 
 ## Связи
 
-Использует `../ui` (`PageHead`, `NexAsk`, `Beta`, `useApp`), `../charts` (`Bars`, `Line`, `Donut`, `Legend`), `../data` (`groups`, `gradesFor`), бета-инфраструктуру `../beta/store` (`useCollection`, `Entity`) и `../beta/kit` (`Field`, `Select`). Является бета-аналогом обычной страницы аналитики (`insights.tsx` → `Analytics`), но с независимой логикой и собственным набором данных/виджетов.
+Использует `../ui` (`PageHead`, `NexAsk`, `Beta`, `useApp`), `../components/charts` (`Bars`, `Line`, `Donut`, `Legend`), `../data` (`groups`, `gradesFor`), бета-инфраструктуру `../beta/store` (`useCollection`, `Entity`) и `../beta/kit` (`Field`, `Select`). Является бета-аналогом обычной страницы аналитики (`insights.tsx` → `Analytics`), но с независимой логикой и собственным набором данных/виджетов.

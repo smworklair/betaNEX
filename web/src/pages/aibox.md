@@ -19,7 +19,7 @@
 
 ## Связи
 
-Зависит от `../llm` (`llmReady`, `llmAsk`, `LlmTurn` — обёртка над вызовом `ai-gateway`) и `../md` (`Md` — рендер markdown-ответов). Используется как строительный блок на нескольких страницах — например, `pages/beta.tsx` (Calendar, Cloud) и `pages/operations.tsx` (Admissions, Finance) — везде, где нужен лёгкий мини-чат с памятью на свой раздел, но без полноценной истории уровня главного чата NEX (`Chat.tsx`).
+Зависит от `../features/ai/llm` (`llmReady`, `llmAsk`, `LlmTurn` — обёртка над вызовом `ai-gateway`) и `../components/md` (`Md` — рендер markdown-ответов). Используется как строительный блок на нескольких страницах — например, `pages/beta.tsx` (Calendar, Cloud) и `pages/operations.tsx` (Admissions, Finance) — везде, где нужен лёгкий мини-чат с памятью на свой раздел, но без полноценной истории уровня главного чата NEX (`Chat.tsx`).
 
 ## На что обратить внимание
 
