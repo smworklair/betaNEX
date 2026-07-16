@@ -30,6 +30,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/smworklair/betakis/api"
@@ -46,6 +47,7 @@ import (
 	"github.com/smworklair/betakis/internal/module/tasks"
 	"github.com/smworklair/betakis/internal/module/terminal"
 	"github.com/smworklair/betakis/internal/platform/blob"
+	"github.com/smworklair/betakis/internal/platform/cache"
 	"github.com/smworklair/betakis/internal/platform/cron"
 	"github.com/smworklair/betakis/internal/platform/httpapi"
 	"github.com/smworklair/betakis/internal/platform/logging"
@@ -130,6 +132,30 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		reg.ObserveDuration("nex_http_request_duration_seconds", dur, route, s)
 	}
 
+	// Кэш: in-process по умолчанию (ADR-008), Redis — конфигом
+	// NEX_CACHE_BACKEND=redis (internal/platform/cache/redis.go), когда
+	// nexd работает больше чем одним инстансом. Ни один модуль пока не
+	// использует Cache как хранилище данных (сам интерфейс — задел на
+	// будущее, см. докстринг пакета) — но при backend=redis соединение
+	// реально проверяется здесь и отражается в /readyz, а не остаётся
+	// декларацией конфига без последствий.
+	var readiness []httpapi.ReadinessCheck
+	if cfg.Cache.Backend == "redis" {
+		opts, err := redis.ParseURL(cfg.Cache.RedisURL)
+		if err != nil {
+			// config.validate уже проверил NEX_REDIS_URL — ошибка здесь
+			// означает расхождение между Load() и этим разбором, то есть
+			// баг сборки, а не рантайм-состояние.
+			return fmt.Errorf("cache: parse NEX_REDIS_URL: %w", err)
+		}
+		redisClient := redis.NewClient(opts)
+		defer redisClient.Close()
+		readiness = append(readiness, httpapi.ReadinessCheck{Name: "redis", Check: cache.NewRedis(redisClient).Ping})
+		log.Info("cache backend: redis", slog.String("addr", opts.Addr))
+	} else {
+		log.Info("cache backend: memory")
+	}
+
 	// Планировщик фоновых задач внутри процесса (ночные пересчёты, чистки).
 	sched := cron.New(log)
 
@@ -171,7 +197,6 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	// процесса (только для быстрых локальных запусков без БД).
 	var (
 		financeRepo   finance.Repository
-		readiness     []httpapi.ReadinessCheck
 		resolveTenant func(ctx context.Context, v string) (string, error)
 		recorder      audit.Recorder
 		busOpts       []command.Option
