@@ -33,3 +33,8 @@ updates:
     directory: "/ai-gateway"
     schedule:
       interval: weekly
+
+  - package-ecosystem: docker
+    directory: "/web"
+    schedule:
+      interval: weekly
