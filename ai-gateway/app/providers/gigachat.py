@@ -219,10 +219,10 @@ class GigaChatProvider(LLMProvider):
                     async for line in resp.aiter_lines():
                         if not line.startswith("data:"):
                             continue
-                        raw = line[len("data:") :].strip()
-                        if not raw or raw == "[DONE]":
+                        raw_line = line[len("data:") :].strip()
+                        if not raw_line or raw_line == "[DONE]":
                             continue
-                        chunk = _json.loads(raw)
+                        chunk = _json.loads(raw_line)
                         choices = chunk.get("choices") or []
                         if choices:
                             delta = choices[0].get("delta", {}).get("content")

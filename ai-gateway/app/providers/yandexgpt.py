@@ -177,10 +177,10 @@ class YandexGPTProvider(LLMProvider):
                     completion_tokens = 0
                     sent_so_far = ""
                     async for line in resp.aiter_lines():
-                        raw = line.strip()
-                        if not raw:
+                        raw_line = line.strip()
+                        if not raw_line:
                             continue
-                        chunk = json.loads(raw)
+                        chunk = json.loads(raw_line)
                         result = chunk.get("result", {})
                         alternatives = result.get("alternatives") or []
                         if alternatives:

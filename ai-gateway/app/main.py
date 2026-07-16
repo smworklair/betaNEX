@@ -34,6 +34,7 @@ from app.core.limits import MaxBodySizeMiddleware
 from app.core.logging import setup_logging
 from app.core.ratelimit import InMemoryRateLimiter
 from app.core.response_cache import InMemoryResponseCache, ResponseCache
+from app.providers.base import LLMProvider
 from app.providers.gemini import GeminiProvider
 from app.providers.gigachat import GigaChatProvider
 from app.providers.openai_compat import OpenAICompatProvider
@@ -111,7 +112,7 @@ def _build_budget_service(settings: Settings) -> BudgetService:
 
 
 def _build_service(settings: Settings, budget_service: BudgetService) -> AIService:
-    providers = {}
+    providers: dict[str, LLMProvider] = {}
     # Провайдер регистрируется, только если для него задан ключ — так
     # сервис стартует даже с одним настроенным провайдером, а не падает
     # из-за отсутствия ключа у остальных, которые никто не собирался
@@ -260,9 +261,13 @@ def create_app() -> FastAPI:
     app.state.rate_limiter = InMemoryRateLimiter(settings.rate_limit_per_minute)
 
     app.include_router(router)
-    app.add_exception_handler(AIServiceError, ai_service_error_handler)
-    app.add_exception_handler(RateLimitExceeded, rate_limit_error_handler)
-    app.add_exception_handler(BudgetExceededError, budget_exceeded_handler)
+    # Starlette типизирует add_exception_handler инвариантно по Exception —
+    # обработчик, типизированный под конкретное исключение (как здесь),
+    # формально не подходит по mypy, хотя это ровно официальный паттерн
+    # FastAPI/Starlette (регистрация по типу исключения). Подавляем точечно.
+    app.add_exception_handler(AIServiceError, ai_service_error_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(RateLimitExceeded, rate_limit_error_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(BudgetExceededError, budget_exceeded_handler)  # type: ignore[arg-type]
 
     logger.info(
         "ai-gateway готов: провайдеры=%s, по умолчанию=%s, fallback-цепочка=%s",
