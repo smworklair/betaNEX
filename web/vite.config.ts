@@ -1,7 +1,12 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import {defineConfig, loadEnv} from 'vite';
+import {loadEnv} from 'vite';
+// defineConfig из vitest/config — надмножество конфига vite с типом
+// поля `test` ниже; сам vitest.config.ts не заводим, чтобы не держать
+// два файла конфигурации в синхроне (plugins/alias общие для dev и тестов).
+// loadEnv импортируем из 'vite' напрямую — vitest/config его не реэкспортирует.
+import {defineConfig} from 'vitest/config';
 
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
@@ -11,6 +16,12 @@ export default defineConfig(({mode}) => {
       alias: {
         '@': path.resolve(__dirname, '.'),
       },
+    },
+    test: {
+      environment: 'jsdom',
+      globals: true,
+      setupFiles: ['./src/test/setup.ts'],
+      css: false,
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.

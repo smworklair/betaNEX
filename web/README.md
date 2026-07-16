@@ -62,3 +62,26 @@ Go-бэкенд не работает на статическом хостинг
 окружения проекта Vercel (URL живого nexd) и включите на бэкенде CORS с
 `credentials` и cookie сессии `SameSite=None; Secure`.
 
+## Тесты
+
+Юнит/компонентные тесты — Vitest + Testing Library (jsdom), конфиг живёт
+в `test`-секции `vite.config.ts` (общий конфиг для dev-сервера и тестов).
+
+```sh
+cd web
+pnpm test          # разовый прогон (vitest run) — так же гоняет CI
+pnpm test:watch    # интерактивный watch-режим
+```
+
+Файлы тестов лежат рядом с исходником как `*.test.ts(x)`. Модули, которые
+на этапе загрузки читают `import.meta.env` (`llm.ts` — `VITE_AI_ENABLED`,
+`api/client.ts` — `VITE_API_URL`), тестируются через `vi.stubEnv` +
+`vi.resetModules()` + динамический `import()` внутри каждого теста — так
+результат не зависит от локального `web/.env` разработчика. Сетевые вызовы
+(`fetch`, включая SSE-стрим `/api/v1/ai/stream`) мокаются через
+`vi.stubGlobal('fetch', ...)`, реальная сеть в тестах не используется.
+
+Текущее покрытие — осознанный базовый набор (не 100%): `llm.ts` (ask/stream/
+фолбэки), `api/client.ts` (apiFetch/withFallback), мини-чат `AiBox`
+(демо-режим, стриминг, откат stream→ask→демо-мок) и рендер `Md`.
+
