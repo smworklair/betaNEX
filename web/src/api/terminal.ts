@@ -41,4 +41,5 @@ export const TERMINAL_BACKEND_TOKENS = new Set([
   'analytics', 'аналитика', 'groups', 'группы', 'students', 'студенты', 'grades', 'оценки',
   'finance', 'финансы', 'accounts', 'счета', 'entries', 'проводки',
   'security', 'безопасность',
+  'schedule', 'расписание', 'exams', 'экзамены', 'charges', 'начисления', 'student', 'студент',
 ]);

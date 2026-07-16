@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef, Fragment, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { useState, useEffect, useRef, useMemo, Fragment, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import {
   ArrowUp, ArrowRight, Wallet, Users, Sun, Sunrise, Moon,
   Sparkles, CornerDownLeft, ChevronRight, ChevronLeft, ChevronUp, ChevronDown,
-  ListChecks, Settings2, Check, RotateCcw, EyeOff, Plus, X, Eraser, ExternalLink, Maximize2,
+  ListChecks, Settings2, Check, RotateCcw, EyeOff, Plus, X, Eraser, ExternalLink, Maximize2, Search as SearchIcon,
 } from 'lucide-react';
 import { useApp } from '../ui';
 import { finance, aiInsights, failedLogins, students } from '../data';
@@ -15,8 +15,8 @@ import { TASK_SEED } from './tasks';
 import { terminalExec, TERMINAL_BACKEND_TOKENS } from '../api/terminal';
 import { API_CONFIGURED, ApiError } from '../api/client';
 import {
-  TerminalWorkspace, TermResBlock, execRegistry, TERM_COMMANDS,
-  type TermRes, type TermTask, type EngineCtx,
+  TerminalWorkspace, TermResBlock, execRegistry, TERM_COMMANDS, searchCommands, CmdMenu,
+  type TermRes, type TermTask, type EngineCtx, type TermCommand,
 } from '../terminal';
 import {
   HOME_BLOCK_CATALOG, HOME_BLOCK_BY_ID, DEFAULT_HOME_BLOCKS,
@@ -85,7 +85,7 @@ const STATUS_COMMANDS: Record<string, string> = {
 const ECO_TOKENS = TERMINAL_BACKEND_TOKENS;
 
 /* Список для подсказки под строкой ввода. */
-const STATUS_COMMAND_LIST = ['обзор', 'аналитика', 'финансы', 'безопасность', 'задачи'];
+const STATUS_COMMAND_LIST = ['обзор', 'аналитика', 'финансы', 'безопасность', 'задачи', 'расписание', 'сотрудники'];
 const KNOWN_TOKENS = new Set([
   'help', '?', 'помощь', 'clear', 'очистить', 'open', 'открой', 'открыть',
   ...ECO_TOKENS, ...Object.keys(STATUS_COMMANDS),
@@ -227,7 +227,36 @@ function NexTerminal({ disabled, chips }: { disabled: boolean; chips: { label: s
     push({ who: 'n', text: a.text, nav: a.nav, action: a.action, data: a.data });
   };
 
+  /* Меню команд (.cmenu) — общее с полноэкранной средой. В компактном
+     блоке открывается только явно (`/` или кнопка): поле здесь двойного
+     назначения — свободный вопрос к NEX не должен перехватываться
+     подсказками. Открытое меню фильтруется тем же вводом. */
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [sel, setSel] = useState(0);
+  const search = useMemo(() => searchCommands(q), [q]);
+  const menuVisible = menuOpen && !disabled && (q.trim() ? search.flat.length > 0 : true);
+
+  const pickCmd = (c: TermCommand) => {
+    setMenuOpen(false); setSel(0);
+    if (c.arg) { setQ(c.id + ' '); inputRef.current?.focus(); }
+    else { setQ(''); run(c.id); }
+  };
+
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    // `/` в начале пустой строки — меню всех команд
+    if (e.key === '/' && !q && !busy && !disabled) {
+      e.preventDefault();
+      setMenuOpen(true); setSel(0);
+      return;
+    }
+    if (menuVisible) {
+      if (e.key === 'Escape') { e.preventDefault(); setMenuOpen(false); return; }
+      if (e.key === 'ArrowDown') { e.preventDefault(); setSel((s) => Math.min(s + 1, search.flat.length - 1)); return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setSel((s) => Math.max(s - 1, 0)); return; }
+      if (e.key === 'Tab') { e.preventDefault(); const c = search.flat[sel]; if (c) setQ(c.id + (c.arg ? ' ' : '')); return; }
+      if (e.key === 'Enter') { e.preventDefault(); const c = search.flat[sel]; if (c) pickCmd(c); else { setMenuOpen(false); run(q); } return; }
+      return;
+    }
     if (e.key === 'ArrowUp') {
       if (!hist.length) return;
       e.preventDefault();
@@ -263,6 +292,7 @@ function NexTerminal({ disabled, chips }: { disabled: boolean; chips: { label: s
         {STATUS_COMMAND_LIST.map((c) => <code key={c}>{c}</code>)}
         <code>open &lt;раздел&gt;</code>
         <code>help</code>
+        <code>/</code> — все команды
       </div>
 
       {log.length > 0 && (
@@ -294,11 +324,17 @@ function NexTerminal({ disabled, chips }: { disabled: boolean; chips: { label: s
         </div>
       )}
 
-      <div className="console-line">
-        <span className="term-prompt">›</span>
-        <input ref={inputRef} value={q} onChange={(e) => { setQ(e.target.value); setHIdx(null); }} onKeyDown={onKeyDown} disabled={disabled || busy}
-          placeholder={log.length ? 'Следующая команда — или help' : 'Скомандуйте: tasks · task add <текст> · notify all <текст> — или спросите своими словами'} />
-        <button className="console-send" type="submit" aria-label="Выполнить"><CornerDownLeft size={15} /></button>
+      <div className="cmenu-anchor">
+        {menuVisible && <CmdMenu search={search} sel={sel} onHover={setSel} onPick={pickCmd} up />}
+        <div className="console-line">
+          <span className="term-prompt">›</span>
+          <input ref={inputRef} value={q} onChange={(e) => { setQ(e.target.value); setSel(0); setHIdx(null); }} onKeyDown={onKeyDown} disabled={disabled || busy}
+            placeholder={log.length ? 'Следующая команда — или help' : 'Скомандуйте: tasks · task add <текст> · notify all <текст> — или спросите своими словами'} />
+          <button type="button" className="icon-btn" title="Все команды (/)"
+            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); if (!disabled && !busy) { setMenuOpen((v) => !v); setSel(0); inputRef.current?.focus(); } }}
+            style={{ marginLeft: 4 }}><SearchIcon size={15} /></button>
+          <button className="console-send" type="submit" aria-label="Выполнить"><CornerDownLeft size={15} /></button>
+        </div>
       </div>
 
       {chips.length > 0 && (

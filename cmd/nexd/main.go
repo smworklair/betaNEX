@@ -310,7 +310,7 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		}
 		mounts = append(mounts, notifications.Routes(bus, notifRepo, guard))
 		notifier := notifications.NewService(notifRepo, outbox.NewQueue(pgDB))
-		outboxWorker.Handle(notifications.TopicCreated, func(ctx context.Context, m outbox.Message) error {
+		outboxWorker.Handle(notifications.TopicCreated, func(_ context.Context, m outbox.Message) error {
 			log.Info("notification delivery queued (no external channel yet)",
 				slog.String("payload", string(m.Payload)))
 			return nil
