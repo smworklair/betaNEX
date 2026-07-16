@@ -5,7 +5,7 @@
 ## Ключевое
 
 - `main()` — вызывает `run()`, при ошибке печатает её в stderr и завершает процесс кодом 1. Единственное место, вызывающее `os.Exit`.
-- `run() error` — разбирает подкоманду (`serve`, `migrate`, `tenant`, `user`) и запускает соответствующую ветку; настраивает контекст, отменяемый по SIGINT/SIGTERM.
+- `run() error` — разбирает подкоманду (`serve`, `migrate` [`up`/`down`], `tenant`, `user`) и запускает соответствующую ветку; настраивает контекст, отменяемый по SIGINT/SIGTERM.
 - `serve(ctx, cfg, log) error` — главная функция: собирает метрики, планировщик (cron), RBAC-политику (`authz.Policy`), хранилище (Postgres либо in-memory), шину команд (`command.MemoryBus`), регистрирует все доменные модули (finance, files, campus, notifications, tasks, terminal), поднимает HTTP-роутер и сервер, и держит всё живым до отмены контекста.
 - `subcommand() string` — возвращает первый аргумент командной строки или `"serve"` по умолчанию.
 - `sameSiteMode(v string) http.SameSite` — переводит строковое значение конфига (`lax`/`strict`/`none`) в тип `http.SameSite`.

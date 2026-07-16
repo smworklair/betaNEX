@@ -5,6 +5,7 @@
 ## Ключевое
 
 - `Migrate(ctx, dsn) error` — открывает отдельное `database/sql`-соединение (через драйвер `pgx/v5/stdlib`), берёт advisory-блокировку Postgres, прогоняет все недостающие миграции через `goose.UpContext` и снимает блокировку.
+- `MigrateDown(ctx, dsn) error` — то же самое, но откатывает одну последнюю применённую миграцию через `goose.DownContext`. Только для локальной разработки (`make migrate-down`, `nexd migrate down`).
 - `migrateLockID` — произвольная константа-ключ для `pg_advisory_lock`, общая для всех процессов NEX, которые могут одновременно попытаться мигрировать одну и ту же БД.
 
 ## Как это работает
@@ -13,7 +14,7 @@
 
 ## Связи
 
-Использует `migrations.FS` (embed.FS со всеми `.sql`-файлами) из `migrations/embed.go` как источник миграций для goose. Вызывается при старте `nexd` и из подкоманды `nexd migrate` (в `cmd/nexd`, не в этом файле).
+Использует `migrations.FS` (embed.FS со всеми `.sql`-файлами) из `migrations/embed.go` как источник миграций для goose. `Migrate` вызывается при старте `nexd` и из подкоманды `nexd migrate`; `MigrateDown` — только из `nexd migrate down` (в `cmd/nexd`, не в этом файле).
 
 ## На что обратить внимание
 

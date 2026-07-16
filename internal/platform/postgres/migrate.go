@@ -57,3 +57,37 @@ func Migrate(ctx context.Context, dsn string) error {
 	}
 	return nil
 }
+
+// MigrateDown откатывает одну последнюю применённую миграцию. Используется
+// подкомандой `nexd migrate down` (см. migrations/README.md, make migrate-down)
+// для локальной разработки — та же блокировка и та же встроенная FS, что и
+// в Migrate.
+func MigrateDown(ctx context.Context, dsn string) error {
+	sqldb, err := sql.Open("pgx", dsn)
+	if err != nil {
+		return fmt.Errorf("postgres: open for migrate down: %w", err)
+	}
+	defer func() { _ = sqldb.Close() }()
+
+	lockConn, err := sqldb.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("postgres: migrate down lock conn: %w", err)
+	}
+	defer func() { _ = lockConn.Close() }()
+	if _, err := lockConn.ExecContext(ctx, "SELECT pg_advisory_lock($1)", migrateLockID); err != nil {
+		return fmt.Errorf("postgres: acquire migrate lock: %w", err)
+	}
+	defer func() {
+		_, _ = lockConn.ExecContext(ctx, "SELECT pg_advisory_unlock($1)", migrateLockID)
+	}()
+
+	goose.SetBaseFS(migrations.FS)
+	goose.SetLogger(goose.NopLogger())
+	if err := goose.SetDialect("postgres"); err != nil {
+		return fmt.Errorf("postgres: goose dialect: %w", err)
+	}
+	if err := goose.DownContext(ctx, sqldb, "."); err != nil {
+		return fmt.Errorf("postgres: migrate down: %w", err)
+	}
+	return nil
+}

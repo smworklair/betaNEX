@@ -7,7 +7,7 @@ DATABASE_URL ?= postgres://nex:nex@localhost:5432/nex?sslmode=disable
 SQLC_VERSION := v1.29.0
 
 .DEFAULT_GOAL := help
-.PHONY: help build run test test-db vet fmt tidy lint vuln clean dev dev-down stack stack-down watch migrate sqlc smoke-api seed smoke-load
+.PHONY: help build run test test-db vet fmt tidy lint vuln clean dev dev-down stack stack-down watch migrate migrate-down sqlc smoke-api seed smoke-load
 
 # Show the available targets.
 help:
@@ -22,6 +22,7 @@ help:
 	@echo "  test          Run all tests with the race detector"
 	@echo "  test-db       Run tests including Postgres integration (needs DATABASE_URL)"
 	@echo "  migrate       Apply pending SQL migrations (nexd migrate)"
+	@echo "  migrate-down  Roll back the last applied migration (nexd migrate down)"
 	@echo "  smoke-api     Functional API smoke test against a running nexd (python3)"
 	@echo "  seed          Seed demo data through the API (python3)"
 	@echo "  smoke-load    Load smoke test against a running nexd (k6, see load/README.md)"
@@ -75,6 +76,10 @@ test-db:
 # Apply pending SQL migrations to DATABASE_URL.
 migrate:
 	NEX_DATABASE_URL="$(DATABASE_URL)" go run ./cmd/nexd migrate
+
+# Roll back the last applied SQL migration on DATABASE_URL.
+migrate-down:
+	NEX_DATABASE_URL="$(DATABASE_URL)" go run ./cmd/nexd migrate down
 
 # Functional API smoke test against a running nexd (see tools/README.md).
 smoke-api:

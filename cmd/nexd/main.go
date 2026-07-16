@@ -11,6 +11,7 @@
 //
 //	nexd [serve]                     запустить сервис (по умолчанию)
 //	nexd migrate                     применить миграции и выйти
+//	nexd migrate down                откатить последнюю миграцию и выйти
 //	nexd tenant create <slug> <имя>  зарегистрировать организацию
 package main
 
@@ -92,6 +93,13 @@ func run() error {
 	case "migrate":
 		if cfg.DB.URL == "" {
 			return fmt.Errorf("migrate: NEX_DATABASE_URL is not set")
+		}
+		if len(os.Args) > 2 && os.Args[2] == "down" {
+			if err := postgres.MigrateDown(ctx, cfg.DB.URL); err != nil {
+				return err
+			}
+			log.Info("last migration rolled back")
+			return nil
 		}
 		if err := postgres.Migrate(ctx, cfg.DB.URL); err != nil {
 			return err
