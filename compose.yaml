@@ -29,11 +29,43 @@ services:
       timeout: 3s
       retries: 10
 
-  # Valkey добавим, когда появится реальная потребность в сетевом кэше (ADR-008):
-  # valkey:
-  #   image: valkey/valkey:8-alpine
-  #   ports:
-  #     - "6379:6379"
+  # Valkey — опциональный сетевой backend кэша (ADR-008): интерфейс
+  # Cache в internal/platform/cache и rate-limiter/кэш ai-gateway
+  # (ai-gateway/app/core/ratelimit.py, response_cache.py) умеют работать
+  # поверх любого сервера, говорящего протоколом Redis (RESP) — образ тут
+  # Valkey (open-source форк без ограничений лицензии RSAL, см.
+  # обновлённый ADR-008 в docs/decision-log.md), клиенты — go-redis/
+  # redis-py, оба совместимы что с Redis, что с Valkey одинаково.
+  #
+  # Не поднимается по умолчанию — только с явным профилем:
+  #   docker compose --profile cache up -d
+  # и включённым конфигом (см. NEX_CACHE_BACKEND/AI_CACHE_BACKEND ниже).
+  valkey:
+    image: valkey/valkey:8-alpine
+    profiles: ["cache"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Prometheus — опциональный просмотр /metrics у nexd и ai-gateway
+  # локально (internal/platform/metrics, ai-gateway/app/core/metrics.py).
+  # Не часть постоянного дев-стека — поднимается профилем:
+  #   docker compose --profile observability up -d prometheus
+  # UI: http://localhost:9090. Подробнее — docs/observability.md.
+  prometheus:
+    image: prom/prometheus:v3.7.3
+    profiles: ["observability"]
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - nexd
+      - ai-gateway
 
   nexd:
     build:
@@ -57,6 +89,11 @@ services:
       # не защищаем от собственной сети разработчика (см. Secret == "" в
       # AIGatewayConfig — то же поведение, что и раньше).
       NEX_AI_GATEWAY_URL: http://ai-gateway:8090
+      # Кэш: по умолчанию memory (см. ADR-008) — ничего не меняется, пока
+      # не задано явно. Для сетевого кэша: профиль cache (см. сервис
+      # valkey выше) + `NEX_CACHE_BACKEND=redis` в .env этого каталога.
+      NEX_CACHE_BACKEND: ${NEX_CACHE_BACKEND:-memory}
+      NEX_REDIS_URL: ${NEX_REDIS_URL:-redis://valkey:6379/0}
     depends_on:
       postgres:
         condition: service_healthy
@@ -125,6 +162,11 @@ services:
       YANDEXGPT_API_KEY: ${YANDEXGPT_API_KEY:-}
       YANDEXGPT_FOLDER_ID: ${YANDEXGPT_FOLDER_ID:-}
       YANDEXGPT_MOCK: ${YANDEXGPT_MOCK:-true}
+      # Кэш ответов и rate-limiter: по умолчанию memory — ничего не
+      # меняется, пока не задано явно (см. NEX_CACHE_BACKEND у nexd
+      # выше — та же идея, свой профиль valkey на оба сервиса).
+      CACHE_BACKEND: ${AI_CACHE_BACKEND:-memory}
+      REDIS_URL: ${AI_REDIS_URL:-redis://valkey:6379/1}
     ports:
       - "8090:8090"
 

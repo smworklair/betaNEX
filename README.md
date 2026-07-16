@@ -72,6 +72,14 @@ curl http://localhost:8080/healthz
 # {"status":"ok"}
 ```
 
+## Observability
+
+Structured JSON logs with a cross-cutting `request_id` (propagated to
+`ai-gateway`), `/metrics` in Prometheus format on both `nexd` and
+`ai-gateway`, and an optional Redis/Valkey cache backend — see
+`docs/observability.md` for details and how to view them (including an
+optional local Prometheus via `docker compose --profile observability up`).
+
 ## Configuration
 
 All configuration is read from the environment at startup (12-factor). Every
@@ -91,6 +99,8 @@ variable is optional and falls back to a sensible default.
 | `NEX_SESSION_TTL`           | `168h`         | Session (and cookie) lifetime. Sessions are sliding: any authenticated request in the second half of the TTL extends it by a full TTL. |
 | `NEX_CORS_ORIGINS`          | *(empty)*      | Comma-separated browser origins allowed to call the API with credentials (e.g. the Vercel frontend). Empty = same-origin only. The same list is the allowlist for the CSRF origin check on mutations. |
 | `NEX_COOKIE_SAMESITE`       | auto           | `lax`, `strict` or `none` for the session cookie. Auto: `none` when `NEX_CORS_ORIGINS` is set (cross-origin frontend), `lax` otherwise. `none` forces the `Secure` flag. |
+| `NEX_CACHE_BACKEND`         | `memory`       | `memory` or `redis` (ADR-008). `redis` requires `NEX_REDIS_URL`; works with Redis or Valkey (RESP protocol). See `docs/observability.md`. |
+| `NEX_REDIS_URL`             | *(empty)*      | `redis://host:6379/0` — required when `NEX_CACHE_BACKEND=redis`. |
 
 ### Cross-origin frontend (Vercel + separate API host)
 

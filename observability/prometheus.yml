@@ -1,0 +1,22 @@
+# Конфиг Prometheus для локального dev-стека NEX (compose.yaml, профиль
+# observability):
+#
+#   docker compose --profile observability up -d prometheus
+#
+# Не часть прод-деплоя (deploy/) — минимальный конфиг для локального
+# просмотра /metrics у nexd и ai-gateway, см. docs/observability.md.
+# Прод-стек Prometheus/Grafana/Loki — отдельная веха (docs/roadmap.md,
+# M10), этот файл её не заменяет.
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: nexd
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["nexd:8080"]
+
+  - job_name: ai-gateway
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["ai-gateway:8090"]

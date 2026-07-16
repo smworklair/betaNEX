@@ -284,10 +284,11 @@ Go-версии в `docs/ai/README.md`, §3:
 - **Rate-limit за интерфейсом `RateLimiter`** (`app/core/ratelimit.py`) —
   по умолчанию `InMemoryRateLimiter` (fixed-window счётчик в памяти
   процесса по IP): при нескольких инстансах сервиса лимит не общий
-  (нужен общий стор). Абстракция уже готова принять Redis-реализацию
-  (`RedisRateLimiter`, пока заготовка с `NotImplementedError` и
-  набросanком реализации в docstring) без изменений в `app/deps.py`/
-  `app/main.py` — тот же приём, что и у `BudgetStore` ниже.
+  (нужен общий стор). Конфигом `CACHE_BACKEND=redis` (+ `REDIS_URL`)
+  включается `RedisRateLimiter` (`INCR`+`EXPIRE` через общий Redis/Valkey)
+  без изменений в `app/deps.py` — тот же переключатель, что и у
+  `ResponseCache` (см. «Кэш ответов LLM» ниже), и тот же приём, что у
+  `BudgetStore` (интерфейс отдельно от backend'а).
 - **Ограничение размера запроса** — `system`/`history`/`context.facts`
   ограничены по длине и числу элементов (`app/api/schemas.py`), а тело
   запроса целиком — по `Content-Length` до чтения (`MaxBodySizeMiddleware`,
@@ -494,13 +495,16 @@ curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8090/api/v1/ai/ask \
   потока, клиент не должен уметь отличать кэш-хит от реального ответа.
 - **Абстракция, а не жёстко in-memory** — тот же приём, что у
   `BudgetStore`/`RateLimiter` (см. их докстринги): `ResponseCache` —
-  интерфейс из двух методов (`get`, `set`); `InMemoryResponseCache` —
-  единственная реализация, `OrderedDict` в памяти процесса с TTL и
-  FIFO-эвикцией при переполнении (`RESPONSE_CACHE_MAX_ENTRIES`). У неё
-  та же граница, что и у остальных in-memory абстракций: несколько
-  инстансов/воркеров кэш не разделяют (в отличие от бюджета — это не
-  проблема корректности, кэш просто получится "мягче"). Прод-реализация
-  — `RedisResponseCache` (набросок в докстринге класса, `SETEX`).
+  интерфейс из двух методов (`get`, `set`). По умолчанию —
+  `InMemoryResponseCache` (`OrderedDict` в памяти процесса с TTL и
+  FIFO-эвикцией при переполнении, `RESPONSE_CACHE_MAX_ENTRIES`) — не
+  общий между несколькими инстансами/воркерами (в отличие от бюджета
+  это не проблема корректности, кэш просто получится "мягче"). Конфигом
+  `CACHE_BACKEND=redis` (+ `REDIS_URL`) включается `RedisResponseCache`
+  (`SETEX` с TTL, значение — JSON) — тот же общий кэш на все инстансы;
+  переключатель общий с `RateLimiter` (см. ниже), и оба backend'а можно
+  указать на тот же Redis/Valkey, что использует Go-сторона NEX
+  (`NEX_REDIS_URL`) — ключи не пересекаются (разные префиксы).
 - **Отключается целиком** — `RESPONSE_CACHE_ENABLED=false`, тогда
   `AIService` ведёт себя ровно как без кэша (`cache=None` в конструкторе).
 
@@ -641,18 +645,23 @@ ai-gateway/
 │   │   ├── yandexgpt.py             # клиент к YandexGPT: Api-Key + folder_id
 │   │   └── exceptions.py            # единые ошибки провайдера
 │   └── core/
-│       ├── ratelimit.py              # rate-limit: интерфейс + in-memory реализация (RedisRateLimiter — заготовка)
+│       ├── ratelimit.py              # rate-limit: интерфейс + in-memory и Redis реализации
 │       ├── limits.py                  # ограничение размера тела запроса по Content-Length
 │       ├── retry.py                   # retry с экспоненциальной задержкой для транзиентных сбоев
 │       ├── context_registry.py        # реестр системных промптов по разделам фронтенда
 │       ├── budget_store.py            # хранилище потребления: интерфейс + in-memory реализация
-│       ├── response_cache.py          # кэш ответов LLM: интерфейс + in-memory реализация (RedisResponseCache — заготовка)
+│       ├── response_cache.py          # кэш ответов LLM: интерфейс + in-memory и Redis реализации
 │       ├── errors.py                 # problem+json обработчики ошибок
-│       └── logging.py                # настройка логов
+│       ├── logging.py                # JSON-логи + request_id (см. request_id.py)
+│       ├── request_id.py             # сквозной X-Request-Id: middleware + логирование запроса
+│       └── metrics.py                # /metrics (Prometheus): HTTP + провайдерские метрики
 ├── tests/
 │   ├── test_budget_service.py           # юнит-тесты бюджетов
 │   ├── test_budget_e2e.py                # 429 через реальный HTTP-стек (TestClient), в т.ч. /stream
 │   ├── test_ratelimit.py                 # in-memory rate-limiter
+│   ├── test_redis_backends.py            # RedisRateLimiter/RedisResponseCache (пропускаются без Redis)
+│   ├── test_request_id.py                # сквозной X-Request-Id: приём/генерация
+│   ├── test_metrics.py                   # /metrics + провайдерские метрики в AIService
 │   ├── test_request_limits.py            # лимиты размера запроса/тела
 │   ├── test_gateway_auth.py              # verify_gateway_secret: X-Gateway-Secret
 │   ├── test_provider_openai_compat.py    # openai/deepseek/qwen/kimi/custom
@@ -671,6 +680,23 @@ ai-gateway/
 ├── tenants.example.json         # пример персональных лимитов по тенантам
 └── README.md
 ```
+
+## Наблюдаемость
+
+- **Логи** — JSON, одна строка на запись (`app/core/logging.py`), со
+  сквозным `request_id` (`app/core/request_id.py`): тот же идентификатор,
+  что `nexd` использует в своих логах и заголовке `X-Request-Id` —
+  инцидент ищется по нему сразу в обеих частях системы. Тело
+  запроса/ответа, заголовки авторизации и текст промпта в лог не попадают.
+- **`GET /metrics`** — метрики в текстовом формате Prometheus
+  (`app/core/metrics.py`, `prometheus_client`): HTTP-запросы
+  (`aigw_http_requests_total`/`_duration_seconds`) и провайдерские
+  (`aigw_provider_requests_total{provider,outcome}` —
+  success/error/cache_hit/fallback, `aigw_provider_tokens_total`,
+  `aigw_provider_cost_usd_total`).
+
+Подробнее, включая как это посмотреть локально (в т.ч. опциональный
+Prometheus в `compose.yaml`) — [`docs/observability.md`](../docs/observability.md).
 
 ## Связанные документы
 
