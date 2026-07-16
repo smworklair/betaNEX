@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Sparkles, ArrowUp, Eraser } from 'lucide-react';
-import { llmReady, llmAsk, type LlmTurn } from '../llm';
+import { llmReady, llmAsk, llmAskStream, LlmStreamError, type LlmTurn } from '../llm';
 import { Md } from '../md';
 
 /* ============================================================
@@ -78,11 +78,37 @@ export function AiBox({ title, placeholder, quick = [], page, facts, system, fal
     };
 
     if (llmReady()) {
+      // Стриминг: печатаем ответ по мере поступления кусков текста
+      // (ai-gateway /api/v1/ai/stream через nexd) — заводим "живую"
+      // последнюю запись в turns и дописываем в неё каждый onDelta.
+      setTurns([...withQuestion, { role: 'model', text: '' }]);
+      let streamed = '';
       try {
-        const text = await llmAsk(q, { history, system, context: { page, title, facts } });
-        finish(text);
+        const text = await llmAskStream(q, { history, system, context: { page, title, facts } }, (delta) => {
+          streamed += delta;
+          setTurns((cur) => {
+            const next = cur.slice();
+            next[next.length - 1] = { role: 'model', text: streamed };
+            return next;
+          });
+        });
+        const next: LlmTurn[] = [...withQuestion, { role: 'model', text: text }];
+        setTurns(next);
+        saveHistory(page, next);
+        setBusy(false);
         return;
-      } catch { /* тихий откат на фолбэк ниже */ }
+      } catch (err) {
+        // Стрим не отдал вообще ничего (см. LlmStreamError) — откатываемся
+        // на обычный не-стриминговый /ask, прежде чем сдаться на демо-мок.
+        setTurns(withQuestion);
+        if (err instanceof LlmStreamError) {
+          try {
+            const text = await llmAsk(q, { history, system, context: { page, title, facts } });
+            finish(text);
+            return;
+          } catch { /* тихий откат на фолбэк ниже */ }
+        }
+      }
     }
     finish(fallback ? fallback(q) : 'Демо-режим. Настройте ai-gateway (см. ai-gateway/README.md), чтобы получить живой ответ.');
   };
@@ -117,7 +143,7 @@ export function AiBox({ title, placeholder, quick = [], page, facts, system, fal
             <div ref={endRef} />
           </div>
         )}
-        {busy && <div className="typing" style={{ marginTop: 12 }}><span /><span /><span /></div>}
+        {busy && !turns[turns.length - 1]?.text && <div className="typing" style={{ marginTop: 12 }}><span /><span /><span /></div>}
       </div>
     </div>
   );

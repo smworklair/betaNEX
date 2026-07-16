@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { useApp, Chip } from '../ui';
 import { nexReply, planFor, type NavLink } from '../nexbrain';
-import { llmReady, llmAsk, type LlmTurn } from '../llm';
+import { llmReady, llmAsk, llmAskStream, LlmStreamError, type LlmTurn } from '../llm';
 import { Md } from '../md';
 import { DataBlock } from '../nexdata';
 
@@ -82,12 +82,27 @@ export default function Chat() {
         .filter((m) => !m.run && !m.pending && m.text)
         .slice(-8)
         .map((m) => ({ role: m.who === 'u' ? 'user' : 'model', text: m.text }));
+      let streamed = '';
       try {
-        const answer = await llmAsk(text, { history });
+        const answer = await llmAskStream(text, { history }, (delta) => {
+          streamed += delta;
+          // Первый пришедший кусок сразу гасит индикатор "печатает" —
+          // дальше текст растёт сам по себе, дублировать "typing" не нужно.
+          setChatLog((m) => [...m.slice(0, -1), { who: 'n', text: streamed, pending: false }]);
+        });
         setChatLog((m) => [...m.slice(0, -1), { who: 'n', text: answer }]);
         return;
-      } catch {
-        setChatLog((m) => m.slice(0, -1)); // Gemini недоступен — падаем на мок
+      } catch (err) {
+        if (err instanceof LlmStreamError) {
+          // Стрим не дал ни одного куска — пробуем обычный /ask, прежде
+          // чем откатываться на локальный мок.
+          try {
+            const answer = await llmAsk(text, { history });
+            setChatLog((m) => [...m.slice(0, -1), { who: 'n', text: answer }]);
+            return;
+          } catch { /* падаем на мок ниже */ }
+        }
+        setChatLog((m) => m.slice(0, -1)); // ИИ недоступен — падаем на мок
       }
     }
     const a = nexReply(text);

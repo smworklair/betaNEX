@@ -297,31 +297,141 @@ const withTimeout = async (ms: number, run: (signal: AbortSignal) => Promise<Res
   try { return await run(ctrl.signal); } finally { clearTimeout(timer); }
 };
 
-/** Единая точка входа: спросить ai-gateway. Бросает исключение при
-    ошибке/не-конфигурации — вызывающий код обязан откатиться на
-    локальный мок (nexbrain/fallback), см. вызовы llmAsk по проекту. */
-export async function llmAsk(user: string, opts: AskOpts = {}): Promise<string> {
-  if (!AI_GATEWAY_CONFIGURED) throw new Error('gateway-not-configured');
-
+/** Тело запроса, общее для /ask и /stream — оба эндпоинта принимают
+    один и тот же AskRequest (см. ai-gateway/app/api/schemas.py). */
+function buildAskBody(user: string, opts: AskOpts): Record<string, unknown> {
   const history = (opts.history || []).map((t) => ({ role: t.role === 'model' ? 'assistant' : 'user', content: t.text }));
   const body: Record<string, unknown> = { message: user, history };
   if (opts.system) body.system = opts.system;
   if (opts.context) body.context = opts.context;
   const provider = getProvider();
   if (provider) body.provider = provider;
+  return body;
+}
+
+/** Единая точка входа: спросить ai-gateway. Бросает исключение при
+    ошибке/не-конфигурации — вызывающий код обязан откатиться на
+    локальный мок (nexbrain/fallback), см. вызовы llmAsk по проекту. */
+export async function llmAsk(user: string, opts: AskOpts = {}): Promise<string> {
+  if (!AI_GATEWAY_CONFIGURED) throw new Error('gateway-not-configured');
 
   const res = await withTimeout(45000, (signal) => fetch(`${AI_GATEWAY_BASE}/api/v1/ai/ask`, {
     method: 'POST',
     signal,
     credentials: 'include', // сессия nexd — прокси требует аутентифицированного актора
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify(buildAskBody(user, opts)),
   }));
   if (!res.ok) throw new Error(`gateway-${res.status}`);
   const data = await res.json();
   const text: string = data?.text || '';
   if (!text.trim()) throw new Error('gateway-empty');
   return text.trim();
+}
+
+/* ------------------------------------------------------------------
+   Стриминг (SSE) — POST /api/v1/ai/stream через тот же nexd-прокси.
+
+   Контракт событий (см. ai-gateway/app/api/routes.py:_sse):
+     event: delta  data: {"text": "..."}       — очередной кусок текста
+     event: usage  data: {prompt_tokens, ...}   — финальная статистика
+     event: error  data: {"detail": "..."}      — ошибка ПОСЛЕ уже
+       отправленного HTTP 200 (budget/rate-limit проверяются раньше, до
+       начала стрима, и приходят обычным HTTP-статусом, не SSE-событием)
+
+   Разбор идёт вручную через fetch + ReadableStream, а не через
+   EventSource: EventSource не умеет POST с телом и не шлёт
+   credentials/заголовки, которые нужны для сессии nexd.
+   ------------------------------------------------------------------ */
+
+/** Стрим оборвался, не отдав ни одного символа текста — вызывающий код
+    должен откатиться на llmAsk (не-стриминговый путь) либо на демо-мок,
+    как и при ошибке llmAsk. */
+export class LlmStreamError extends Error {}
+
+function parseSseFrame(frame: string): { event: string; data: string } | null {
+  let event = 'message';
+  const dataLines: string[] = [];
+  for (const line of frame.split('\n')) {
+    if (line.startsWith('event:')) event = line.slice(6).trim();
+    else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
+  }
+  if (dataLines.length === 0) return null;
+  return { event, data: dataLines.join('\n') };
+}
+
+/** Потоковый запрос: `onDelta` вызывается по мере поступления кусков
+    текста, возврат — итоговый полный текст. Если поток оборвался ПОСЛЕ
+    того как что-то уже пришло (ошибка провайдера в середине генерации,
+    см. ai_service.py:ask_stream — переключение на другой провайдер в
+    середине потока невозможно), уже полученный текст всё равно
+    считается результатом — обрывать на середине хуже, чем показать
+    частичный ответ. Бросает LlmStreamError, только если не пришло вообще
+    ничего полезного — тогда вызывающий код откатывается на llmAsk. */
+export async function llmAskStream(user: string, opts: AskOpts, onDelta: (delta: string) => void): Promise<string> {
+  if (!AI_GATEWAY_CONFIGURED) throw new LlmStreamError('gateway-not-configured');
+
+  const ctrl = new AbortController();
+  // Idle-таймаут, а не таймаут на весь запрос целиком — активный стрим
+  // может законно длиться дольше 45с (большой ответ), но зависшее
+  // соединение без единого байта не должно висеть вечно. Сбрасывается
+  // при каждом полученном чанке ниже.
+  let idleTimer = setTimeout(() => ctrl.abort(), 45000);
+  const resetIdle = () => { clearTimeout(idleTimer); idleTimer = setTimeout(() => ctrl.abort(), 45000); };
+
+  let res: Response;
+  try {
+    res = await fetch(`${AI_GATEWAY_BASE}/api/v1/ai/stream`, {
+      method: 'POST',
+      signal: ctrl.signal,
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+      body: JSON.stringify(buildAskBody(user, opts)),
+    });
+  } catch (err) {
+    clearTimeout(idleTimer);
+    throw new LlmStreamError(err instanceof Error ? err.message : 'network-error');
+  }
+  if (!res.ok || !res.body) {
+    clearTimeout(idleTimer);
+    throw new LlmStreamError(`gateway-${res.status}`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let full = '';
+  let errorDetail: string | null = null;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      resetIdle();
+      buffer += decoder.decode(value, { stream: true });
+      let sep: number;
+      while ((sep = buffer.indexOf('\n\n')) !== -1) {
+        const frame = buffer.slice(0, sep);
+        buffer = buffer.slice(sep + 2);
+        const parsed = parseSseFrame(frame);
+        if (!parsed) continue;
+        if (parsed.event === 'delta') {
+          const delta: string = JSON.parse(parsed.data)?.text || '';
+          if (delta) { full += delta; onDelta(delta); }
+        } else if (parsed.event === 'error') {
+          errorDetail = JSON.parse(parsed.data)?.detail || 'stream-error';
+        }
+      }
+    }
+  } catch (err) {
+    // Обрыв сети на середине — если уже что-то пришло, отдаём частичный
+    // текст (см. докстринг функции); иначе это полноценная ошибка.
+    if (!full.trim()) throw new LlmStreamError(err instanceof Error ? err.message : 'stream-read-error');
+  } finally {
+    clearTimeout(idleTimer);
+  }
+
+  if (!full.trim()) throw new LlmStreamError(errorDetail || 'gateway-empty');
+  return full.trim();
 }
 
 /** Список провайдеров, реально настроенных на сервере — для выбора в
