@@ -128,3 +128,68 @@ jobs:
 
       - name: pytest
         run: pytest -q
+
+  # Статический анализ безопасности (семантические баги: SQL/командные
+  # инъекции, SSRF, небезопасная десериализация и т.п.) по всем трём
+  # языкам репозитория. Отдельно от job'ов выше — результаты идут не в
+  # статус джобы, а в GitHub Security → Code scanning.
+  codeql:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # CodeQL анализирует JS+TS одним экстрактором ("javascript-typescript").
+        language: [go, javascript-typescript, python]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - if: matrix.language == 'go'
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+
+      # Go — компилируемый язык, CodeQL нужен собранный код для анализа;
+      # JS/TS и Python анализируются без сборки — autobuild для них no-op.
+      - uses: github/codeql-action/autobuild@v4
+
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"
+
+  # Уязвимости в зависимостях (файлах-манифестах, БЕЗ сборки образов —
+  # чтобы не тянуть Docker-билд в каждый PR) + секреты, случайно
+  # закоммиченные в репозиторий. exit-code: 0 — джоба не блокирует PR,
+  # это первое подключение сканера на существующую кодовую базу и
+  # предзаполненный бэклог находок нежелательно превращать в стену перед
+  # каждым мержем; результаты идут в Security → Code scanning, порог
+  # блокировки — предмет отдельного осознанного PR после разбора отчёта.
+  trivy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Trivy — зависимости и секреты (файловая система)
+        uses: aquasecurity/trivy-action@0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: CRITICAL,HIGH
+          format: sarif
+          output: trivy-results.sarif
+          exit-code: "0"
+
+      - uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-results.sarif
