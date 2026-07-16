@@ -1,9 +1,29 @@
-# ЗАГОТОВКА прод-окружения (веха M9): один VPS, Docker Compose + Caddy.
-# Не использовать до прохождения вех M8 (тесты) и M11 (hardening).
+# Прод-стек NEX: один VPS, Docker Compose + Caddy (reverse-proxy + TLS).
 #
-# Секреты приходят из .env рядом с этим файлом (не коммитится):
+# Что здесь ЕСТЬ и проверено (`docker compose -f deploy/compose.prod.yaml config`):
+#   - reverse-proxy с автоматическим TLS (Caddy получает и продлевает
+#     сертификат Let's Encrypt сам — см. Caddyfile, домен из .env);
+#   - секреты только через .env рядом с этим файлом (не коммитится);
+#   - restart policy unless-stopped на всех сервисах;
+#   - health-checks: postgres (pg_isready), ai-gateway (curl /healthz,
+#     встроен в его Dockerfile), nexd — активная проверка на уровне Caddy
+#     (health_uri в Caddyfile), не на уровне Docker: базовый образ nexd —
+#     distroless (ADR-018), в нём физически нет ни shell, ни curl/wget
+#     для классического Docker HEALTHCHECK;
+#   - ai-gateway в прод-стеке (без него нет AI-функций NEX вообще).
+#
+# Что здесь НЕ реализовано (следующие вехи, см. docs/roadmap.md М9-М11) —
+# не притворяемся, что это готово: автодеплой по git-тегу из CI,
+# бэкапы (pg_dump/pgBackRest) и процедура restore, наблюдаемость
+# (Prometheus/Grafana/Loki), security-hardening (ASVS-чеклист). Раннбук
+# ручного деплоя — deploy/README.md.
+#
+# Секреты — из .env рядом с этим файлом (см. deploy/.env.example,
+# скопировать: `cp deploy/.env.example deploy/.env` и заполнить):
+#   NEX_DOMAIN=nex.example.com
 #   POSTGRES_PASSWORD=...
 #   NEX_DATABASE_URL=postgres://nex:...@postgres:5432/nex?sslmode=disable
+#   GEMINI_API_KEY=... (и/или другие ключи ai-gateway, см. ai-gateway/.env.example)
 name: nex-prod
 
 services:
@@ -20,17 +40,61 @@ services:
     expose:
       - "8080"
 
+  ai-gateway:
+    build:
+      context: ../ai-gateway
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: "8090"
+      # Фронтенд ходит на /ai/* того же origin (Caddy проксирует внутрь
+      # сети compose) — CORS браузеру не нужен, запрос для него
+      # same-origin. Оставляем пустым (безопасный дефолт), а не заполняем
+      # доменом: заполнять пришлось бы, только если что-то другое, кроме
+      # этого Caddy, будет обращаться к ai-gateway из браузера напрямую.
+      CORS_ORIGINS: ""
+    depends_on:
+      - nexd
+    expose:
+      - "8090"
+    # HEALTHCHECK уже встроен в ai-gateway/Dockerfile (curl /healthz) —
+    # его не нужно повторять здесь; Caddy дополнительно опрашивает тот же
+    # /healthz активно (см. Caddyfile) перед тем как слать туда трафик.
+
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
+    # Только NEX_DOMAIN — Caddy не должен видеть секреты БД/AI-провайдеров,
+    # ему они не нужны (не env_file: .env, как у nexd/ai-gateway).
+    # ${NEX_DOMAIN} подставляется docker compose из deploy/.env, если
+    # команда запущена из каталога deploy/ (см. deploy/README.md).
+    environment:
+      # Caddyfile читает {$NEX_DOMAIN} — на какой домен получать TLS.
+      NEX_DOMAIN: ${NEX_DOMAIN:?set NEX_DOMAIN in deploy/.env}
     ports:
       - "80:80"
       - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./web-dist:/srv/web:ro # собранный фронтенд (vite build)
+      - ./web-dist:/srv/web:ro # собранный фронтенд (vite build), см. deploy/README.md
       - caddy_data:/data
       - caddy_config:/config
+    depends_on:
+      - nexd
+      - ai-gateway
+    healthcheck:
+      # Alpine (база образа caddy:2-alpine) содержит busybox wget —
+      # опрашиваем собственный admin API Caddy (слушает 127.0.0.1:2019 по
+      # умолчанию). Именно 127.0.0.1, а не localhost: в этом образе
+      # localhost резолвится в ::1 (IPv6) первым, а admin-listener слушает
+      # только IPv4 — с localhost health-check вечно висел в "starting"
+      # (проверено вживую при валидации этого файла).
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:2019/config/"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
 
   postgres:
     image: postgres:17-alpine

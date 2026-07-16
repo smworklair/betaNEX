@@ -11,6 +11,11 @@ coverage/
 # норме store живёт в именованном docker-томе, не в репозитории).
 .pnpm-store/
 
+# Прод-деплой (см. deploy/README.md): секреты и собранная статика
+# фронтенда — пересобираются на сервере, не артефакт для git.
+deploy/.env
+deploy/web-dist/
+
 # Go / NEX backend
 /bin/
 /tmp/

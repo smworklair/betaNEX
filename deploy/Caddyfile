@@ -1,17 +1,40 @@
-# ЗАГОТОВКА (веха M9). Замените nex.example.com на реальный домен —
-# TLS-сертификат Caddy получит и продлит сам.
-nex.example.com {
+# Прод reverse-proxy NEX. Домен берётся из переменной окружения
+# NEX_DOMAIN (см. deploy/.env, compose.prod.yaml прокидывает её в этот
+# контейнер) — Caddy сам получит и продлит TLS-сертификат Let's Encrypt
+# для этого домена, никакой ручной настройки TLS не требуется.
+{$NEX_DOMAIN} {
 	encode zstd gzip
 
-	# API уходит в nexd.
+	# API уходит в nexd. health_uri/health_interval — АКТИВНАЯ проверка
+	# состояния апстрима самим Caddy (не Docker HEALTHCHECK — nexd
+	# собран на distroless, см. compose.prod.yaml, там нет shell/curl
+	# для классического контейнерного health-check). Пока nexd не ответит
+	# 2xx на /healthz, Caddy не будет слать туда трафик.
 	handle /api/* {
-		reverse_proxy nexd:8080
+		reverse_proxy nexd:8080 {
+			health_uri /healthz
+			health_interval 10s
+			health_timeout 3s
+		}
 	}
 	handle /healthz {
 		reverse_proxy nexd:8080
 	}
 	handle /readyz {
 		reverse_proxy nexd:8080
+	}
+
+	# ai-gateway — под префиксом /ai/*; handle_path СТРИПАЕТ префикс перед
+	# проксированием, поэтому браузер видит /ai/api/v1/ai/ask (тот же
+	# origin, что и сам SPA — фронтенд собирается с VITE_AI_GATEWAY_URL=/ai,
+	# см. deploy/README.md), а ai-gateway получает уже привычный ему
+	# /api/v1/ai/ask, как будто к нему обратились напрямую.
+	handle_path /ai/* {
+		reverse_proxy ai-gateway:8090 {
+			health_uri /healthz
+			health_interval 10s
+			health_timeout 3s
+		}
 	}
 
 	# Всё остальное — статика SPA: любой путь без файла отдаёт index.html,
