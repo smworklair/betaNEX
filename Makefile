@@ -7,7 +7,7 @@ DATABASE_URL ?= postgres://nex:nex@localhost:5432/nex?sslmode=disable
 SQLC_VERSION := v1.29.0
 
 .DEFAULT_GOAL := help
-.PHONY: help build run test test-db vet fmt tidy lint clean dev dev-down stack stack-down watch migrate sqlc smoke-api seed
+.PHONY: help build run test test-db vet fmt tidy lint vuln clean dev dev-down stack stack-down watch migrate sqlc smoke-api seed
 
 # Show the available targets.
 help:
@@ -29,6 +29,7 @@ help:
 	@echo "  fmt           Format all Go source with gofmt"
 	@echo "  tidy          Reconcile go.mod / go.sum"
 	@echo "  lint          Static checks (golangci-lint, fallback: go vet)"
+	@echo "  vuln          Known-vulnerability scan of dependencies (govulncheck)"
 	@echo "  clean         Remove build artifacts"
 
 # Compile the nexd binary into ./bin.
@@ -101,6 +102,12 @@ tidy:
 # Static checks: golangci-lint if installed, otherwise go vet.
 lint:
 	@command -v golangci-lint >/dev/null 2>&1 && golangci-lint run || go vet $(PKG)
+
+# Known-vulnerability scan of dependencies (same check as CI). Installs
+# govulncheck on the fly if it's not already on PATH.
+vuln:
+	@command -v govulncheck >/dev/null 2>&1 || go install golang.org/x/vuln/cmd/govulncheck@latest
+	govulncheck $(PKG)
 
 # Remove build artifacts.
 clean:
