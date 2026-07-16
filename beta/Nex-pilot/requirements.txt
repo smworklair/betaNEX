@@ -1,0 +1,8 @@
+# FrankAI ставится редактируемым пакетом из соседней папки — без этого
+# `from frankai import FrankAI` не найдёт модуль. Требует, чтобы рядом
+# лежала папка ../FrankAI (см. структуру beta/).
+-e ../FrankAI
+
+# Нужен только для backend=gateway (запрос к ai-gateway по HTTP);
+# backend=frankai (по умолчанию) его не использует вовсе.
+httpx>=0.27
