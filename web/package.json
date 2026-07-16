@@ -21,7 +21,8 @@
     "framer-motion": "^12.38.0",
     "lucide-react": "^0.546.0",
     "react": "^19.0.1",
-    "react-dom": "^19.0.1"
+    "react-dom": "^19.0.1",
+    "wouter": "^3.10.0"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.6.3",

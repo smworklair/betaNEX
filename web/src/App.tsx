@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, type ReactNode, type FormEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useState, useEffect, useMemo, useRef, lazy, Suspense, type ComponentType, type FormEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import {
   Users, School, ClipboardList, Calendar, BookOpen, CheckSquare,
   Wallet, Award, Briefcase, BarChart3, GraduationCap, ShieldCheck, Settings as SettingsIcon,
@@ -20,113 +20,172 @@ import { DOCK_BY_ID, DEFAULT_DOCK, DEFAULT_TOPBAR } from './dock';
 import { roleLabel, students, type Role } from './data';
 import { ContextDrawer } from './blocks';
 import { AiLayer } from './ai';
+import { MiniMessenger } from './pages/social';
 
-import Chat from './pages/Chat';
-import Home from './pages/Home';
-import { NotificationsPage, Documents, Feed, Cloud } from './pages/beta';
-import Campus from './pages/campus';
-import Agents from './pages/agents';
-import { SecurityConsole } from './pages/Dashboard';
-import { Students, Groups, Staff } from './pages/people';
-import { Schedule, Journal, Attendance } from './pages/academic';
-import { Admissions } from './pages/operations';
-import { Analytics, Graduation } from './pages/insights';
-import Settings from './pages/Settings';
-import { NexHistory, Exams } from './pages/extra';
-import { Tasks } from './pages/tasks';
-import { CalendarPage } from './pages/calendar';
-import { Community, Mail, Broadcast, MiniMessenger } from './pages/social';
-import {
-  FinPayments, FinDebts, FinCharges, FinCalc, FinPayroll, FinScholarship, FinBudget, FinReports,
-} from './pages/accounting';
-import {
-  FinInvoices, FinVat, FinActs, FinContracts, FinReceivables, FinPayables, FinCashbook, FinBank, FinJournal,
-} from './pages/finance-beta';
-import { FinCockpit, FinReconcile, FinClose, FinStudio } from './pages/finance-pro';
-import { Disciplines, Homeworks, GradeSheets, Curricula, Orders } from './pages/academic-beta';
-import { Departments, Employees, Curators } from './pages/people-beta';
-import { AnalyticsPro } from './pages/analytics-beta';
-import { SecUsers, SecRoles, SecAudit, SecSessions, SecKeys, SecPolicies, SecBackup } from './pages/security-beta';
+/* ---- Ленивая загрузка страниц: код каждого раздела попадает в свой чанк
+   и подгружается только при первом переходе в него (React.lazy + Suspense
+   в renderSub ниже), а не одним куском в главный бандл вместе со всем
+   остальным приложением. lazyOf — маленький адаптер под именованные
+   экспорты (не у всех страниц default export). */
+function lazyOf<M, K extends keyof M>(loader: () => Promise<M>, name: K): ComponentType {
+  return lazy(() => loader().then((m) => ({ default: m[name] as unknown as ComponentType }))) as ComponentType;
+}
+
+const Chat = lazy(() => import('./pages/Chat'));
+const Settings = lazy(() => import('./pages/Settings'));
+const Home = lazy(() => import('./pages/Home'));
+const Campus = lazy(() => import('./pages/campus'));
+const Agents = lazy(() => import('./pages/agents'));
+
+const PAGES: Record<string, ComponentType> = {
+  home: Home,
+  community: lazyOf(() => import('./pages/social'), 'Community'),
+  mail: lazyOf(() => import('./pages/social'), 'Mail'),
+  broadcast: lazyOf(() => import('./pages/social'), 'Broadcast'),
+  tasks: lazyOf(() => import('./pages/tasks'), 'Tasks'),
+  notifications: lazyOf(() => import('./pages/beta'), 'NotificationsPage'),
+  calendar: lazyOf(() => import('./pages/calendar'), 'CalendarPage'),
+  nexlog: lazyOf(() => import('./pages/extra'), 'NexHistory'),
+
+  'fin-overview': lazyOf(() => import('./pages/finance-pro'), 'FinCockpit'),
+  'fin-reconcile': lazyOf(() => import('./pages/finance-pro'), 'FinReconcile'),
+  'fin-close': lazyOf(() => import('./pages/finance-pro'), 'FinClose'),
+  'fin-studio': lazyOf(() => import('./pages/finance-pro'), 'FinStudio'),
+  'fin-payments': lazyOf(() => import('./pages/accounting'), 'FinPayments'),
+  'fin-invoices': lazyOf(() => import('./pages/finance-beta'), 'FinInvoices'),
+  'fin-vat': lazyOf(() => import('./pages/finance-beta'), 'FinVat'),
+  'fin-acts': lazyOf(() => import('./pages/finance-beta'), 'FinActs'),
+  'fin-contracts': lazyOf(() => import('./pages/finance-beta'), 'FinContracts'),
+  'fin-debts': lazyOf(() => import('./pages/accounting'), 'FinDebts'),
+  'fin-receivables': lazyOf(() => import('./pages/finance-beta'), 'FinReceivables'),
+  'fin-payables': lazyOf(() => import('./pages/finance-beta'), 'FinPayables'),
+  'fin-charges': lazyOf(() => import('./pages/accounting'), 'FinCharges'),
+  'fin-cash': lazyOf(() => import('./pages/finance-beta'), 'FinCashbook'),
+  'fin-bank': lazyOf(() => import('./pages/finance-beta'), 'FinBank'),
+  'fin-journal': lazyOf(() => import('./pages/finance-beta'), 'FinJournal'),
+  'fin-calc': lazyOf(() => import('./pages/accounting'), 'FinCalc'),
+  'fin-payroll': lazyOf(() => import('./pages/accounting'), 'FinPayroll'),
+  'fin-scholarship': lazyOf(() => import('./pages/accounting'), 'FinScholarship'),
+  'fin-budget': lazyOf(() => import('./pages/accounting'), 'FinBudget'),
+  'fin-reports': lazyOf(() => import('./pages/accounting'), 'FinReports'),
+
+  journal: lazyOf(() => import('./pages/academic'), 'Journal'),
+  schedule: lazyOf(() => import('./pages/academic'), 'Schedule'),
+  attendance: lazyOf(() => import('./pages/academic'), 'Attendance'),
+  exams: lazyOf(() => import('./pages/extra'), 'Exams'),
+  disciplines: lazyOf(() => import('./pages/academic-beta'), 'Disciplines'),
+  homework: lazyOf(() => import('./pages/academic-beta'), 'Homeworks'),
+  sheets: lazyOf(() => import('./pages/academic-beta'), 'GradeSheets'),
+  curricula: lazyOf(() => import('./pages/academic-beta'), 'Curricula'),
+  orders: lazyOf(() => import('./pages/academic-beta'), 'Orders'),
+
+  students: lazyOf(() => import('./pages/people'), 'Students'),
+  groups: lazyOf(() => import('./pages/people'), 'Groups'),
+  staff: lazyOf(() => import('./pages/people'), 'Staff'),
+  employees: lazyOf(() => import('./pages/people-beta'), 'Employees'),
+  departments: lazyOf(() => import('./pages/people-beta'), 'Departments'),
+  curators: lazyOf(() => import('./pages/people-beta'), 'Curators'),
+  admissions: lazyOf(() => import('./pages/operations'), 'Admissions'),
+
+  analytics: lazyOf(() => import('./pages/insights'), 'Analytics'),
+  dashboards: lazyOf(() => import('./pages/analytics-beta'), 'AnalyticsPro'),
+  graduation: lazyOf(() => import('./pages/insights'), 'Graduation'),
+
+  security: lazyOf(() => import('./pages/Dashboard'), 'SecurityConsole'),
+  'sec-users': lazyOf(() => import('./pages/security-beta'), 'SecUsers'),
+  'sec-roles': lazyOf(() => import('./pages/security-beta'), 'SecRoles'),
+  'sec-audit': lazyOf(() => import('./pages/security-beta'), 'SecAudit'),
+  'sec-sessions': lazyOf(() => import('./pages/security-beta'), 'SecSessions'),
+  'sec-keys': lazyOf(() => import('./pages/security-beta'), 'SecKeys'),
+  'sec-policies': lazyOf(() => import('./pages/security-beta'), 'SecPolicies'),
+  'sec-backup': lazyOf(() => import('./pages/security-beta'), 'SecBackup'),
+
+  documents: lazyOf(() => import('./pages/beta'), 'Documents'),
+  feed: lazyOf(() => import('./pages/beta'), 'Feed'),
+  cloud: lazyOf(() => import('./pages/beta'), 'Cloud'),
+  campus: Campus,
+  agents: Agents,
+};
 
 /* ---- Двухуровневая навигация: разделы сверху → подстраницы слева ---- */
-interface SubItem { id: string; label: string; icon: LucideIcon; node: ReactNode; beta?: boolean; }
+interface SubItem { id: string; label: string; icon: LucideIcon; beta?: boolean; }
 interface Section { id: string; label: string; icon: LucideIcon; items: SubItem[]; }
 
 const SECTIONS: Section[] = [
   { id: 'feed', label: 'Лента', icon: Newspaper, items: [
-    { id: 'home', label: 'Главное', icon: HomeIcon, node: <Home /> },
-    { id: 'community', label: 'Сообщество', icon: Rss, node: <Community /> },
-    { id: 'mail', label: 'Сообщения', icon: MessageSquare, node: <Mail /> },
-    { id: 'broadcast', label: 'Рассылка', icon: Megaphone, node: <Broadcast /> },
-    { id: 'tasks', label: 'Задачи', icon: CheckSquare, node: <Tasks /> },
-    { id: 'notifications', label: 'Уведомления', icon: Bell, node: <NotificationsPage /> },
-    { id: 'calendar', label: 'Календарь', icon: CalendarDays, node: <CalendarPage /> },
-    { id: 'nexlog', label: 'История NEX', icon: Sparkles, node: <NexHistory /> },
+    { id: 'home', label: 'Главное', icon: HomeIcon },
+    { id: 'community', label: 'Сообщество', icon: Rss },
+    { id: 'mail', label: 'Сообщения', icon: MessageSquare },
+    { id: 'broadcast', label: 'Рассылка', icon: Megaphone },
+    { id: 'tasks', label: 'Задачи', icon: CheckSquare },
+    { id: 'notifications', label: 'Уведомления', icon: Bell },
+    { id: 'calendar', label: 'Календарь', icon: CalendarDays },
+    { id: 'nexlog', label: 'История NEX', icon: Sparkles },
   ] },
   { id: 'finance', label: 'Финансы', icon: Wallet, items: [
-    { id: 'fin-overview', label: 'Финансовый центр', icon: TrendingUp, node: <FinCockpit /> },
-    { id: 'fin-reconcile', label: 'Сверка банка', icon: ArrowLeftRight, node: <FinReconcile /> },
-    { id: 'fin-close', label: 'Закрытие периода', icon: ClipboardCheck, node: <FinClose /> },
-    { id: 'fin-studio', label: 'Экономика и сценарии', icon: LineChart, node: <FinStudio /> },
-    { id: 'fin-payments', label: 'Платежи', icon: Receipt, node: <FinPayments /> },
-    { id: 'fin-invoices', label: 'Счета', icon: FileText, node: <FinInvoices />, beta: true },
-    { id: 'fin-vat', label: 'Счета-фактуры', icon: ReceiptText, node: <FinVat />, beta: true },
-    { id: 'fin-acts', label: 'Акты', icon: FileCheck2, node: <FinActs />, beta: true },
-    { id: 'fin-contracts', label: 'Договоры', icon: FileSignature, node: <FinContracts />, beta: true },
-    { id: 'fin-debts', label: 'Задолженности', icon: HandCoins, node: <FinDebts /> },
-    { id: 'fin-receivables', label: 'Дебиторка', icon: HandCoins, node: <FinReceivables />, beta: true },
-    { id: 'fin-payables', label: 'Кредиторка', icon: CreditCard, node: <FinPayables />, beta: true },
-    { id: 'fin-charges', label: 'Начисления', icon: FileBarChart, node: <FinCharges /> },
-    { id: 'fin-cash', label: 'Касса', icon: Wallet, node: <FinCashbook />, beta: true },
-    { id: 'fin-bank', label: 'Банк', icon: Building2, node: <FinBank />, beta: true },
-    { id: 'fin-journal', label: 'Журнал операций', icon: BookOpenCheck, node: <FinJournal />, beta: true },
-    { id: 'fin-calc', label: 'Расчёты', icon: Calculator, node: <FinCalc /> },
-    { id: 'fin-payroll', label: 'Зарплата', icon: Banknote, node: <FinPayroll /> },
-    { id: 'fin-scholarship', label: 'Стипендии', icon: Award, node: <FinScholarship /> },
-    { id: 'fin-budget', label: 'Бюджет', icon: PiggyBank, node: <FinBudget /> },
-    { id: 'fin-reports', label: 'Отчёты', icon: Landmark, node: <FinReports /> },
+    { id: 'fin-overview', label: 'Финансовый центр', icon: TrendingUp },
+    { id: 'fin-reconcile', label: 'Сверка банка', icon: ArrowLeftRight },
+    { id: 'fin-close', label: 'Закрытие периода', icon: ClipboardCheck },
+    { id: 'fin-studio', label: 'Экономика и сценарии', icon: LineChart },
+    { id: 'fin-payments', label: 'Платежи', icon: Receipt },
+    { id: 'fin-invoices', label: 'Счета', icon: FileText, beta: true },
+    { id: 'fin-vat', label: 'Счета-фактуры', icon: ReceiptText, beta: true },
+    { id: 'fin-acts', label: 'Акты', icon: FileCheck2, beta: true },
+    { id: 'fin-contracts', label: 'Договоры', icon: FileSignature, beta: true },
+    { id: 'fin-debts', label: 'Задолженности', icon: HandCoins },
+    { id: 'fin-receivables', label: 'Дебиторка', icon: HandCoins, beta: true },
+    { id: 'fin-payables', label: 'Кредиторка', icon: CreditCard, beta: true },
+    { id: 'fin-charges', label: 'Начисления', icon: FileBarChart },
+    { id: 'fin-cash', label: 'Касса', icon: Wallet, beta: true },
+    { id: 'fin-bank', label: 'Банк', icon: Building2, beta: true },
+    { id: 'fin-journal', label: 'Журнал операций', icon: BookOpenCheck, beta: true },
+    { id: 'fin-calc', label: 'Расчёты', icon: Calculator },
+    { id: 'fin-payroll', label: 'Зарплата', icon: Banknote },
+    { id: 'fin-scholarship', label: 'Стипендии', icon: Award },
+    { id: 'fin-budget', label: 'Бюджет', icon: PiggyBank },
+    { id: 'fin-reports', label: 'Отчёты', icon: Landmark },
   ] },
   { id: 'study', label: 'Учёба', icon: GraduationCap, items: [
-    { id: 'journal', label: 'Журнал оценок', icon: BookOpen, node: <Journal /> },
-    { id: 'schedule', label: 'Расписание', icon: Calendar, node: <Schedule /> },
-    { id: 'attendance', label: 'Посещаемость', icon: UserCheck, node: <Attendance /> },
-    { id: 'exams', label: 'Сессия', icon: ClipboardCheck, node: <Exams /> },
-    { id: 'disciplines', label: 'Дисциплины', icon: BookMarked, node: <Disciplines />, beta: true },
-    { id: 'homework', label: 'Домашние задания', icon: NotebookPen, node: <Homeworks />, beta: true },
-    { id: 'sheets', label: 'Ведомости', icon: FileSpreadsheet, node: <GradeSheets />, beta: true },
-    { id: 'curricula', label: 'Учебные планы', icon: GraduationCap, node: <Curricula />, beta: true },
-    { id: 'orders', label: 'Приказы', icon: ScrollText, node: <Orders />, beta: true },
+    { id: 'journal', label: 'Журнал оценок', icon: BookOpen },
+    { id: 'schedule', label: 'Расписание', icon: Calendar },
+    { id: 'attendance', label: 'Посещаемость', icon: UserCheck },
+    { id: 'exams', label: 'Сессия', icon: ClipboardCheck },
+    { id: 'disciplines', label: 'Дисциплины', icon: BookMarked, beta: true },
+    { id: 'homework', label: 'Домашние задания', icon: NotebookPen, beta: true },
+    { id: 'sheets', label: 'Ведомости', icon: FileSpreadsheet, beta: true },
+    { id: 'curricula', label: 'Учебные планы', icon: GraduationCap, beta: true },
+    { id: 'orders', label: 'Приказы', icon: ScrollText, beta: true },
   ] },
   { id: 'people', label: 'Люди', icon: Users, items: [
-    { id: 'students', label: 'Студенты', icon: Users, node: <Students /> },
-    { id: 'groups', label: 'Группы', icon: School, node: <Groups /> },
-    { id: 'staff', label: 'Сотрудники', icon: Briefcase, node: <Staff /> },
-    { id: 'employees', label: 'Кадры', icon: UserCog, node: <Employees />, beta: true },
-    { id: 'departments', label: 'Отделения', icon: Building, node: <Departments />, beta: true },
-    { id: 'curators', label: 'Кураторы', icon: UserCheck, node: <Curators />, beta: true },
-    { id: 'admissions', label: 'Приём', icon: ClipboardList, node: <Admissions /> },
+    { id: 'students', label: 'Студенты', icon: Users },
+    { id: 'groups', label: 'Группы', icon: School },
+    { id: 'staff', label: 'Сотрудники', icon: Briefcase },
+    { id: 'employees', label: 'Кадры', icon: UserCog, beta: true },
+    { id: 'departments', label: 'Отделения', icon: Building, beta: true },
+    { id: 'curators', label: 'Кураторы', icon: UserCheck, beta: true },
+    { id: 'admissions', label: 'Приём', icon: ClipboardList },
   ] },
   { id: 'analytics', label: 'Аналитика', icon: BarChart3, items: [
-    { id: 'analytics', label: 'Обзор', icon: BarChart3, node: <Analytics /> },
-    { id: 'dashboards', label: 'Дашборды', icon: LayoutDashboard, node: <AnalyticsPro />, beta: true },
-    { id: 'graduation', label: 'Выпуск', icon: GraduationCap, node: <Graduation /> },
+    { id: 'analytics', label: 'Обзор', icon: BarChart3 },
+    { id: 'dashboards', label: 'Дашборды', icon: LayoutDashboard, beta: true },
+    { id: 'graduation', label: 'Выпуск', icon: GraduationCap },
   ] },
   { id: 'security', label: 'Безопасность', icon: ShieldCheck, items: [
-    { id: 'security', label: 'Обзор', icon: ShieldCheck, node: <SecurityConsole /> },
-    { id: 'sec-users', label: 'Пользователи', icon: Users, node: <SecUsers />, beta: true },
-    { id: 'sec-roles', label: 'Роли и права', icon: BadgeCheck, node: <SecRoles />, beta: true },
-    { id: 'sec-audit', label: 'Аудит', icon: Activity, node: <SecAudit />, beta: true },
-    { id: 'sec-sessions', label: 'Сессии и устройства', icon: Monitor, node: <SecSessions />, beta: true },
-    { id: 'sec-keys', label: 'Ключи и доступ', icon: KeyRound, node: <SecKeys />, beta: true },
-    { id: 'sec-policies', label: 'Политики', icon: Lock, node: <SecPolicies />, beta: true },
-    { id: 'sec-backup', label: 'Копии и мониторинг', icon: DatabaseBackup, node: <SecBackup />, beta: true },
+    { id: 'security', label: 'Обзор', icon: ShieldCheck },
+    { id: 'sec-users', label: 'Пользователи', icon: Users, beta: true },
+    { id: 'sec-roles', label: 'Роли и права', icon: BadgeCheck, beta: true },
+    { id: 'sec-audit', label: 'Аудит', icon: Activity, beta: true },
+    { id: 'sec-sessions', label: 'Сессии и устройства', icon: Monitor, beta: true },
+    { id: 'sec-keys', label: 'Ключи и доступ', icon: KeyRound, beta: true },
+    { id: 'sec-policies', label: 'Политики', icon: Lock, beta: true },
+    { id: 'sec-backup', label: 'Копии и мониторинг', icon: DatabaseBackup, beta: true },
   ] },
   { id: 'beta', label: 'Бета', icon: FlaskConical, items: [
-    { id: 'documents', label: 'Документы', icon: FileText, node: <Documents />, beta: true },
-    { id: 'feed', label: 'Витрина', icon: Newspaper, node: <Feed />, beta: true },
-    { id: 'cloud', label: 'Облако', icon: CloudIcon, node: <Cloud />, beta: true },
-    { id: 'campus', label: 'Кампус', icon: Compass, node: <Campus />, beta: true },
-    { id: 'agents', label: 'Агенты', icon: Bot, node: <Agents />, beta: true },
+    { id: 'documents', label: 'Документы', icon: FileText, beta: true },
+    { id: 'feed', label: 'Витрина', icon: Newspaper, beta: true },
+    { id: 'cloud', label: 'Облако', icon: CloudIcon, beta: true },
+    { id: 'campus', label: 'Кампус', icon: Compass, beta: true },
+    { id: 'agents', label: 'Агенты', icon: Bot, beta: true },
   ] },
 ];
 
@@ -134,10 +193,15 @@ const ALL_ITEMS: Record<string, SubItem> = {};
 const SECTION_OF: Record<string, string> = {};
 SECTIONS.forEach((s) => s.items.forEach((it) => { ALL_ITEMS[it.id] = it; SECTION_OF[it.id] = s.id; }));
 
-function renderSub(id: string): ReactNode {
-  if (id === 'chat') return <Chat />;
-  if (id === 'settings') return <Settings />;
-  return ALL_ITEMS[id]?.node ?? <Home />;
+/* Пустой fallback: большинство разделов подгружаются за десятки
+   миллисекунд на локальной сети/кэше браузера, отдельный спиннер под
+   каждый переход добавил бы больше мерцания, чем пользы. */
+function renderSub(id: string) {
+  if (id === 'settings') {
+    return <Suspense fallback={null}><Settings /></Suspense>;
+  }
+  const Comp = id === 'chat' ? Chat : (PAGES[id] ?? Home);
+  return <Suspense fallback={null}><Comp /></Suspense>;
 }
 
 /* ===================== Login ===================== */
