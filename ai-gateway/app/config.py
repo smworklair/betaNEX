@@ -129,6 +129,15 @@ class Settings(BaseSettings):
     max_output_tokens: int = 2048           # ограничение стоимости и размера ответа
     rate_limit_per_minute: int = 20         # простая защита от злоупотребления, см. core/ratelimit.py
 
+    # --- Кэш ответов LLM (provider, tenant, system, messages) → ответ ---
+    # См. app/core/response_cache.py и app/services/ai_service.py:
+    # _cache_key. Экономит токены/деньги/задержку на повторных вопросах;
+    # изолирован по тенантам (см. докстринг response_cache.py) — тенант A
+    # никогда не получит ответ, закэшированный для промпта тенанта B.
+    response_cache_enabled: bool = True
+    response_cache_ttl_seconds: float = 300.0   # 5 минут — короткий TTL: правильнее для меняющихся данных
+    response_cache_max_entries: int = 1000      # граница памяти для InMemoryResponseCache, см. её докстринг
+
     # --- Бюджеты по тенантам (per-tenant budgets) ---
     # Путь к JSON-файлу с персональными лимитами по тенантам, см.
     # tenants.example.json. Если файла нет — все тенанты (включая

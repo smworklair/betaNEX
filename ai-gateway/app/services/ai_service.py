@@ -14,10 +14,13 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 from collections.abc import AsyncIterator
 
 from app.core.context_registry import PageContext, build_context_block
+from app.core.response_cache import CachedResponse, ResponseCache
 from app.providers.base import ChatMessage, CompletionResult, LLMProvider, StreamChunk, Usage
 from app.providers.exceptions import (
     ProviderAuthError,
@@ -96,6 +99,8 @@ class AIService:
         default_provider: str,
         budget_service: BudgetService,
         fallback_chain: list[str] | None = None,
+        cache: ResponseCache | None = None,
+        cache_ttl_seconds: float = 300.0,
     ) -> None:
         self._providers = providers
         self._default_provider = default_provider
@@ -105,6 +110,33 @@ class AIService:
         # причине сюда попал пустой список, откатываемся на единственный
         # default_provider, чтобы сервис не остался вообще без маршрута.
         self._fallback_chain = fallback_chain or [default_provider]
+        # cache=None — кэш выключен целиком (см. RESPONSE_CACHE_ENABLED в
+        # app/main.py): ask()/ask_stream() ведут себя ровно как без кэша.
+        self._cache = cache
+        self._cache_ttl = cache_ttl_seconds
+
+    @staticmethod
+    def _cache_key(tenant_id: str, provider: str, system: str | None, messages: list[ChatMessage]) -> str:
+        """
+        Ключ кэша — хэш от (тенант, провайдер, системный промпт, вся
+        история+вопрос). tenant_id в ключе ОБЯЗАТЕЛЕН (см. докстринг
+        core/response_cache.py) — без него один тенант получал бы
+        закэшированный ответ, сгенерированный для промпта другого.
+        provider — тоже часть ключа: один и тот же вопрос к разным
+        провайдерам может дать разный (и по-разному стоящий) ответ, кэш
+        не должен их смешивать. Хэш, а не сырой ключ — history/system
+        могут быть длинными (до ~28К символов суммарно, см. api/
+        schemas.py), а не ограниченный по размеру ключ дольше сравнивать
+        и неудобно логировать.
+        """
+        payload = {
+            "tenant": tenant_id,
+            "provider": provider,
+            "system": system or "",
+            "messages": [[m.role, m.content] for m in messages],
+        }
+        raw = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
     @property
     def provider_names(self) -> list[str]:
@@ -160,6 +192,17 @@ class AIService:
         system_prompt = _resolve_system(system, context)
         last_exc: ProviderError | None = None
         for provider in chain:
+            cache_key = self._cache_key(tenant_id, provider.name, system_prompt, messages) if self._cache else None
+            if cache_key is not None:
+                cached = await self._cache.get(cache_key)  # type: ignore[union-attr]
+                if cached is not None:
+                    # Кэш-хит: НЕ вызываем budget.record() — реального
+                    # обращения к провайдеру не было, тенант ничего не
+                    # потратил, списывать с его бюджета нечего.
+                    logger.info("ai_service.ask: cache hit tenant=%s provider=%s", tenant_id, provider.name)
+                    return CompletionResult(
+                        text=cached.text, usage=cached.usage, provider=cached.provider, model=cached.model
+                    )
             try:
                 result = await provider.complete(messages, system_prompt)
             except ProviderError as exc:
@@ -169,6 +212,12 @@ class AIService:
                 last_exc = exc
                 continue
             await self._budget.record(tenant_id, provider.name, result.usage)
+            if cache_key is not None:
+                await self._cache.set(  # type: ignore[union-attr]
+                    cache_key,
+                    CachedResponse(text=result.text, usage=result.usage, provider=result.provider, model=result.model),
+                    self._cache_ttl,
+                )
             return result
         assert last_exc is not None  # chain никогда не пуст, см. _resolve_chain
         raise AIServiceError(last_exc.message, status_code=_status_for(last_exc)) from last_exc
@@ -188,6 +237,18 @@ class AIService:
         system_prompt = _resolve_system(system, context)
         last_exc: ProviderError | None = None
         for provider in chain:
+            cache_key = self._cache_key(tenant_id, provider.name, system_prompt, messages) if self._cache else None
+            if cache_key is not None:
+                cached = await self._cache.get(cache_key)  # type: ignore[union-attr]
+                if cached is not None:
+                    # Кэш-хит стримится одним чанком (не по кусочкам —
+                    # текст уже полностью готов, дробить его специально
+                    # ради имитации печати незачем) и usage не пишется в
+                    # бюджет — та же логика, что и в ask().
+                    logger.info("ai_service.ask_stream: cache hit tenant=%s provider=%s", tenant_id, provider.name)
+                    yield StreamChunk(delta=cached.text)
+                    yield StreamChunk(usage=cached.usage)
+                    return
             # Итоговый usage приходит только в последнем чанке потока
             # (см. providers/gemini.py и openai_compat.py) — накапливаем
             # его тут, чтобы записать в бюджет один раз в конце, а не по
@@ -199,9 +260,12 @@ class AIService:
             # его текст заново от другой модели было бы хуже, чем просто
             # оборвать поток ошибкой (см. api/routes.py: event "error").
             started = False
+            full_text_parts: list[str] = []
             try:
                 async for chunk in provider.stream(messages, system_prompt):
                     started = True
+                    if chunk.delta:
+                        full_text_parts.append(chunk.delta)
                     if chunk.usage:
                         usage = chunk.usage
                     yield chunk
@@ -217,6 +281,19 @@ class AIService:
                 last_exc = exc
                 continue
             await self._budget.record(tenant_id, provider.name, usage)
+            if cache_key is not None and full_text_parts:
+                # model="" — StreamChunk (в отличие от CompletionResult)
+                # не несёт имени модели, а LLMProvider как интерфейс его
+                # не раскрывает (только provider.name, само имя модели —
+                # деталь конкретной реализации). Для потокового пути это
+                # не проблема: ask_stream() отдаёт клиенту только текст и
+                # usage через SSE (см. api/routes.py:_sse), поле model
+                # там не участвует вовсе.
+                await self._cache.set(  # type: ignore[union-attr]
+                    cache_key,
+                    CachedResponse(text="".join(full_text_parts), usage=usage, provider=provider.name, model=""),
+                    self._cache_ttl,
+                )
             return
         assert last_exc is not None  # chain никогда не пуст, см. _resolve_chain
         raise AIServiceError(last_exc.message, status_code=_status_for(last_exc)) from last_exc

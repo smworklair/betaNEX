@@ -251,6 +251,7 @@ curl -s http://localhost:8090/api/v1/ai/ask \
 | `GIGACHAT_AUTH_KEY` / `GIGACHAT_MOCK` | GigaChat: ключ авторизации либо мок-режим без сети, см. раздел «Провайдеры». |
 | `YANDEXGPT_API_KEY` + `YANDEXGPT_FOLDER_ID` / `YANDEXGPT_MOCK` | YandexGPT: Api-Key + folder_id либо мок-режим. |
 | `DEFAULT_PROVIDER` | Какой провайдер использовать, если клиент не указал `provider` в запросе. |
+| `PROVIDER_FALLBACK_CHAIN` | Цепочка провайдеров для автопереключения при отказе (только когда клиент сам не указал `provider`), см. раздел «Провайдеры». |
 | `REQUEST_TIMEOUT_SECONDS` | Таймаут HTTP-запроса к провайдеру — защита от зависшего вызова. |
 | `MAX_OUTPUT_TOKENS` | Верхний предел длины ответа — ограничивает и стоимость, и время ответа. |
 | `RATE_LIMIT_PER_MINUTE` | Простой лимит запросов на один IP в минуту, см. ниже. |
@@ -258,7 +259,8 @@ curl -s http://localhost:8090/api/v1/ai/ask \
 | `NEX_AI_GATEWAY_SECRET` | Секрет, общий с `nexd` (то же имя переменной по обе стороны). Пусто = не проверяется (см. «Аутентификация nexd↔ai-gateway»). |
 | `TENANT_BUDGETS_FILE` | Путь к JSON с персональными лимитами по тенантам, см. `tenants.example.json`. |
 | `BUDGET_DEFAULT_*` | Лимит по умолчанию для тенантов вне файла (в т.ч. `"default"`). |
-| `*_PRICE_INPUT_PER_1K_USD` / `*_PRICE_OUTPUT_PER_1K_USD` | Цена за 1000 токенов на провайдера — для лимитов в деньгах. |
+| `*_PRICE_INPUT_PER_1K_USD` / `*_PRICE_OUTPUT_PER_1K_USD` | Цена за 1000 токенов на провайдера — для лимитов в деньгах, см. раздел «Цены за токен». |
+| `RESPONSE_CACHE_ENABLED` / `RESPONSE_CACHE_TTL_SECONDS` / `RESPONSE_CACHE_MAX_ENTRIES` | Кэш ответов LLM по (тенант, провайдер, промпт) — см. раздел «Кэш ответов LLM». |
 
 ## Безопасность и оптимизация — что сделано и почему
 
@@ -464,6 +466,56 @@ curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8090/api/v1/ai/ask \
 # 429, тело — problem+json с tenant_id/period/limit_kind/limit/used
 ```
 
+## Кэш ответов LLM
+
+Одинаковый вопрос от одного тенанта к одному провайдеру не обязан идти
+к провайдеру повторно — `app/core/response_cache.py` кэширует полный
+ответ (текст + usage) по ключу `(tenant_id, provider, system, messages)`
+на `RESPONSE_CACHE_TTL_SECONDS` (по умолчанию 5 минут). Кэш-хит не
+только экономит задержку — он **не тратит бюджет тенанта**: реального
+обращения к провайдеру не было, списывать нечего (`BudgetService.record()`
+на кэш-хите не вызывается вовсе, см. `AIService.ask`/`ask_stream`).
+
+- **Ключ обязательно включает `tenant_id`.** Без этого один тенант мог
+  бы получить ответ, сгенерированный для промпта другого — включая
+  любые чувствительные данные, случайно попавшие в тот промпт. Это то
+  же правило "не смешивать данные разных тенантов в одном контексте",
+  что и у бюджетов и rate-limit (`X-Tenant-Id`, см. выше).
+- **Ключ включает и `provider`.** Один и тот же вопрос к разным
+  провайдерам может дать разный (и по-разному стоящий) ответ — кэш их
+  не смешивает. При использовании fallback-цепочки (см. раздел
+  «Провайдеры» ниже) это означает: при повторном запросе сервис снова
+  ПРОБУЕТ первый провайдер цепочки по-настоящему (он мог уже
+  восстановиться) и только если тот снова недоступен — берёт из кэша
+  ответ, ранее полученный от следующего в цепочке.
+- **`/stream`** отдаёт кэш-хит одним SSE-чанком `delta` (текст уже
+  полностью готов — дробить его специально ради имитации печати
+  незачем), затем `usage` — тот же контракт событий, что и у настоящего
+  потока, клиент не должен уметь отличать кэш-хит от реального ответа.
+- **Абстракция, а не жёстко in-memory** — тот же приём, что у
+  `BudgetStore`/`RateLimiter` (см. их докстринги): `ResponseCache` —
+  интерфейс из двух методов (`get`, `set`); `InMemoryResponseCache` —
+  единственная реализация, `OrderedDict` в памяти процесса с TTL и
+  FIFO-эвикцией при переполнении (`RESPONSE_CACHE_MAX_ENTRIES`). У неё
+  та же граница, что и у остальных in-memory абстракций: несколько
+  инстансов/воркеров кэш не разделяют (в отличие от бюджета — это не
+  проблема корректности, кэш просто получится "мягче"). Прод-реализация
+  — `RedisResponseCache` (набросок в докстринге класса, `SETEX`).
+- **Отключается целиком** — `RESPONSE_CACHE_ENABLED=false`, тогда
+  `AIService` ведёт себя ровно как без кэша (`cache=None` в конструкторе).
+
+```sh
+curl -s http://localhost:8090/api/v1/ai/ask -H "Content-Type: application/json" \
+  -H "X-Tenant-Id: demo" -d '{"message": "привет"}'
+# первый запрос — реальный вызов провайдера, в логах:
+# "budget: tenant=demo provider=... tokens=..."
+
+curl -s http://localhost:8090/api/v1/ai/ask -H "Content-Type: application/json" \
+  -H "X-Tenant-Id: demo" -d '{"message": "привет"}'
+# тот же ответ, мгновенно, в логах вместо budget-записи:
+# "ai_service.ask: cache hit tenant=demo provider=..."
+```
+
 ## Провайдеры
 
 | `provider` | Тип контракта | Auth | Обязательные переменные | Живьём проверено? |
@@ -503,6 +555,25 @@ curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8090/api/v1/ai/ask \
 Госуслугах) реальные вызовы будут падать с ошибкой TLS. `GIGACHAT_INSECURE_SKIP_VERIFY=true`
 отключает проверку сертификата — только для дев-стенда, никогда не для прода.
 
+### Fallback-цепочка между провайдерами
+
+`PROVIDER_FALLBACK_CHAIN` (по умолчанию `deepseek,kimi,gemini`) — если
+клиент НЕ указал `provider` в запросе явно, `AIService` пробует
+провайдеров этой цепочки по порядку и переключается на следующего при
+отказе (таймаут, 5xx, auth-ошибка, пустой ответ) — см. `app/services/
+ai_service.py:_resolve_chain`. Провайдеры без настроенного ключа
+молча пропускаются; `DEFAULT_PROVIDER` всегда достижим, даже если забыт
+в этом списке (см. `app/main.py:_build_service`).
+
+Явный `provider` в запросе фолбэк-цепочку не включает — это осознанный
+выбор клиента (например, ru-restricted маршрут для ПДн, см. `docs/ai/
+README.md`, §3) и уважается буквально, без автопереключения на другой
+провайдер при отказе.
+
+Для `/stream` переключение возможно только ДО того, как клиенту ушёл
+первый чанк текста — часть ответа уже показана пользователю, начинать
+её заново от другой модели было бы хуже, чем оборвать поток ошибкой.
+
 ### Добавить ещё одного провайдера
 
 1. Если провайдер OpenAI-совместим — просто завести под него новый
@@ -538,6 +609,10 @@ pytest
 | `test_provider_yandexgpt.py` | контракт запроса (modelUri/заголовки), пустой ответ, **стриминг с накопленным текстом → корректные дельты**, мок-режим |
 | `test_context_registry.py` | сборка системного промпта из `PageContext`: известный/неизвестный раздел, факты, состояние экрана |
 | `test_ai_service_system_prompt.py` | приоритет явного `system` над `context`, фолбэк на `DEFAULT_SYSTEM_PROMPT` |
+| `test_ai_service_fallback.py` | переключение на следующего провайдера при отказе (`/ask` и `/stream`), явный `provider` без автопереключения, полный отказ цепочки |
+| `test_budget_e2e.py` | 429 через реальный HTTP-стек: исчерпание токенного и денежного лимита на `/ask`, 429 ДО первого байта на `/stream` |
+| `test_response_cache.py` | `InMemoryResponseCache`: попадание/промах, TTL, эвикция при переполнении |
+| `test_ai_service_cache.py` | кэш-хит не идёт в сеть и не тратит бюджет, изоляция по тенантам/провайдерам/истории, кэш в `/stream` |
 
 Тесты провайдеров мокают `httpx` на транспортном уровне через
 [`respx`](https://lundberg.github.io/respx/) (см. `requirements-dev.txt`) —
@@ -571,15 +646,23 @@ ai-gateway/
 │       ├── retry.py                   # retry с экспоненциальной задержкой для транзиентных сбоев
 │       ├── context_registry.py        # реестр системных промптов по разделам фронтенда
 │       ├── budget_store.py            # хранилище потребления: интерфейс + in-memory реализация
+│       ├── response_cache.py          # кэш ответов LLM: интерфейс + in-memory реализация (RedisResponseCache — заготовка)
 │       ├── errors.py                 # problem+json обработчики ошибок
 │       └── logging.py                # настройка логов
 ├── tests/
 │   ├── test_budget_service.py           # юнит-тесты бюджетов
+│   ├── test_budget_e2e.py                # 429 через реальный HTTP-стек (TestClient), в т.ч. /stream
+│   ├── test_ratelimit.py                 # in-memory rate-limiter
+│   ├── test_request_limits.py            # лимиты размера запроса/тела
+│   ├── test_gateway_auth.py              # verify_gateway_secret: X-Gateway-Secret
 │   ├── test_provider_openai_compat.py    # openai/deepseek/qwen/kimi/custom
 │   ├── test_provider_gigachat.py         # GigaChat: OAuth, кэш токена, мок-режим
 │   ├── test_provider_yandexgpt.py        # YandexGPT: контракт, стриминг-дельты, мок-режим
 │   ├── test_context_registry.py          # сборка системного промпта из PageContext
-│   └── test_ai_service_system_prompt.py  # приоритет system над context
+│   ├── test_ai_service_system_prompt.py  # приоритет system над context
+│   ├── test_ai_service_fallback.py       # переключение провайдеров при отказе, /ask и /stream
+│   ├── test_response_cache.py            # InMemoryResponseCache: TTL, эвикция
+│   └── test_ai_service_cache.py          # интеграция кэша в AIService: изоляция по тенантам/провайдерам
 ├── .env.example
 ├── .gitignore
 ├── pyproject.toml

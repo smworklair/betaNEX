@@ -33,6 +33,7 @@ from app.core.errors import (
 from app.core.limits import MaxBodySizeMiddleware
 from app.core.logging import setup_logging
 from app.core.ratelimit import InMemoryRateLimiter
+from app.core.response_cache import InMemoryResponseCache, ResponseCache
 from app.providers.gemini import GeminiProvider
 from app.providers.gigachat import GigaChatProvider
 from app.providers.openai_compat import OpenAICompatProvider
@@ -213,8 +214,17 @@ def _build_service(settings: Settings, budget_service: BudgetService) -> AIServi
         # клиентом" неожиданно перестало бы совпадать с DEFAULT_PROVIDER.
         fallback_chain = [default, *fallback_chain]
 
+    cache: ResponseCache | None = None
+    if settings.response_cache_enabled:
+        cache = InMemoryResponseCache(max_entries=settings.response_cache_max_entries)
+
     return AIService(
-        providers=providers, default_provider=default, budget_service=budget_service, fallback_chain=fallback_chain
+        providers=providers,
+        default_provider=default,
+        budget_service=budget_service,
+        fallback_chain=fallback_chain,
+        cache=cache,
+        cache_ttl_seconds=settings.response_cache_ttl_seconds,
     )
 
 
