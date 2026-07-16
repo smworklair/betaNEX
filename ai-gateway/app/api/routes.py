@@ -11,11 +11,12 @@ import json
 import logging
 
 from fastapi import APIRouter, Depends
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 
 from app.api.schemas import AskRequest, AskResponse, HealthResponse, ProvidersResponse, UsageOut
 from app.api.schemas import PageContext as PageContextIn
 from app.core.context_registry import PageContext
+from app.core.metrics import metrics_response
 from app.deps import enforce_budget, enforce_rate_limit, get_ai_service, get_tenant_id, verify_gateway_secret
 from app.providers.base import ChatMessage
 from app.services.ai_service import AIService
@@ -51,6 +52,19 @@ async def providers(service: AIService = Depends(get_ai_service)) -> ProvidersRe
 async def healthz() -> HealthResponse:
     """Liveness-проверка — без обращения к провайдерам (быстро и дёшево)."""
     return HealthResponse()
+
+
+@router.get("/metrics", tags=["service"])
+async def metrics() -> Response:
+    """
+    Метрики в текстовом формате Prometheus (см. app/core/metrics.py).
+
+    Без аутентификации — как и /metrics в nexd (internal/platform/
+    httpapi/routes.go): в проде эндпоинт наружу не торчит (браузер сюда
+    не ходит вообще, см. deps.py:get_tenant_id), его опрашивает
+    Prometheus по внутренней docker-сети.
+    """
+    return metrics_response()
 
 
 @router.post(

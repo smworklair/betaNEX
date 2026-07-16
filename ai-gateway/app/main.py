@@ -32,6 +32,7 @@ from app.core.errors import (
 )
 from app.core.limits import MaxBodySizeMiddleware
 from app.core.logging import setup_logging
+from app.core.metrics import MetricsMiddleware
 from app.core.ratelimit import InMemoryRateLimiter
 from app.core.request_id import RequestIDMiddleware
 from app.core.response_cache import InMemoryResponseCache, ResponseCache
@@ -252,6 +253,10 @@ def create_app() -> FastAPI:
             allow_methods=["POST", "GET"],
             allow_headers=["Content-Type"],
         )
+
+    # MetricsMiddleware — те же aigw_http_requests_total/duration_seconds,
+    # что видит эксплуатация в /metrics (см. app/core/metrics.py).
+    app.add_middleware(MetricsMiddleware)
 
     # Добавлен последним — в Starlette последний добавленный middleware
     # становится самым внешним слоем (см. docstring RequestIDMiddleware):

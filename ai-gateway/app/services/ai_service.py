@@ -20,6 +20,7 @@ import logging
 from collections.abc import AsyncIterator
 
 from app.core.context_registry import PageContext, build_context_block
+from app.core.metrics import record_provider_outcome, record_provider_usage
 from app.core.response_cache import CachedResponse, ResponseCache
 from app.providers.base import ChatMessage, CompletionResult, LLMProvider, StreamChunk, Usage
 from app.providers.exceptions import (
@@ -191,7 +192,7 @@ class AIService:
         messages = [*history, ChatMessage(role="user", content=message)]
         system_prompt = _resolve_system(system, context)
         last_exc: ProviderError | None = None
-        for provider in chain:
+        for attempt, provider in enumerate(chain):
             cache_key = self._cache_key(tenant_id, provider.name, system_prompt, messages) if self._cache else None
             if cache_key is not None:
                 cached = await self._cache.get(cache_key)  # type: ignore[union-attr]
@@ -199,6 +200,7 @@ class AIService:
                     # Кэш-хит: НЕ вызываем budget.record() — реального
                     # обращения к провайдеру не было, тенант ничего не
                     # потратил, списывать с его бюджета нечего.
+                    record_provider_outcome(provider.name, "cache_hit")
                     logger.info("ai_service.ask: cache hit tenant=%s provider=%s", tenant_id, provider.name)
                     return CompletionResult(
                         text=cached.text, usage=cached.usage, provider=cached.provider, model=cached.model
@@ -206,11 +208,23 @@ class AIService:
             try:
                 result = await provider.complete(messages, system_prompt)
             except ProviderError as exc:
+                record_provider_outcome(provider.name, "error")
                 logger.warning(
                     "ai_service.ask: %s недоступен (%s), пробуем следующий в цепочке", provider.name, exc
                 )
                 last_exc = exc
                 continue
+            record_provider_outcome(provider.name, "success")
+            if attempt > 0:
+                # Успех не с первого провайдера цепочки — реально сработал
+                # автопереключение (см. _resolve_chain).
+                record_provider_outcome(provider.name, "fallback")
+            record_provider_usage(
+                provider.name,
+                result.usage.prompt_tokens,
+                result.usage.completion_tokens,
+                self._budget.estimate_cost(provider.name, result.usage),
+            )
             await self._budget.record(tenant_id, provider.name, result.usage)
             if cache_key is not None:
                 await self._cache.set(  # type: ignore[union-attr]
@@ -236,7 +250,7 @@ class AIService:
         messages = [*history, ChatMessage(role="user", content=message)]
         system_prompt = _resolve_system(system, context)
         last_exc: ProviderError | None = None
-        for provider in chain:
+        for attempt, provider in enumerate(chain):
             cache_key = self._cache_key(tenant_id, provider.name, system_prompt, messages) if self._cache else None
             if cache_key is not None:
                 cached = await self._cache.get(cache_key)  # type: ignore[union-attr]
@@ -245,6 +259,7 @@ class AIService:
                     # текст уже полностью готов, дробить его специально
                     # ради имитации печати незачем) и usage не пишется в
                     # бюджет — та же логика, что и в ask().
+                    record_provider_outcome(provider.name, "cache_hit")
                     logger.info("ai_service.ask_stream: cache hit tenant=%s provider=%s", tenant_id, provider.name)
                     yield StreamChunk(delta=cached.text)
                     yield StreamChunk(usage=cached.usage)
@@ -270,6 +285,7 @@ class AIService:
                         usage = chunk.usage
                     yield chunk
             except ProviderError as exc:
+                record_provider_outcome(provider.name, "error")
                 if started:
                     logger.warning("ai_service.ask_stream: %s", exc)
                     raise AIServiceError(exc.message, status_code=_status_for(exc)) from exc
@@ -280,6 +296,13 @@ class AIService:
                 )
                 last_exc = exc
                 continue
+            record_provider_outcome(provider.name, "success")
+            if attempt > 0:
+                record_provider_outcome(provider.name, "fallback")
+            record_provider_usage(
+                provider.name, usage.prompt_tokens, usage.completion_tokens,
+                self._budget.estimate_cost(provider.name, usage),
+            )
             await self._budget.record(tenant_id, provider.name, usage)
             if cache_key is not None and full_text_parts:
                 # model="" — StreamChunk (в отличие от CompletionResult)
