@@ -24,18 +24,15 @@
 		reverse_proxy nexd:8080
 	}
 
-	# ai-gateway — под префиксом /ai/*; handle_path СТРИПАЕТ префикс перед
-	# проксированием, поэтому браузер видит /ai/api/v1/ai/ask (тот же
-	# origin, что и сам SPA — фронтенд собирается с VITE_AI_GATEWAY_URL=/ai,
-	# см. deploy/README.md), а ai-gateway получает уже привычный ему
-	# /api/v1/ai/ask, как будто к нему обратились напрямую.
-	handle_path /ai/* {
-		reverse_proxy ai-gateway:8090 {
-			health_uri /healthz
-			health_interval 10s
-			health_timeout 3s
-		}
-	}
+	# ai-gateway браузеру больше не виден вообще: раньше /ai/* проксировался
+	# сюда напрямую, а ai-gateway доверял заголовку X-Tenant-Id от кого
+	# угодно, кто досюда достучится (самопредставление клиента — можно было
+	# вписать чужого тенанта и обойти его бюджет). Теперь фронтенд ходит
+	# в /api/v1/ai/* → nexd (см. handle /api/* выше), а nexd сам
+	# проксирует в ai-gateway по внутренней docker-сети (не через Caddy),
+	# подставляя tenant_id из аутентифицированной сессии и подписывая
+	# запрос секретом (NEX_AI_GATEWAY_SECRET, см.
+	# internal/platform/httpapi/aiproxy.go). См. deploy/README.md.
 
 	# Всё остальное — статика SPA: любой путь без файла отдаёт index.html,
 	# дальше разбирается роутер фронтенда.

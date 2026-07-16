@@ -34,6 +34,11 @@ services:
     environment:
       NEX_ENV: production
       NEX_HTTP_ADDR: ":8080"
+      # Внутренний адрес ai-gateway в docker-сети compose (не секрет —
+      # это просто DNS-имя сервиса, как и у postgres в NEX_DATABASE_URL).
+      # NEX_AI_GATEWAY_SECRET — общий секрет, приходит из .env (env_file
+      # выше) тем же именем, что читает и ai-gateway, см. .env.example.
+      NEX_AI_GATEWAY_URL: "http://ai-gateway:8090"
     depends_on:
       postgres:
         condition: service_healthy
@@ -49,11 +54,12 @@ services:
     environment:
       HOST: 0.0.0.0
       PORT: "8090"
-      # Фронтенд ходит на /ai/* того же origin (Caddy проксирует внутрь
-      # сети compose) — CORS браузеру не нужен, запрос для него
-      # same-origin. Оставляем пустым (безопасный дефолт), а не заполняем
-      # доменом: заполнять пришлось бы, только если что-то другое, кроме
-      # этого Caddy, будет обращаться к ai-gateway из браузера напрямую.
+      # Браузер сюда вообще не обращается: фронтенд ходит в /api/v1/ai/*
+      # на nexd, а nexd проксирует запрос по внутренней docker-сети (см.
+      # NEX_AI_GATEWAY_URL у nexd выше и internal/platform/httpapi/
+      # aiproxy.go) — CORS не нужен ни в каком виде. Оставляем пустым
+      # (безопасный дефолт): заполнять пришлось бы, только если что-то
+      # ДРУГОЕ, кроме nexd, должно обращаться сюда из браузера напрямую.
       CORS_ORIGINS: ""
     depends_on:
       - nexd

@@ -14,6 +14,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -28,6 +29,20 @@ class Settings(BaseSettings):
     # Пусто = CORS вообще не включается (браузер с чужого origin не
     # сможет дёргать API) — самый безопасный вариант по умолчанию.
     cors_origins: str = ""
+
+    # Секрет, общий с Go-бэкендом nexd (переменная называется одинаково
+    # по обе стороны — NEX_AI_GATEWAY_SECRET, см. internal/config/config.go
+    # и deploy/.env.example). Браузер этот секрет никогда не видит: он
+    # ходит в ai-gateway ТОЛЬКО через nexd (internal/platform/aiproxy),
+    # который сам подставляет и заголовок, и X-Tenant-Id из настоящей
+    # аутентифицированной сессии — так X-Tenant-Id перестаёт быть
+    # самопредставлением клиента (см. deps.py:verify_gateway_secret).
+    #
+    # Пусто (по умолчанию, локальная разработка без nexd-прокси) —
+    # секрет не проверяется и X-Tenant-Id снова читается как есть, ровно
+    # как было раньше: локальный `uvicorn app.main:app` без nexd рядом
+    # не ломается.
+    gateway_shared_secret: str = Field(default="", validation_alias="NEX_AI_GATEWAY_SECRET")
 
     # --- Какой провайдер использовать, если клиент явно не указал ---
     default_provider: Literal[

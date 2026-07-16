@@ -305,7 +305,7 @@ export default function Settings() {
           <div className="muted" style={{ fontSize: 13, marginBottom: 10 }}>
             NEX ходит за ответами в собственный ai-gateway (см. <code>ai-gateway/README.md</code>) —
             ключи провайдеров живут только на сервере, в браузере их больше нет.
-            {gatewayState === 'off' && ' Шлюз не настроен (VITE_AI_GATEWAY_URL пуст) — чат работает на встроенных демо-ответах.'}
+            {gatewayState === 'off' && ' Шлюз не настроен (VITE_AI_ENABLED пуст) — чат работает на встроенных демо-ответах.'}
             {gatewayState === 'down' && ' Шлюз настроен, но не отвечает — проверьте, что ai-gateway запущен.'}
           </div>
         </div>

@@ -4,26 +4,36 @@
    ДО этой задачи фронтенд ходил напрямую в Gemini/OpenAI-совместимый
    API из браузера, а ключ пользователь вводил в Настройках и он жил в
    localStorage (см. историю в docs/ai/README.md, §1 — "как это было").
-   Два системных недостатка такого подхода: ключ есть у каждого клиента
-   (нельзя ни спрятать, ни отозвать) и нет единой точки для лимитов и
-   таймаутов. Поэтому все вызовы теперь идут в ai-gateway — ключи живут
-   только там, в переменных окружения сервера (см. ai-gateway/.env.example).
 
-   Конфигурация — через VITE_AI_GATEWAY_URL (см. .env.example), тот же
-   принцип, что и у web/src/api/client.ts:VITE_API_URL:
-     • пусто / не задано → демо-режим: ИИ выключен, все точки входа
+   ПОСЛЕ этой задачи браузер больше не обращается к ai-gateway напрямую
+   ДАЖЕ по URL шлюза — только к своему же nexd, тем же origin и той же
+   cookie-сессией, что и весь остальной /api/v1/*. Причина: у ai-gateway
+   нет своей аутентификации, только заголовок X-Tenant-Id — если бы
+   браузер слал его сам, это было бы самопредставление клиента (любой
+   мог бы вписать чужого тенанта и кататься на его бюджете). nexd
+   проксирует /api/v1/ai/* (см. internal/platform/httpapi/aiproxy.go),
+   сам подставляя tenant_id из аутентифицированной сессии и подписывая
+   запрос секретом, общим с ai-gateway (NEX_AI_GATEWAY_SECRET) — так
+   заголовок подделать с уровня браузера уже нельзя.
+
+   Конфигурация — VITE_AI_ENABLED (флаг, НЕ url — url ai-gateway теперь
+   знает только nexd, см. NEX_AI_GATEWAY_URL в корневом .env.example):
+     • не "1"/"true" → демо-режим: ИИ выключен, все точки входа
        (Chat.tsx, ai.tsx, aibox.tsx) сами откатываются на локальный мок
        (nexReply/fallback), сеть не трогаем;
-     • URL шлюза          → реальные вызовы к ai-gateway.
+     • "1" или "true" → реальные вызовы через nexd → ai-gateway.
    ============================================================ */
 
-const RAW_BASE = (import.meta.env.VITE_AI_GATEWAY_URL ?? '').trim();
+import { API_BASE } from './api/client';
 
-/** Базовый URL ai-gateway. Пусто = ИИ не сконфигурирован (демо-режим). */
-export const AI_GATEWAY_BASE = RAW_BASE.replace(/\/+$/, '');
+const RAW_ENABLED = (import.meta.env.VITE_AI_ENABLED ?? '').trim().toLowerCase();
 
-/** Сконфигурирован ли шлюз — если нет, весь ИИ-слой отдаёт моки. */
-export const AI_GATEWAY_CONFIGURED = AI_GATEWAY_BASE.length > 0;
+/** Сконфигурирован ли ИИ-слой — если нет, весь слой отдаёт моки. */
+export const AI_GATEWAY_CONFIGURED = RAW_ENABLED === '1' || RAW_ENABLED === 'true';
+
+/** Базовый URL — тот же origin, что и у остального API (см. api/client.ts):
+    ИИ-запросы идут через nexd, а не напрямую в ai-gateway. */
+export const AI_GATEWAY_BASE = API_BASE;
 
 /** Имя провайдера на ai-gateway (см. ai-gateway/app/api/schemas.py:ProviderName). */
 export type LlmProvider = 'gemini' | 'custom' | 'openai' | 'deepseek' | 'qwen' | 'kimi' | 'gigachat' | 'yandexgpt';
@@ -303,6 +313,7 @@ export async function llmAsk(user: string, opts: AskOpts = {}): Promise<string> 
   const res = await withTimeout(45000, (signal) => fetch(`${AI_GATEWAY_BASE}/api/v1/ai/ask`, {
     method: 'POST',
     signal,
+    credentials: 'include', // сессия nexd — прокси требует аутентифицированного актора
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   }));
@@ -317,7 +328,7 @@ export async function llmAsk(user: string, opts: AskOpts = {}): Promise<string> 
     Настройках (никаких ключей на клиенте, только имена). */
 export interface GatewayProviders { providers: LlmProvider[]; default: LlmProvider; }
 export async function fetchProviders(): Promise<GatewayProviders> {
-  const res = await fetch(`${AI_GATEWAY_BASE}/api/v1/ai/providers`);
+  const res = await fetch(`${AI_GATEWAY_BASE}/api/v1/ai/providers`, { credentials: 'include' });
   if (!res.ok) throw new Error(`providers-${res.status}`);
   return res.json();
 }
@@ -326,7 +337,10 @@ export async function fetchProviders(): Promise<GatewayProviders> {
 export async function checkGateway(): Promise<boolean> {
   if (!AI_GATEWAY_CONFIGURED) return false;
   try {
-    const res = await withTimeout(5000, (signal) => fetch(`${AI_GATEWAY_BASE}/healthz`, { signal }));
+    const res = await withTimeout(5000, (signal) => fetch(`${AI_GATEWAY_BASE}/api/v1/ai/healthz`, {
+      signal,
+      credentials: 'include',
+    }));
     return res.ok;
   } catch { return false; }
 }

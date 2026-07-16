@@ -471,6 +471,12 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	if len(searchSources) > 0 {
 		mounts = append(mounts, httpapi.SearchRoutes(guard, searchSources...))
 	}
+	// Пусто в NEX_AI_GATEWAY_URL — MountAIGateway ничего не монтирует, и
+	// окружения без ai-gateway (демо, дев без Python-стека) не меняются.
+	mounts = append(mounts, httpapi.MountAIGateway(httpapi.AIGatewayConfig{
+		URL:    cfg.AIGateway.URL,
+		Secret: cfg.AIGateway.Secret,
+	}, log))
 	mounts = append(mounts, extraMounts...)
 
 	router := httpapi.NewRouter(log, httpapi.RouterConfig{

@@ -20,8 +20,10 @@
 git clone <repo-url> nex && cd nex
 cp deploy/.env.example deploy/.env
 # отредактируйте deploy/.env: NEX_DOMAIN, POSTGRES_PASSWORD,
-# NEX_DATABASE_URL (тот же пароль), хотя бы один ключ ai-gateway
-# (см. ai-gateway/.env.example за полным списком провайдеров)
+# NEX_DATABASE_URL (тот же пароль), NEX_AI_GATEWAY_SECRET (случайная
+# строка — секрет между nexd и ai-gateway, `openssl rand -base64 32`),
+# хотя бы один ключ ai-gateway (см. ai-gateway/.env.example за полным
+# списком провайдеров)
 ```
 
 `deploy/.env` — секреты, в git не попадает (см. `.gitignore`). Без
@@ -32,12 +34,15 @@ cp deploy/.env.example deploy/.env
 ## 2. Собрать фронтенд
 
 Vite встраивает переменные `VITE_*` в бандл НА ЭТАПЕ СБОРКИ — в проде
-фронтенд и оба бэкенда должны быть одним origin (Caddy проксирует
-`/api/*` в `nexd` и `/ai/*` в `ai-gateway`, см. `Caddyfile`), поэтому:
+фронтенд и `nexd` должны быть одним origin (Caddy проксирует `/api/*` в
+`nexd`, см. `Caddyfile`), а `ai-gateway` браузеру вообще не виден:
+запросы `/api/v1/ai/*` тоже уходят в `nexd`, и уже он проксирует их в
+`ai-gateway` по внутренней docker-сети (см. `NEX_AI_GATEWAY_SECRET` в
+шаге 1 и `internal/platform/httpapi/aiproxy.go`). Поэтому:
 
 ```sh
 cd web
-VITE_API_URL=/ VITE_AI_GATEWAY_URL=/ai pnpm install --frozen-lockfile && pnpm build
+VITE_API_URL=/ VITE_AI_ENABLED=1 pnpm install --frozen-lockfile && pnpm build
 cd ..
 rm -rf deploy/web-dist && cp -r web/dist deploy/web-dist
 ```
@@ -63,10 +68,16 @@ docker compose up -d` плюс шаг 2 заново для фронта.
 ## 4. Проверить
 
 ```sh
-curl -sI https://<ваш-домен>/healthz          # nexd, через Caddy
-curl -s  https://<ваш-домен>/ai/healthz        # ai-gateway, через Caddy
-docker compose -f compose.prod.yaml logs -f caddy   # выдача сертификата видна в логах при первом запуске
+curl -sI https://<ваш-домен>/healthz                       # nexd, через Caddy
+docker compose -f compose.prod.yaml exec ai-gateway \
+  curl -sf http://localhost:8090/healthz                   # ai-gateway изнутри контейнера — снаружи он недоступен вообще
+docker compose -f compose.prod.yaml logs -f caddy          # выдача сертификата видна в логах при первом запуске
 ```
+
+Проверить сам ИИ-прокси (`/api/v1/ai/*`) без браузера можно только с
+настоящей cookie-сессией — маршрут требует аутентифицированного актора
+(см. `internal/platform/httpapi/aiproxy.go`), анонимный `curl` получит
+401. Проще всего — залогиниться через фронтенд и открыть чат.
 
 Caddy получает сертификат Let's Encrypt автоматически при первом
 запросе к домену — первые секунды может быть недоступен, пока идёт

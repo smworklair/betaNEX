@@ -52,6 +52,11 @@ services:
       NEX_MAX_UPLOAD_BYTES: ${NEX_MAX_UPLOAD_BYTES:-20971520}
       # Разрешить фронтенду (Vite dev-сервер) ходить с другого origin.
       NEX_CORS_ORIGINS: http://localhost:3000
+      # ai-gateway — имя сервиса в этой сети, а не localhost. Секрет
+      # (NEX_AI_GATEWAY_SECRET) намеренно не задан: локальный docker-стек
+      # не защищаем от собственной сети разработчика (см. Secret == "" в
+      # AIGatewayConfig — то же поведение, что и раньше).
+      NEX_AI_GATEWAY_URL: http://ai-gateway:8090
     depends_on:
       postgres:
         condition: service_healthy
@@ -74,7 +79,10 @@ services:
     command: sh -c "corepack enable && pnpm install --frozen-lockfile && pnpm -C web dev -- --host 0.0.0.0 --port 3000"
     environment:
       VITE_API_URL: http://localhost:8080
-      VITE_AI_GATEWAY_URL: http://localhost:8090
+      # Флаг, не URL: браузер ходит в ai-gateway только через nexd
+      # (/api/v1/ai/*), сам ai-gateway ему больше не виден — см.
+      # web/src/llm.ts и internal/platform/httpapi/aiproxy.go.
+      VITE_AI_ENABLED: "1"
       # Без этого pnpm кладёт свой content-addressable store прямо в
       # примонтированный репозиторий (.pnpm-store/ на хосте) — уводим его
       # в отдельный docker-том, чтобы репозиторий оставался чистым.
@@ -98,7 +106,11 @@ services:
       HOST: 0.0.0.0
       PORT: "8090"
       LOG_LEVEL: ${AI_LOG_LEVEL:-info}
-      CORS_ORIGINS: http://localhost:3000
+      # Пусто: браузер сюда не обращается, только nexd по внутренней
+      # сети (см. NEX_AI_GATEWAY_URL у nexd выше) — CORS не нужен.
+      # Порт 8090 всё ещё пробрасывается на хост (см. ports ниже) для
+      # прямой отладки curl'ом, но это не браузерный сценарий.
+      CORS_ORIGINS: ""
       DEFAULT_PROVIDER: ${AI_DEFAULT_PROVIDER:-gigachat}
       # Ключи — пусто по умолчанию, задаются через .env рядом с этим
       # файлом (docker compose подставит их сюда автоматически).

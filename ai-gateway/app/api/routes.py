@@ -16,7 +16,7 @@ from fastapi.responses import StreamingResponse
 from app.api.schemas import AskRequest, AskResponse, HealthResponse, ProvidersResponse, UsageOut
 from app.api.schemas import PageContext as PageContextIn
 from app.core.context_registry import PageContext
-from app.deps import enforce_budget, enforce_rate_limit, get_ai_service, get_tenant_id
+from app.deps import enforce_budget, enforce_rate_limit, get_ai_service, get_tenant_id, verify_gateway_secret
 from app.providers.base import ChatMessage
 from app.services.ai_service import AIService
 
@@ -32,7 +32,12 @@ def _to_service_context(context: PageContextIn | None) -> PageContext | None:
     return PageContext(page=context.page, title=context.title, facts=list(context.facts), state=context.state)
 
 
-@router.get("/api/v1/ai/providers", response_model=ProvidersResponse, tags=["ai"])
+@router.get(
+    "/api/v1/ai/providers",
+    response_model=ProvidersResponse,
+    dependencies=[Depends(verify_gateway_secret)],
+    tags=["ai"],
+)
 async def providers(service: AIService = Depends(get_ai_service)) -> ProvidersResponse:
     """
     Список реально настроенных на сервере провайдеров (по каким заданы
@@ -51,7 +56,7 @@ async def healthz() -> HealthResponse:
 @router.post(
     "/api/v1/ai/ask",
     response_model=AskResponse,
-    dependencies=[Depends(enforce_rate_limit), Depends(enforce_budget)],
+    dependencies=[Depends(verify_gateway_secret), Depends(enforce_rate_limit), Depends(enforce_budget)],
     tags=["ai"],
 )
 async def ask(
@@ -83,7 +88,7 @@ async def ask(
 
 @router.post(
     "/api/v1/ai/stream",
-    dependencies=[Depends(enforce_rate_limit), Depends(enforce_budget)],
+    dependencies=[Depends(verify_gateway_secret), Depends(enforce_rate_limit), Depends(enforce_budget)],
     tags=["ai"],
 )
 async def ask_stream(
