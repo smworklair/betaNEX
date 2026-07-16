@@ -3,7 +3,7 @@
 # Запуск:  docker run --rm -p 8080:8080 nexd
 
 # --- Этап 1: сборка -----------------------------------------------------
-FROM golang:1.25.12-alpine AS build
+FROM golang:1.26.5-alpine AS build
 
 WORKDIR /src
 
