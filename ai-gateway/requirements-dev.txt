@@ -10,5 +10,5 @@ pytest==9.1.1
 respx==0.23.1
 # Статические проверки (CI, см. ../.github/workflows/ci.yml): ruff — линт
 # + форматирование, mypy — типы (только app/, см. [tool.mypy] в pyproject.toml).
-ruff==0.15.21
+ruff==0.15.22
 mypy==2.3.0
