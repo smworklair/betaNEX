@@ -279,10 +279,18 @@ Go-версии в `docs/ai/README.md`, §3:
 - **Ошибки — RFC 9457 (`problem+json`)**, тем же форматом, что и
   Go-бэкенд NEX (`internal/platform/httpapi/problem.go`) — см.
   `app/core/errors.py`.
-- **Простой rate-limit** (`app/core/ratelimit.py`) — fixed-window
-  счётчик в памяти процесса по IP. Явно помечен как учебное решение:
-  при нескольких инстансах сервиса лимит не общий (нужен Redis или
-  аналог), но для одного процесса демонстрирует сам механизм.
+- **Rate-limit за интерфейсом `RateLimiter`** (`app/core/ratelimit.py`) —
+  по умолчанию `InMemoryRateLimiter` (fixed-window счётчик в памяти
+  процесса по IP): при нескольких инстансах сервиса лимит не общий
+  (нужен общий стор). Абстракция уже готова принять Redis-реализацию
+  (`RedisRateLimiter`, пока заготовка с `NotImplementedError` и
+  набросanком реализации в docstring) без изменений в `app/deps.py`/
+  `app/main.py` — тот же приём, что и у `BudgetStore` ниже.
+- **Ограничение размера запроса** — `system`/`history`/`context.facts`
+  ограничены по длине и числу элементов (`app/api/schemas.py`), а тело
+  запроса целиком — по `Content-Length` до чтения (`MaxBodySizeMiddleware`,
+  `app/core/limits.py`) — без этого неограниченный `system`/`history`
+  был бы вектором amplification-DoS по стоимости вызова провайдера.
 - **Ограничение размера ответа** — `MAX_OUTPUT_TOKENS` ограничивает
   и стоимость запроса, и то, сколько данных сервис держит в памяти
   ради одного ответа.
@@ -533,7 +541,8 @@ ai-gateway/
 │   │   ├── yandexgpt.py             # клиент к YandexGPT: Api-Key + folder_id
 │   │   └── exceptions.py            # единые ошибки провайдера
 │   └── core/
-│       ├── ratelimit.py              # fixed-window rate-limit
+│       ├── ratelimit.py              # rate-limit: интерфейс + in-memory реализация (RedisRateLimiter — заготовка)
+│       ├── limits.py                  # ограничение размера тела запроса по Content-Length
 │       ├── retry.py                   # retry с экспоненциальной задержкой для транзиентных сбоев
 │       ├── context_registry.py        # реестр системных промптов по разделам фронтенда
 │       ├── budget_store.py            # хранилище потребления: интерфейс + in-memory реализация

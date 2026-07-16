@@ -30,8 +30,9 @@ from app.core.errors import (
     budget_exceeded_handler,
     rate_limit_error_handler,
 )
+from app.core.limits import MaxBodySizeMiddleware
 from app.core.logging import setup_logging
-from app.core.ratelimit import FixedWindowRateLimiter
+from app.core.ratelimit import InMemoryRateLimiter
 from app.providers.gemini import GeminiProvider
 from app.providers.gigachat import GigaChatProvider
 from app.providers.openai_compat import OpenAICompatProvider
@@ -210,6 +211,8 @@ def create_app() -> FastAPI:
         version="0.1.0",
     )
 
+    app.add_middleware(MaxBodySizeMiddleware)
+
     # CORS выключен по умолчанию (пустой список origins) — самый
     # безопасный вариант для учебного сервиса без публичного фронтенда.
     if settings.cors_origins_list:
@@ -224,7 +227,10 @@ def create_app() -> FastAPI:
     budget_service = _build_budget_service(settings)
     app.state.budget_service = budget_service
     app.state.ai_service = _build_service(settings, budget_service)
-    app.state.rate_limiter = FixedWindowRateLimiter(settings.rate_limit_per_minute)
+    # RateLimiter — абстракция (app/core/ratelimit.py): по умолчанию
+    # in-memory, готова смениться на RedisRateLimiter, когда появится
+    # больше одного инстанса сервиса (см. docstring RedisRateLimiter).
+    app.state.rate_limiter = InMemoryRateLimiter(settings.rate_limit_per_minute)
 
     app.include_router(router)
     app.add_exception_handler(AIServiceError, ai_service_error_handler)

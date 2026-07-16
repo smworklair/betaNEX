@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 ProviderName = Literal["gemini", "custom", "openai", "deepseek", "qwen", "kimi", "gigachat", "yandexgpt"]
 
 
 class ChatMessageIn(BaseModel):
     role: Literal["user", "assistant"]
-    content: str
+    content: str = Field(..., max_length=8000)
 
 
 class PageContext(BaseModel):
@@ -33,20 +33,37 @@ class PageContext(BaseModel):
     page: str = Field(..., min_length=1, max_length=64, description="Идентификатор раздела, напр. 'finance'")
     title: str | None = Field(default=None, max_length=200, description="Человекочитаемое имя раздела/экрана")
     facts: list[str] = Field(
-        default_factory=list, description="Короткие факты о текущем состоянии экрана (KPI, фильтры и т.п.)"
+        default_factory=list,
+        max_length=50,
+        description="Короткие факты о текущем состоянии экрана (KPI, фильтры и т.п.)",
     )
     state: str | None = Field(default=None, max_length=2000, description="Свободное краткое описание состояния экрана")
+
+    @field_validator("facts")
+    @classmethod
+    def _facts_items_bounded(cls, items: list[str]) -> list[str]:
+        # Field(max_length=...) на list[str] ограничивает число элементов,
+        # но не длину каждого — без этого один элемент мог бы быть сколь
+        # угодно большим (тот же обход лимита, что и до этой проверки).
+        for item in items:
+            if len(item) > 500:
+                raise ValueError("каждый факт не длиннее 500 символов")
+        return items
 
 
 class AskRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=8000, description="Вопрос пользователя")
     history: list[ChatMessageIn] = Field(
-        default_factory=list, description="Предыдущие сообщения диалога, старые → новые"
+        default_factory=list,
+        max_length=50,
+        description="Предыдущие сообщения диалога, старые → новые",
     )
     system: str | None = Field(
         default=None,
+        max_length=20000,
         description="Полностью переопределить системный промпт (используется главным чатом NEX; "
-        "для мини-чатов на страницах предпочтителен `context`, а не эта опция)",
+        "для мини-чатов на страницах предпочтителен `context`, а не эта опция). Доступно только "
+        "аутентифицированным вызовам через nexd-прокси — см. internal/platform/httpapi/aiproxy.go.",
     )
     context: PageContext | None = Field(
         default=None, description="Контекст страницы — превращается в системный промпт на сервере"

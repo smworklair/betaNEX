@@ -52,6 +52,21 @@ def _resolve_system(explicit_system: str | None, context: PageContext | None) ->
     system нет, но есть context — берём DEFAULT_SYSTEM_PROMPT и
     подмешиваем инструкцию раздела из context_registry.py. Если нет ни
     того ни другого — просто DEFAULT_SYSTEM_PROMPT.
+
+    Почему полный оверрайд — это ОК, а не дыра: `system` доступен только
+    аутентифицированным вызовам через прокси nexd (см. app/deps.py:
+    verify_gateway_secret, internal/platform/httpapi/aiproxy.go) — не
+    открытому интернету. Это первый-party фронтенд NEX с захардкоженным
+    ORG_CONTEXT, а не текст, введённый пользователем: реальный
+    prompt-injection риск — не в `system` (не пользовательский ввод), а
+    в `message`/`history`/`context.facts` (пользовательский ввод),
+    которые всегда идут ОТДЕЛЬНЫМИ структурными полями (роль "user" или
+    данные context'а), а не конкатенируются в текст системной
+    инструкции — так модель может отличить "инструкция" от "данные" на
+    уровне контракта API, а не текстовой эвристикой. Размер `system`/
+    `history`/`facts` ограничен в api/schemas.py — без этого
+    неограниченный `system` сам по себе был бы вектором amplification-DoS
+    по стоимости вызова провайдера.
     """
     if explicit_system:
         return explicit_system

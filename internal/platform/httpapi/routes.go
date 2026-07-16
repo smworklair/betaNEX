@@ -117,6 +117,9 @@ func NewRouter(log *slog.Logger, cfg RouterConfig) http.Handler {
 	if cfg.DevAuth {
 		mws = append(mws, devIdentity())
 	}
+	// После sessionIdentity/devIdentity: актор в контексте уже есть,
+	// когда он есть вообще — лимитер использует его как ключ вместо IP.
+	mws = append(mws, mutationRateLimit(newRateLimiter(mutationBurst, mutationWindow)))
 	if cfg.ResolveTenant != nil {
 		mws = append(mws, tenantResolver(cfg.ResolveTenant))
 	}

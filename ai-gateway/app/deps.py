@@ -17,7 +17,7 @@ from fastapi import Depends, HTTPException, Request, status
 
 from app.config import get_settings
 from app.core.errors import RateLimitExceeded
-from app.core.ratelimit import FixedWindowRateLimiter
+from app.core.ratelimit import RateLimiter
 from app.services.ai_service import AIService
 from app.services.budget_service import BudgetService
 
@@ -63,9 +63,9 @@ async def enforce_rate_limit(request: Request) -> None:
     /stream) — /healthz им намеренно не защищён, иначе мониторинг сам
     себя мог бы упереть в лимит.
     """
-    limiter: FixedWindowRateLimiter = request.app.state.rate_limiter
+    limiter: RateLimiter = request.app.state.rate_limiter
     client_ip = request.client.host if request.client else "unknown"
-    if not limiter.allow(client_ip):
+    if not await limiter.allow(client_ip):
         raise RateLimitExceeded()
 
 
