@@ -141,25 +141,33 @@ class Settings(BaseSettings):
     budget_default_monthly_cost_usd: float = 20.0
 
     # --- Цена за 1000 токенов ($), для оценки стоимости в бюджете ---
-    # 0 по умолчанию: без реальных цен сервис считает бюджет только по
-    # токенам, cost_usd всегда будет 0 и лимиты по деньгам просто не
-    # сработают (это не баг, а осознанный дефолт "без настройки цен").
-    gemini_price_input_per_1k_usd: float = 0.0
-    gemini_price_output_per_1k_usd: float = 0.0
-    custom_price_input_per_1k_usd: float = 0.0
+    # Дефолты ниже — публичные прайс-листы провайдеров по состоянию на
+    # июль 2026 (см. ai-gateway/README.md, раздел «Цены за токен» — там
+    # же ссылки на источники и курс ₽/$, использованный для конвертации
+    # рублёвых тарифов GigaChat/YandexGPT). Это ОРИЕНТИР для учебного
+    # бюджетирования, не прайс-лист для реального биллинга: провайдеры
+    # меняют цены без предупреждения, конкретная модель/тариф/скидка за
+    # объём может отличаться — для продакшена сверяйте с официальной
+    # страницей тарифов перед тем как полагаться на cost_usd в бюджете.
+    # 0 (как было раньше) по-прежнему означает "не оценивать деньги для
+    # этого провайдера" — годится и для custom (URL/цена неизвестны
+    # заранее) и для явного отключения денежного лимита.
+    gemini_price_input_per_1k_usd: float = 0.00015  # Gemini 2.5 Flash: $0.15 / 1M input
+    gemini_price_output_per_1k_usd: float = 0.00125  # $1.25 / 1M output
+    custom_price_input_per_1k_usd: float = 0.0  # свободный слот — цена зависит от того, что за URL подставили
     custom_price_output_per_1k_usd: float = 0.0
-    openai_price_input_per_1k_usd: float = 0.0
-    openai_price_output_per_1k_usd: float = 0.0
-    deepseek_price_input_per_1k_usd: float = 0.0
-    deepseek_price_output_per_1k_usd: float = 0.0
-    qwen_price_input_per_1k_usd: float = 0.0
-    qwen_price_output_per_1k_usd: float = 0.0
-    kimi_price_input_per_1k_usd: float = 0.0
-    kimi_price_output_per_1k_usd: float = 0.0
-    gigachat_price_input_per_1k_usd: float = 0.0
-    gigachat_price_output_per_1k_usd: float = 0.0
-    yandexgpt_price_input_per_1k_usd: float = 0.0
-    yandexgpt_price_output_per_1k_usd: float = 0.0
+    openai_price_input_per_1k_usd: float = 0.00015  # gpt-4o-mini: $0.15 / 1M input
+    openai_price_output_per_1k_usd: float = 0.0006  # $0.60 / 1M output
+    deepseek_price_input_per_1k_usd: float = 0.00014  # deepseek-chat (cache-miss): $0.14 / 1M input
+    deepseek_price_output_per_1k_usd: float = 0.00028  # $0.28 / 1M output
+    qwen_price_input_per_1k_usd: float = 0.0004  # qwen-plus, нижний тариф: $0.40 / 1M input
+    qwen_price_output_per_1k_usd: float = 0.0012  # $1.20 / 1M output
+    kimi_price_input_per_1k_usd: float = 0.0002  # moonshot-v1-8k: $0.20 / 1M input
+    kimi_price_output_per_1k_usd: float = 0.002  # $2.00 / 1M output
+    gigachat_price_input_per_1k_usd: float = 0.00256  # GigaChat-2 Lite: ~0.2₽ / 1K токенов, курс ~78₽/$
+    gigachat_price_output_per_1k_usd: float = 0.00256  # тариф не различает вход/выход — единая ставка за токен
+    yandexgpt_price_input_per_1k_usd: float = 0.00256  # YandexGPT Lite: 0.2₽ / 1K input, курс ~78₽/$
+    yandexgpt_price_output_per_1k_usd: float = 0.00513  # 0.4₽ / 1K output
 
     @property
     def cors_origins_list(self) -> list[str]:

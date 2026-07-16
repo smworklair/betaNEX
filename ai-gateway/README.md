@@ -378,11 +378,36 @@ Go-версии в `docs/ai/README.md`, §3:
 
 `used_cost = prompt_tokens/1000 × price_in + completion_tokens/1000 × price_out`,
 где цены — из `.env` (`GEMINI_PRICE_INPUT_PER_1K_USD` и т.п.), отдельно
-для каждого провайдера. Если цены не заданы (по умолчанию — 0), деньги
-всегда 0 и лимиты `*_cost_usd` не срабатывают — работают только
-токен-лимиты. Это осознанный дефолт: реальные цены у каждого провайдера
-свои и часто меняются, вписывать их «правильные» значения в код было
-бы либо неверно, либо быстро устареет.
+для каждого провайдера. `0` для конкретного провайдера (например,
+`custom` — URL и цена заранее не известны) по-прежнему означает «не
+оценивать деньги», лимиты `*_cost_usd` для него не сработают — работают
+только токен-лимиты.
+
+### Цены за токен
+
+Дефолты в `app/config.py`/`.env.example` — публичные прайс-листы
+провайдеров по состоянию на **июль 2026**, пересчитанные в $/1000
+токенов (рублёвые тарифы GigaChat/YandexGPT — по курсу ЦБ РФ ≈78₽/$ на
+тот же момент):
+
+| Провайдер | Модель | Вход, $/1K | Выход, $/1K | Источник |
+|---|---|---:|---:|---|
+| gemini | gemini-2.5-flash | 0.00015 | 0.00125 | [ai.google.dev/gemini-api/docs/pricing](https://ai.google.dev/gemini-api/docs/pricing) |
+| openai | gpt-4o-mini | 0.00015 | 0.0006 | [developers.openai.com/api/docs/pricing](https://developers.openai.com/api/docs/pricing) |
+| deepseek | deepseek-chat | 0.00014 | 0.00028 | [api-docs.deepseek.com/quick_start/pricing](https://api-docs.deepseek.com/quick_start/pricing/) |
+| qwen | qwen-plus | 0.0004 | 0.0012 | DashScope compatible-mode, нижний тариф |
+| kimi | moonshot-v1-8k | 0.0002 | 0.002 | [platform.kimi.ai/docs/pricing/chat-v1](https://platform.kimi.ai/docs/pricing/chat-v1) |
+| gigachat | GigaChat-2 Lite | 0.00256 | 0.00256 | [developers.sber.ru/docs/ru/gigachat/api/tariffs](https://developers.sber.ru/docs/ru/gigachat/api/tariffs) — единая ставка ~0.2₽/1K |
+| yandexgpt | yandexgpt-lite | 0.00256 | 0.00513 | [yandex.cloud/ru/docs/foundation-models/pricing](https://yandex.cloud/ru/docs/foundation-models/pricing) — 0.2₽/0.4₽ за 1K |
+| custom | — | 0 | 0 | зависит от подставленного URL, заполните сами |
+
+Это **ориентир для учебного бюджетирования, не прайс-лист для реального
+биллинга**: провайдеры меняют цены без предупреждения, конкретная
+модель/тариф/скидка за объём (например, DeepSeek различает cache-hit и
+cache-miss вход) может отличаться от указанного здесь одного числа. Для
+продакшена сверяйте с официальной страницей тарифов перед тем как
+полагаться на `cost_usd` в бюджете — переопределяется через `.env`,
+менять код не нужно.
 
 ### Когда и как проверяется лимит
 
