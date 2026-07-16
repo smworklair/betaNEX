@@ -45,10 +45,18 @@
 		file_server
 	}
 
+	# CSP разрешает Google Fonts (см. web/src/index.css — @import Inter/JetBrains
+	# Mono с fonts.googleapis.com/fonts.gstatic.com) и 'unsafe-inline' для стилей
+	# (framer-motion и другие компоненты пишут инлайн style="..." через DOM API —
+	# без этого анимации сломаются). script-src — только 'self': инлайн-скрипт
+	# в index.html вынесен в отдельный файл (web/public/compat.js) именно для
+	# того, чтобы обойтись без 'unsafe-inline'/nonce для скриптов.
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
 	}
 }
