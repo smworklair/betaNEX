@@ -8,9 +8,17 @@ import { getProvider, setProvider, fetchProviders, checkGateway, llmReady, type 
 
 /* Человекочитаемые названия провайдеров ai-gateway (см. ai-gateway/README.md, «Провайдеры») */
 const PROVIDER_LABELS: Record<LlmProvider, string> = {
-  gemini: 'Gemini', custom: 'LLM API', openai: 'OpenAI', deepseek: 'DeepSeek',
-  qwen: 'Qwen', kimi: 'Kimi', gigachat: 'GigaChat', yandexgpt: 'YandexGPT',
+  gemini: 'Gemini', openai: 'OpenAI', deepseek: 'DeepSeek', qwen: 'Qwen',
+  kimi: 'Kimi', gigachat: 'GigaChat', yandexgpt: 'YandexGPT', custom: 'LLM API',
 };
+
+/* Полный список провайдеров, которые в принципе умеет ai-gateway — вне
+   зависимости от того, настроен ли для каждого ключ НА ЭТОМ сервере
+   (см. ai-gateway/README.md, «Провайдеры»). Показываем весь список
+   всегда, а не только реально доступные — так пользователь видит, что
+   вообще поддерживается, а не только текущее состояние одного сервера.
+   Недоступные варианты просто задизейблены (см. render ниже). */
+const ALL_PROVIDERS: LlmProvider[] = ['gemini', 'openai', 'deepseek', 'qwen', 'kimi', 'gigachat', 'yandexgpt', 'custom'];
 
 const ACCENTS: { id: Prefs['accent']; name: string; color: string }[] = [
   { id: 'blue', name: 'Синий', color: '#007aff' },
@@ -301,18 +309,27 @@ export default function Settings() {
             {gatewayState === 'down' && ' Шлюз настроен, но не отвечает — проверьте, что ai-gateway запущен.'}
           </div>
         </div>
-        {gatewayState === 'ok' && (
-          <Row title="Провайдер" desc="Кто отвечает в чате, инлайн-панелях и планировщике">
-            <div className="seg" style={{ flexWrap: 'wrap' }}>
-              <button className={provider === '' ? 'on' : ''} onClick={() => switchProvider('')}>
-                По умолчанию{defaultProvider ? ` (${PROVIDER_LABELS[defaultProvider]})` : ''}
-              </button>
-              {available.map((p) => (
-                <button key={p} className={provider === p ? 'on' : ''} onClick={() => switchProvider(p)}>{PROVIDER_LABELS[p]}</button>
-              ))}
-            </div>
-          </Row>
-        )}
+        <Row title="Провайдер" desc="Кто отвечает в чате, инлайн-панелях и планировщике — реально доступны только те, для кого на сервере задан ключ (серые — не настроены)">
+          <div className="seg" style={{ flexWrap: 'wrap' }}>
+            <button className={provider === '' ? 'on' : ''} disabled={gatewayState !== 'ok'} onClick={() => switchProvider('')}>
+              По умолчанию{defaultProvider ? ` (${PROVIDER_LABELS[defaultProvider]})` : ''}
+            </button>
+            {ALL_PROVIDERS.map((p) => {
+              const isAvailable = gatewayState === 'ok' && available.includes(p);
+              return (
+                <button
+                  key={p}
+                  className={provider === p ? 'on' : ''}
+                  disabled={!isAvailable}
+                  title={isAvailable ? undefined : 'Не настроен на сервере (нет ключа в ai-gateway/.env)'}
+                  onClick={() => switchProvider(p)}
+                >
+                  {PROVIDER_LABELS[p]}
+                </button>
+              );
+            })}
+          </div>
+        </Row>
       </div>
 
       {/* ---- Центр агентов живёт здесь, а не в левом меню ---- */}
