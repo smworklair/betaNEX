@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+# Реальные лимиты тенантов — деплой-специфичная конфигурация, как .env.
+# Пример для копирования — tenants.example.json, он в git остаётся.
+tenants.json
+.pytest_cache/
+

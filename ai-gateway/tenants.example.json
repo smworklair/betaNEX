@@ -1,0 +1,22 @@
+{
+  "_comment": "Пример персональных лимитов по тенантам. Скопируйте в tenants.json (см. TENANT_BUDGETS_FILE в .env) и отредактируйте. Тенант определяется заголовком X-Tenant-Id. Поле можно опустить полностью — тогда оно не ограничено (null).",
+
+  "acme-college": {
+    "daily_tokens": 50000,
+    "daily_cost_usd": 3.0,
+    "monthly_tokens": 1000000,
+    "monthly_cost_usd": 40.0
+  },
+
+  "demo-tenant": {
+    "daily_tokens": 2000,
+    "daily_cost_usd": 0.2
+  },
+
+  "default": {
+    "daily_tokens": 20000,
+    "daily_cost_usd": 1.0,
+    "monthly_tokens": 400000,
+    "monthly_cost_usd": 20.0
+  }
+}
