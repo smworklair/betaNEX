@@ -17,7 +17,7 @@
 
 ## Связи
 
-Зависит от `../ui` (`PageHead`, `NexAsk`, `Chip`, `useApp`), `../charts` (`Line`, `DualLine`, `Donut`, `Legend`, `Gauge`, `HBars`, `Waterfall`), `../data` (`payroll`, `budgetLines`) и `../beta/store` (`useCollection`, `Entity` — используется в `FinClose` для чек-листа). Является более продвинутым, аналитическим соседом `finance-beta.tsx` (там — низкоуровневые документы: счета, акты, касса, банк).
+Зависит от `../ui` (`PageHead`, `NexAsk`, `Chip`, `useApp`), `../components/charts` (`Line`, `DualLine`, `Donut`, `Legend`, `Gauge`, `HBars`, `Waterfall`), `../data` (`payroll`, `budgetLines`) и `../beta/store` (`useCollection`, `Entity` — используется в `FinClose` для чек-листа). Является более продвинутым, аналитическим соседом `finance-beta.tsx` (там — низкоуровневые документы: счета, акты, касса, банк).
 
 ## На что обратить внимание
 

@@ -16,6 +16,7 @@ func clearNexEnv(t *testing.T) {
 		"NEX_HTTP_IDLE_TIMEOUT", "NEX_HTTP_SHUTDOWN_TIMEOUT",
 		"NEX_LOG_LEVEL", "NEX_LOG_FORMAT",
 		"NEX_CORS_ORIGINS", "NEX_COOKIE_SAMESITE", "NEX_SESSION_TTL",
+		"NEX_CACHE_BACKEND", "NEX_REDIS_URL",
 	} {
 		t.Setenv(k, "")
 	}
@@ -57,6 +58,47 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.HTTP.CORSOrigins != nil {
 		t.Errorf("HTTP.CORSOrigins = %v, want nil", cfg.HTTP.CORSOrigins)
 	}
+	if cfg.Cache.Backend != "memory" {
+		t.Errorf("Cache.Backend = %q, want memory", cfg.Cache.Backend)
+	}
+}
+
+func TestLoadCacheBackend(t *testing.T) {
+	clearNexEnv(t)
+
+	t.Run("redis без NEX_REDIS_URL отклоняется", func(t *testing.T) {
+		t.Setenv("NEX_CACHE_BACKEND", "redis")
+		if _, err := Load(); err == nil {
+			t.Error("Load() пропустил backend=redis без NEX_REDIS_URL")
+		}
+	})
+
+	t.Run("redis с невалидным URL отклоняется", func(t *testing.T) {
+		t.Setenv("NEX_CACHE_BACKEND", "redis")
+		t.Setenv("NEX_REDIS_URL", "http://localhost:6379")
+		if _, err := Load(); err == nil {
+			t.Error("Load() пропустил NEX_REDIS_URL с неверной схемой")
+		}
+	})
+
+	t.Run("redis с валидным URL принимается", func(t *testing.T) {
+		t.Setenv("NEX_CACHE_BACKEND", "redis")
+		t.Setenv("NEX_REDIS_URL", "redis://localhost:6379/0")
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load() error = %v", err)
+		}
+		if cfg.Cache.Backend != "redis" || cfg.Cache.RedisURL != "redis://localhost:6379/0" {
+			t.Errorf("Cache = %+v, want backend=redis with the configured URL", cfg.Cache)
+		}
+	})
+
+	t.Run("неизвестный backend отклоняется", func(t *testing.T) {
+		t.Setenv("NEX_CACHE_BACKEND", "memcached")
+		if _, err := Load(); err == nil {
+			t.Error("Load() пропустил неизвестный NEX_CACHE_BACKEND")
+		}
+	})
 }
 
 func TestLoadCORSAndCookie(t *testing.T) {

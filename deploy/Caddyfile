@@ -1,11 +1,21 @@
-# ЗАГОТОВКА (веха M9). Замените nex.example.com на реальный домен —
-# TLS-сертификат Caddy получит и продлит сам.
-nex.example.com {
+# Прод reverse-proxy NEX. Домен берётся из переменной окружения
+# NEX_DOMAIN (см. deploy/.env, compose.prod.yaml прокидывает её в этот
+# контейнер) — Caddy сам получит и продлит TLS-сертификат Let's Encrypt
+# для этого домена, никакой ручной настройки TLS не требуется.
+{$NEX_DOMAIN} {
 	encode zstd gzip
 
-	# API уходит в nexd.
+	# API уходит в nexd. health_uri/health_interval — АКТИВНАЯ проверка
+	# состояния апстрима самим Caddy (не Docker HEALTHCHECK — nexd
+	# собран на distroless, см. compose.prod.yaml, там нет shell/curl
+	# для классического контейнерного health-check). Пока nexd не ответит
+	# 2xx на /healthz, Caddy не будет слать туда трафик.
 	handle /api/* {
-		reverse_proxy nexd:8080
+		reverse_proxy nexd:8080 {
+			health_uri /healthz
+			health_interval 10s
+			health_timeout 3s
+		}
 	}
 	handle /healthz {
 		reverse_proxy nexd:8080
@@ -13,6 +23,16 @@ nex.example.com {
 	handle /readyz {
 		reverse_proxy nexd:8080
 	}
+
+	# ai-gateway браузеру больше не виден вообще: раньше /ai/* проксировался
+	# сюда напрямую, а ai-gateway доверял заголовку X-Tenant-Id от кого
+	# угодно, кто досюда достучится (самопредставление клиента — можно было
+	# вписать чужого тенанта и обойти его бюджет). Теперь фронтенд ходит
+	# в /api/v1/ai/* → nexd (см. handle /api/* выше), а nexd сам
+	# проксирует в ai-gateway по внутренней docker-сети (не через Caddy),
+	# подставляя tenant_id из аутентифицированной сессии и подписывая
+	# запрос секретом (NEX_AI_GATEWAY_SECRET, см.
+	# internal/platform/httpapi/aiproxy.go). См. deploy/README.md.
 
 	# Всё остальное — статика SPA: любой путь без файла отдаёт index.html,
 	# дальше разбирается роутер фронтенда.
@@ -22,10 +42,18 @@ nex.example.com {
 		file_server
 	}
 
+	# CSP разрешает Google Fonts (см. web/src/index.css — @import Inter/JetBrains
+	# Mono с fonts.googleapis.com/fonts.gstatic.com) и 'unsafe-inline' для стилей
+	# (framer-motion и другие компоненты пишут инлайн style="..." через DOM API —
+	# без этого анимации сломаются). script-src — только 'self': инлайн-скрипт
+	# в index.html вынесен в отдельный файл (web/public/compat.js) именно для
+	# того, чтобы обойтись без 'unsafe-inline'/nonce для скриптов.
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
 	}
 }

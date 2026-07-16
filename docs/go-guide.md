@@ -809,7 +809,19 @@ SSE-контракт: `event: delta` (кусок текста), `event: usage` (
 - таймауты сервера всегда (§4) — против Slowloris;
 - `MaxBytesReader` + `DisallowUnknownFields` на каждом теле (§4);
 - секреты только из env, никогда в логи/git (§12, §13);
-- заголовки безопасности ставит Caddy на проде (HSTS и др., M9); CORS — минимально необходимый.
+- заголовки безопасности (HSTS/X-Content-Type-Options/X-Frame-Options/
+  Referrer-Policy/Permissions-Policy/CSP) ставит и Caddy на проде, и сам
+  `nexd` (`securityHeaders` middleware, `internal/platform/httpapi/middleware.go`)
+  — так прямое обращение к `nexd` в обход прокси (docker-сеть, дев,
+  неверная настройка прокси) тоже их получает; CORS — минимально
+  необходимый (`internal/platform/httpapi/cors.go`);
+- 5xx-ответы не отдают клиенту сырые внутренние ошибки (тексты pgx с
+  именами таблиц/колонок и т.п.) — `WriteProblem` логирует полную
+  причину server-side и возвращает generic detail
+  (`internal/platform/httpapi/problem.go`);
+- общий rate-limit на все мутирующие запросы (`mutationRateLimit`,
+  `internal/platform/httpapi/ratelimit.go`) поверх отдельного, более
+  строгого лимитера на `/auth/login` — раньше защиту имел только логин.
 
 **Аутентификация (в коде, §9):** argon2id, opaque-сессии как sha256-хэш, httpOnly+Secure cookie, мгновенный отзыв, rate limiting, выравнивание времени ответа, единый 401. JWT как сессии не используем — нельзя отозвать.
 
@@ -817,9 +829,11 @@ SSE-контракт: `event: delta` (кусок текста), `event: usage` (
 
 **Изоляция данных (в коде, §7):** RLS с `FORCE` + tenant-транзакции + негативные тесты. Журнал аудита append-only на уровне БД (§8).
 
+**AI-шлюз (в коде, `ai-gateway/` + `internal/platform/httpapi/aiproxy.go`):** браузер обращается только к `nexd`, не к `ai-gateway` напрямую — `nexd` берёт `tenant_id` из аутентифицированной сессии (не из заголовка, присланного клиентом) и подписывает исходящий запрос секретом, общим с `ai-gateway` (`NEX_AI_GATEWAY_SECRET`, проверяется `ai-gateway/app/deps.py:verify_gateway_secret`). Размер `system`/`history`/`context.facts` и тела запроса целиком ограничен (`ai-gateway/app/api/schemas.py`, `ai-gateway/app/core/limits.py`). Подробнее — `docs/ai/README.md`, §1.
+
 **AI-специфика (проект, §18):** AI-актор получает минимальную роль (на старте только читающие команды); вывод модели, влияющий на действие, валидируется как недоверенный ввод (тот же `Validate()`); текст из БД/документов в промпте — недоверенный, системная инструкция и данные разделены; «lethal trifecta» (приватные данные + недоверенный ввод + внешняя коммуникация в одном контексте) — запрещена, пункт ревью.
 
-**Инструменты (в CI):** `govulncheck ./...` (уязвимости зависимостей); gosec в golangci-lint; `go test -race` (гонки — баги безопасности). Прогон OWASP ASVS L1→L2 — веха M11.
+**Инструменты:** `govulncheck ./...` (уязвимости зависимостей — в CI и локально через `make vuln`); gosec в golangci-lint; `go test -race` (гонки — баги безопасности); Dependabot следит за gomod/github-actions/npm(web)/pip(ai-gateway)/docker(корень и ai-gateway). Прогон OWASP ASVS L1→L2 — веха M11.
 
 **152-ФЗ — не опция, а закон.** NEX обрабатывает ПДн студентов и сотрудников. Оговорка: это инженерные требования, не юридическая консультация; формулировки сверять по publication.pravo.gov.ru, при внедрении привлекать юриста. Технические следствия, встроенные в архитектуру:
 

@@ -4,8 +4,8 @@ import {
   Gauge, ListChecks, Eye, Plus,
 } from 'lucide-react';
 import { PageHead, Chip, Beta, useApp } from '../ui';
-import { planFor } from '../nexbrain';
-import { llmReady, llmPlan } from '../llm';
+import { planFor } from '../features/ai/nexbrain';
+import { llmReady, llmPlan } from '../features/ai/llm';
 import {
   AUTONOMY_LEVELS, AUTOPILOT_PRESETS, RULES, agentById, guessAgent, dryRun,
   type Agent, type Autonomy, type PendingAction, type Rule,

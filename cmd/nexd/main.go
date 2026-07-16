@@ -11,6 +11,7 @@
 //
 //	nexd [serve]                     запустить сервис (по умолчанию)
 //	nexd migrate                     применить миграции и выйти
+//	nexd migrate down                откатить последнюю миграцию и выйти
 //	nexd tenant create <slug> <имя>  зарегистрировать организацию
 package main
 
@@ -30,6 +31,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/smworklair/betakis/api"
@@ -46,6 +48,7 @@ import (
 	"github.com/smworklair/betakis/internal/module/tasks"
 	"github.com/smworklair/betakis/internal/module/terminal"
 	"github.com/smworklair/betakis/internal/platform/blob"
+	"github.com/smworklair/betakis/internal/platform/cache"
 	"github.com/smworklair/betakis/internal/platform/cron"
 	"github.com/smworklair/betakis/internal/platform/httpapi"
 	"github.com/smworklair/betakis/internal/platform/logging"
@@ -72,6 +75,11 @@ func run() error {
 	}
 
 	log := logging.New(os.Stdout, cfg.Log.Level, cfg.Log.Format)
+	// httpapi.WriteProblem логирует полную причину 5xx через slog.Default()
+	// (detail в ответ клиенту не попадает — см. problem.go), поэтому
+	// process-wide default должен быть тем же настроенным логгером, а не
+	// стандартным fallback-логгером slog.
+	slog.SetDefault(log)
 
 	// ctx is cancelled on the first SIGINT or SIGTERM, which triggers graceful
 	// shutdown. A second signal restores default behaviour and terminates the
@@ -85,6 +93,13 @@ func run() error {
 	case "migrate":
 		if cfg.DB.URL == "" {
 			return fmt.Errorf("migrate: NEX_DATABASE_URL is not set")
+		}
+		if len(os.Args) > 2 && os.Args[2] == "down" {
+			if err := postgres.MigrateDown(ctx, cfg.DB.URL); err != nil {
+				return err
+			}
+			log.Info("last migration rolled back")
+			return nil
 		}
 		if err := postgres.Migrate(ctx, cfg.DB.URL); err != nil {
 			return err
@@ -110,11 +125,88 @@ func subcommand() string {
 }
 
 // serve собирает все компоненты сервиса и обслуживает HTTP до сигнала
-// остановки.
+// остановки. Сама функция — только последовательность шагов сборки;
+// содержимое каждого шага вынесено в helper'ы ниже (setupMetrics,
+// setupCache, buildPolicy, setupInfra, buildMounts, runServers), чтобы
+// serve() читалась как оглавление, а не как код.
 func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 	log.Info("starting nexd", slog.String("env", string(cfg.Env)))
 
-	// Метрики: /metrics в формате Prometheus, без внешних зависимостей.
+	reg, observe := setupMetrics()
+
+	// Планировщик фоновых задач внутри процесса (ночные пересчёты, чистки).
+	sched := cron.New(log)
+
+	cacheReadiness, closeCache, err := setupCache(cfg, log)
+	if err != nil {
+		return err
+	}
+	if closeCache != nil {
+		defer closeCache()
+	}
+
+	policy := buildPolicy()
+	guard := authz.NewGuard(policy)
+
+	in, infraReadiness, closeInfra, err := setupInfra(ctx, cfg, log, reg, sched, guard)
+	if err != nil {
+		return err
+	}
+	if closeInfra != nil {
+		defer closeInfra()
+	}
+	readiness := append(cacheReadiness, infraReadiness...)
+
+	// Шина команд: единственный путь изменения данных.
+	bus := command.NewMemoryBus(authz.NewPolicyAuthorizer(policy), in.recorder, in.busOpts...)
+	if err := finance.RegisterCommands(bus, in.financeRepo); err != nil {
+		return fmt.Errorf("register finance commands: %w", err)
+	}
+
+	mounts, err := buildMounts(bus, guard, sched, reg, log, cfg, in)
+	if err != nil {
+		return err
+	}
+	// Пусто в NEX_AI_GATEWAY_URL — MountAIGateway ничего не монтирует, и
+	// окружения без ai-gateway (демо, дев без Python-стека) не меняются.
+	mounts = append(mounts, httpapi.MountAIGateway(httpapi.AIGatewayConfig{
+		URL:    cfg.AIGateway.URL,
+		Secret: cfg.AIGateway.Secret,
+	}, log))
+	mounts = append(mounts, in.extraMounts...)
+
+	router := httpapi.NewRouter(log, httpapi.RouterConfig{
+		Readiness:     readiness,
+		DevAuth:       cfg.Env == config.EnvDevelopment,
+		Pprof:         cfg.Env == config.EnvDevelopment,
+		ResolveTenant: in.resolveTenant,
+		Auth:          in.authCfg,
+		CORS:          httpapi.CORSConfig{AllowedOrigins: cfg.HTTP.CORSOrigins},
+		OpenAPI:       api.OpenAPI,
+		Observe:       observe,
+		Idempotency:   in.idemStore,
+		Mount:         mounts,
+	})
+	server := httpapi.New(router, httpapi.Options{
+		Addr:            cfg.HTTP.Addr,
+		ReadTimeout:     cfg.HTTP.ReadTimeout,
+		WriteTimeout:    cfg.HTTP.WriteTimeout,
+		IdleTimeout:     cfg.HTTP.IdleTimeout,
+		ShutdownTimeout: cfg.HTTP.ShutdownTimeout,
+		Logger:          log,
+	})
+
+	if err := runServers(ctx, server, sched, in.outboxWorker); err != nil {
+		return err
+	}
+
+	log.Info("nexd stopped")
+	return nil
+}
+
+// setupMetrics регистрирует реестр Prometheus-метрик /metrics и возвращает
+// функцию наблюдения за HTTP-запросами, которую передают в httpapi.NewRouter.
+func setupMetrics() (*metrics.Registry, func(route string, status int, dur time.Duration)) {
 	reg := metrics.New()
 	reg.RegisterRuntime()
 	reg.Counter("nex_http_requests_total", "Число HTTP-запросов.", "route", "status")
@@ -124,14 +216,40 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		reg.Inc("nex_http_requests_total", route, s)
 		reg.ObserveDuration("nex_http_request_duration_seconds", dur, route, s)
 	}
+	return reg, observe
+}
 
-	// Планировщик фоновых задач внутри процесса (ночные пересчёты, чистки).
-	sched := cron.New(log)
+// setupCache готовит backend кэша: in-process по умолчанию (ADR-008),
+// Redis — конфигом NEX_CACHE_BACKEND=redis (internal/platform/cache/redis.go),
+// когда nexd работает больше чем одним инстансом. Ни один модуль пока не
+// использует Cache как хранилище данных (сам интерфейс — задел на будущее,
+// см. докстринг пакета) — но при backend=redis соединение реально
+// проверяется здесь и отражается в /readyz, а не остаётся декларацией
+// конфига без последствий. Возвращённый cleanup закрывает клиент Redis (nil,
+// если backend не redis).
+func setupCache(cfg config.Config, log *slog.Logger) ([]httpapi.ReadinessCheck, func(), error) {
+	if cfg.Cache.Backend != "redis" {
+		log.Info("cache backend: memory")
+		return nil, nil, nil
+	}
+	opts, err := redis.ParseURL(cfg.Cache.RedisURL)
+	if err != nil {
+		// config.validate уже проверил NEX_REDIS_URL — ошибка здесь означает
+		// расхождение между Load() и этим разбором, то есть баг сборки, а не
+		// рантайм-состояние.
+		return nil, nil, fmt.Errorf("cache: parse NEX_REDIS_URL: %w", err)
+	}
+	redisClient := redis.NewClient(opts)
+	log.Info("cache backend: redis", slog.String("addr", opts.Addr))
+	readiness := []httpapi.ReadinessCheck{{Name: "redis", Check: cache.NewRedis(redisClient).Ping}}
+	return readiness, func() { _ = redisClient.Close() }, nil
+}
 
-	// RBAC-политика приложения: модули объявляют права, корень раздаёт их
-	// ролям. С вехой M4 раздача переедет в настраиваемую политику tenant'а.
-	// Права чтения выдаются явно (authz на чтение, P0): без права роль не
-	// видит данные раздела, без сессии запрос получает 401.
+// buildPolicy собирает RBAC-политику приложения: модули объявляют права,
+// корень раздаёт их ролям. С вехой M4 раздача переедет в настраиваемую
+// политику tenant'а. Права чтения выдаются явно (authz на чтение, P0): без
+// права роль не видит данные раздела, без сессии запрос получает 401.
+func buildPolicy() *authz.Policy {
 	policy := authz.NewPolicy()
 	for _, perm := range []string{finance.PermAccountsWrite, finance.PermEntriesPost, finance.PermRead} {
 		policy.Grant("admin", perm)
@@ -160,349 +278,374 @@ func serve(ctx context.Context, cfg config.Config, log *slog.Logger) error {
 		policy.Grant(role, notifications.PermRead)
 		policy.Grant(role, notifications.PermWrite)
 	}
-	guard := authz.NewGuard(policy)
+	return policy
+}
 
-	// Хранилище: PostgreSQL, если задан NEX_DATABASE_URL, иначе память
-	// процесса (только для быстрых локальных запусков без БД).
-	var (
-		financeRepo   finance.Repository
-		readiness     []httpapi.ReadinessCheck
-		resolveTenant func(ctx context.Context, v string) (string, error)
-		recorder      audit.Recorder
-		busOpts       []command.Option
-		authCfg       *httpapi.AuthConfig
-		extraMounts   []func(*http.ServeMux)
-		filesRepo     *files.Repository
-		filesStore    blob.Storage
-		pgDB          *postgres.DB
-		idemStore     httpapi.IdempotencyStore
-		outboxWorker  *outbox.Worker
-	)
-	if cfg.DB.URL != "" {
-		pg, err := postgres.Connect(ctx, cfg.DB.URL)
-		if err != nil {
-			return err
-		}
-		defer pg.Close()
-		if err := postgres.Migrate(ctx, cfg.DB.URL); err != nil {
-			return err
-		}
-		log.Info("postgres connected, migrations applied")
-		pgDB = pg
+// infra — конкретные реализации инфраструктуры, выбранные setupInfra: либо
+// полная связка на PostgreSQL, либо облегчённый fallback в памяти процесса.
+// Поля читаются дальше в buildMounts и в serve() при сборке роутера.
+type infra struct {
+	financeRepo   finance.Repository
+	resolveTenant func(ctx context.Context, v string) (string, error)
+	recorder      audit.Recorder
+	busOpts       []command.Option
+	authCfg       *httpapi.AuthConfig
+	extraMounts   []func(*http.ServeMux)
+	filesRepo     *files.Repository
+	filesStore    blob.Storage
+	pgDB          *postgres.DB
+	idemStore     httpapi.IdempotencyStore
+	outboxWorker  *outbox.Worker
+}
 
-		financeRepo = finance.NewPostgresRepository(pg)
-		readiness = append(readiness, httpapi.ReadinessCheck{Name: "postgres", Check: pg.Ready})
-
-		// Показатели пула соединений — в /metrics.
-		reg.GaugeFunc("nex_db_pool_total_conns", func() float64 { return float64(pg.Pool().Stat().TotalConns()) })
-		reg.GaugeFunc("nex_db_pool_idle_conns", func() float64 { return float64(pg.Pool().Stat().IdleConns()) })
-
-		// Ночные регламентные задачи.
-		if err := sched.Add(cron.Job{Name: "sessions.cleanup", At: "03:15", Run: pg.CleanupSessions}); err != nil {
-			return err
-		}
-
-		// Вьюер журнала аудита (только admin): кто что менял.
-		extraMounts = append(extraMounts, httpapi.AuditRoutes(postgres.NewAuditReader(pg)))
-
-		// Идемпотентность записи по Idempotency-Key + ночная чистка ключей.
-		idemStore = postgres.NewIdempotencyStore(pg)
-		if err := sched.Add(cron.Job{Name: "idempotency.cleanup", At: "03:45", Run: func(ctx context.Context) error {
-			return pg.ForEachTenant(ctx, pg.CleanupIdempotencyKeys)
-		}}); err != nil {
-			return err
-		}
-
-		// Файловое хранилище: метаданные в БД, содержимое на диске.
-		filesStore, err = blob.NewStore(cfg.Files.Dir)
-		if err != nil {
-			return err
-		}
-		filesRepo = files.NewRepository(pg)
-		if cfg.Env == config.EnvDevelopment {
-			// В разработке неизвестный slug создаёт tenant на лету:
-			// локальная работа не начинается с ручной регистрации.
-			resolveTenant = pg.EnsureTenant
-		} else {
-			resolveTenant = pg.ResolveTenant
-		}
-
-		// Аудит — в append-only таблицу, в одной транзакции с изменением
-		// данных (шина оборачивает хендлер и запись журнала в RunTx).
-		recorder = postgres.NewAuditRecorder(pg, httpapi.RequestIDFrom)
-		busOpts = append(busOpts, command.WithTxRunner(pg))
-
-		// Аутентификация: argon2id + server-side сессии (ADR-004) со
-		// скользящим продлением. SameSite задаётся конфигом: None —
-		// для кросс-доменного фронтенда (Vercel), Lax — за одним доменом.
-		authStore := postgres.NewAuthStore(pg)
-		authCfg = &httpapi.AuthConfig{
-			Service:       auth.NewService(authStore, cfg.Auth.SessionTTL),
-			TTL:           cfg.Auth.SessionTTL,
-			ResolveTenant: resolveTenant,
-			SecureCookie:  cfg.Env == config.EnvProduction,
-			SameSite:      sameSiteMode(cfg.Auth.CookieSameSite),
-			Audit:         recorder,
-		}
-
-		// Справочник пользователей: выбор исполнителей и получателей.
-		extraMounts = append(extraMounts, httpapi.UsersRoutes(authStore, guard))
-
-		// Outbox: очередь надёжных побочных эффектов + воркер доставки.
-		outboxWorker = outbox.NewWorker(pg, log)
-		if err := sched.Add(cron.Job{Name: "outbox.cleanup", At: "04:15", Run: outboxWorker.Cleanup}); err != nil {
-			return err
-		}
-	} else {
+// setupInfra выбирает хранилище: PostgreSQL, если задан NEX_DATABASE_URL,
+// иначе память процесса (только для быстрых локальных запусков без БД).
+// В ветке PostgreSQL также регистрирует связанные ночные cron-задачи и
+// маршруты (аудит, справочник пользователей). Возвращённый cleanup
+// закрывает пул соединений (nil в ветке без БД).
+func setupInfra(
+	ctx context.Context, cfg config.Config, log *slog.Logger,
+	reg *metrics.Registry, sched *cron.Scheduler, guard *authz.Guard,
+) (infra, []httpapi.ReadinessCheck, func(), error) {
+	if cfg.DB.URL == "" {
 		log.Warn("NEX_DATABASE_URL is empty: running with in-memory storage, data is lost on restart")
-		financeRepo = finance.NewMemoryRepository()
-		recorder = audit.NewSlogRecorder(log)
+		return infra{
+			financeRepo: finance.NewMemoryRepository(),
+			recorder:    audit.NewSlogRecorder(log),
+		}, nil, nil, nil
 	}
 
-	// Шина команд: единственный путь изменения данных.
-	bus := command.NewMemoryBus(authz.NewPolicyAuthorizer(policy), recorder, busOpts...)
-	if err := finance.RegisterCommands(bus, financeRepo); err != nil {
-		return fmt.Errorf("register finance commands: %w", err)
+	pg, err := postgres.Connect(ctx, cfg.DB.URL)
+	if err != nil {
+		return infra{}, nil, nil, err
+	}
+	cleanup := func() { pg.Close() }
+	if err := postgres.Migrate(ctx, cfg.DB.URL); err != nil {
+		cleanup()
+		return infra{}, nil, nil, err
+	}
+	log.Info("postgres connected, migrations applied")
+
+	var in infra
+	in.pgDB = pg
+	in.financeRepo = finance.NewPostgresRepository(pg)
+	readiness := []httpapi.ReadinessCheck{{Name: "postgres", Check: pg.Ready}}
+
+	// Показатели пула соединений — в /metrics.
+	reg.GaugeFunc("nex_db_pool_total_conns", func() float64 { return float64(pg.Pool().Stat().TotalConns()) })
+	reg.GaugeFunc("nex_db_pool_idle_conns", func() float64 { return float64(pg.Pool().Stat().IdleConns()) })
+
+	// Ночные регламентные задачи.
+	if err := sched.Add(cron.Job{Name: "sessions.cleanup", At: "03:15", Run: pg.CleanupSessions}); err != nil {
+		cleanup()
+		return infra{}, nil, nil, err
 	}
 
+	// Вьюер журнала аудита (только admin): кто что менял.
+	in.extraMounts = append(in.extraMounts, httpapi.AuditRoutes(postgres.NewAuditReader(pg)))
+
+	// Идемпотентность записи по Idempotency-Key + ночная чистка ключей.
+	in.idemStore = postgres.NewIdempotencyStore(pg)
+	if err := sched.Add(cron.Job{Name: "idempotency.cleanup", At: "03:45", Run: func(ctx context.Context) error {
+		return pg.ForEachTenant(ctx, pg.CleanupIdempotencyKeys)
+	}}); err != nil {
+		cleanup()
+		return infra{}, nil, nil, err
+	}
+
+	// Файловое хранилище: метаданные в БД, содержимое на диске.
+	in.filesStore, err = blob.NewStore(cfg.Files.Dir)
+	if err != nil {
+		cleanup()
+		return infra{}, nil, nil, err
+	}
+	in.filesRepo = files.NewRepository(pg)
+	if cfg.Env == config.EnvDevelopment {
+		// В разработке неизвестный slug создаёт tenant на лету: локальная
+		// работа не начинается с ручной регистрации.
+		in.resolveTenant = pg.EnsureTenant
+	} else {
+		in.resolveTenant = pg.ResolveTenant
+	}
+
+	// Аудит — в append-only таблицу, в одной транзакции с изменением
+	// данных (шина оборачивает хендлер и запись журнала в RunTx).
+	in.recorder = postgres.NewAuditRecorder(pg, httpapi.RequestIDFrom)
+	in.busOpts = append(in.busOpts, command.WithTxRunner(pg))
+
+	// Аутентификация: argon2id + server-side сессии (ADR-004) со скользящим
+	// продлением. SameSite задаётся конфигом: None — для кросс-доменного
+	// фронтенда (Vercel), Lax — за одним доменом.
+	authStore := postgres.NewAuthStore(pg)
+	in.authCfg = &httpapi.AuthConfig{
+		Service:       auth.NewService(authStore, cfg.Auth.SessionTTL),
+		TTL:           cfg.Auth.SessionTTL,
+		ResolveTenant: in.resolveTenant,
+		SecureCookie:  cfg.Env == config.EnvProduction,
+		SameSite:      sameSiteMode(cfg.Auth.CookieSameSite),
+		Audit:         in.recorder,
+	}
+
+	// Справочник пользователей: выбор исполнителей и получателей.
+	in.extraMounts = append(in.extraMounts, httpapi.UsersRoutes(authStore, guard))
+
+	// Outbox: очередь надёжных побочных эффектов + воркер доставки.
+	in.outboxWorker = outbox.NewWorker(pg, log)
+	if err := sched.Add(cron.Job{Name: "outbox.cleanup", At: "04:15", Run: in.outboxWorker.Cleanup}); err != nil {
+		cleanup()
+		return infra{}, nil, nil, err
+	}
+
+	return in, readiness, cleanup, nil
+}
+
+// buildMounts регистрирует команды и HTTP-маршруты всех доменных модулей на
+// шине bus и возвращает список mount-функций для httpapi.NewRouter. Финансы
+// и файлы подключаются всегда; кампус, уведомления, задачи и AI-терминал —
+// только когда доступна PostgreSQL (in.pgDB != nil), так как читают друг
+// друга через конкретные репозитории, а не только через шину.
+func buildMounts(
+	bus *command.MemoryBus, guard *authz.Guard, sched *cron.Scheduler,
+	reg *metrics.Registry, log *slog.Logger, cfg config.Config, in infra,
+) ([]func(*http.ServeMux), error) {
 	mounts := []func(*http.ServeMux){
-		finance.Routes(bus, financeRepo, guard),
+		finance.Routes(bus, in.financeRepo, guard),
 		func(mux *http.ServeMux) { mux.Handle("GET /metrics", reg.Handler()) },
 	}
 	var searchSources []httpapi.SearchSource
-	if pgRepo, ok := financeRepo.(*finance.PostgresRepository); ok {
+	if pgRepo, ok := in.financeRepo.(*finance.PostgresRepository); ok {
 		searchSources = append(searchSources, pgRepo)
 
 		// Отчётная витрина: команда пересчёта + ночной пересчёт по всем
 		// tenant'ам + отчётные маршруты (JSON, CSV, XLSX).
 		if err := finance.RegisterStatsCommands(bus, pgRepo); err != nil {
-			return fmt.Errorf("register finance stats: %w", err)
+			return nil, fmt.Errorf("register finance stats: %w", err)
 		}
 		mounts = append(mounts, finance.ReportRoutes(bus, pgRepo, guard))
 		if err := sched.Add(cron.Job{Name: "finance.stats.refresh", At: "02:30", Run: func(ctx context.Context) error {
-			return pgDB.ForEachTenant(ctx, pgRepo.RefreshStats)
+			return in.pgDB.ForEachTenant(ctx, pgRepo.RefreshStats)
 		}}); err != nil {
-			return err
+			return nil, err
 		}
 	}
-	if filesRepo != nil {
-		if err := files.RegisterCommands(bus, filesRepo); err != nil {
-			return fmt.Errorf("register files commands: %w", err)
+	if in.filesRepo != nil {
+		if err := files.RegisterCommands(bus, in.filesRepo); err != nil {
+			return nil, fmt.Errorf("register files commands: %w", err)
 		}
-		mounts = append(mounts, files.Routes(bus, filesRepo, filesStore, cfg.Files.MaxUploadBytes, guard))
-		searchSources = append(searchSources, filesRepo)
+		mounts = append(mounts, files.Routes(bus, in.filesRepo, in.filesStore, cfg.Files.MaxUploadBytes, guard))
+		searchSources = append(searchSources, in.filesRepo)
 	}
-	if pgDB != nil {
-		// Кампус: группы, студенты, учебный журнал.
-		campusRepo := campus.NewRepository(pgDB)
-		if err := campus.RegisterCommands(bus, campusRepo); err != nil {
-			return fmt.Errorf("register campus commands: %w", err)
+	if in.pgDB != nil {
+		termMounts, err := buildPostgresModules(bus, guard, log, in)
+		if err != nil {
+			return nil, err
 		}
-		mounts = append(mounts, campus.Routes(bus, campusRepo, guard))
-		searchSources = append(searchSources, campusRepo)
-
-		// Уведомления: лента пользователя + сервис для других модулей.
-		// Внешняя доставка уходит в outbox; пока обработчик темы только
-		// логирует — SMTP появится вместе с notification-каналами (M7+).
-		notifRepo := notifications.NewRepository(pgDB)
-		if err := notifications.RegisterCommands(bus, notifRepo); err != nil {
-			return fmt.Errorf("register notifications commands: %w", err)
-		}
-		mounts = append(mounts, notifications.Routes(bus, notifRepo, guard))
-		notifier := notifications.NewService(notifRepo, outbox.NewQueue(pgDB))
-		outboxWorker.Handle(notifications.TopicCreated, func(_ context.Context, m outbox.Message) error {
-			log.Info("notification delivery queued (no external channel yet)",
-				slog.String("payload", string(m.Payload)))
-			return nil
-		})
-
-		// Задачи. Рассылка задач уведомляет получателей через notifier.
-		tasksRepo := tasks.NewRepository(pgDB)
-		if err := tasks.RegisterCommands(bus, tasksRepo, taskNotifier{svc: notifier}); err != nil {
-			return fmt.Errorf("register tasks commands: %w", err)
-		}
-		mounts = append(mounts, tasks.Routes(bus, tasksRepo, guard))
-		searchSources = append(searchSources, tasksRepo)
-
-		// Терминал «Администратор · альфа»: AI-native консоль по всей
-		// системе. Модуль соседей не знает — адаптеры собираются здесь;
-		// мутации идут через шину (авторизация + аудит), чтения — через
-		// те же репозитории, что и обычные экраны.
-		if err := terminal.RegisterCommands(bus, notifier); err != nil {
-			return fmt.Errorf("register terminal commands: %w", err)
-		}
-		authStore := postgres.NewAuthStore(pgDB)
-		auditReader := postgres.NewAuditReader(pgDB)
-		termDeps := terminal.Deps{
-			Tasks: func(ctx context.Context, status string, limit int) ([]terminal.TaskRow, error) {
-				items, err := tasksRepo.List(ctx, tasks.Filter{Status: status, Limit: limit})
-				if err != nil {
-					return nil, err
-				}
-				rows := make([]terminal.TaskRow, 0, len(items))
-				for _, t := range items {
-					row := terminal.TaskRow{ID: t.ID, Title: t.Title, Status: t.Status}
-					if !t.DueOn.IsZero() {
-						row.DueOn = t.DueOn.Format("2006-01-02")
-					}
-					rows = append(rows, row)
-				}
-				return rows, nil
-			},
-			AddTask: func(ctx context.Context, title string) error {
-				return bus.Dispatch(ctx, tasks.Create{Title: title})
-			},
-			DoneTask: func(ctx context.Context, id string) error {
-				return bus.Dispatch(ctx, tasks.Complete{ID: id})
-			},
-			Users: func(ctx context.Context, limit int) ([]terminal.UserRow, error) {
-				users, err := authStore.ListUsers(ctx, limit)
-				if err != nil {
-					return nil, err
-				}
-				rows := make([]terminal.UserRow, 0, len(users))
-				for _, u := range users {
-					rows = append(rows, terminal.UserRow{ID: u.ID, Email: u.Email, Name: u.DisplayName, Roles: u.Roles})
-				}
-				return rows, nil
-			},
-			Notify: func(ctx context.Context, userIDs []string, title string) error {
-				return bus.Dispatch(ctx, terminal.Notify{UserIDs: userIDs, Title: title})
-			},
-			Audit: func(ctx context.Context, limit int) ([]terminal.AuditRow, error) {
-				entries, err := auditReader.Entries(ctx, audit.Filter{Limit: limit})
-				if err != nil {
-					return nil, err
-				}
-				rows := make([]terminal.AuditRow, 0, len(entries))
-				for _, e := range entries {
-					rows = append(rows, terminal.AuditRow{
-						Command: e.Command, Outcome: string(e.Outcome),
-						ActorID: e.ActorID, OccurredAt: e.OccurredAt,
-					})
-				}
-				return rows, nil
-			},
-			Unread: notifRepo.CountUnread,
-
-			// Аналитика — модуль campus.
-			Groups: func(ctx context.Context) ([]terminal.GroupRow, error) {
-				groups, err := campusRepo.Groups(ctx)
-				if err != nil {
-					return nil, err
-				}
-				rows := make([]terminal.GroupRow, 0, len(groups))
-				for _, g := range groups {
-					rows = append(rows, terminal.GroupRow{Code: g.Code, Name: g.Name, Students: g.ActiveStudents})
-				}
-				return rows, nil
-			},
-			Students: func(ctx context.Context, query string, limit int) ([]terminal.StudentRow, error) {
-				studs, err := campusRepo.Students(ctx, campus.StudentFilter{Query: query, Limit: limit})
-				if err != nil {
-					return nil, err
-				}
-				rows := make([]terminal.StudentRow, 0, len(studs))
-				for _, s := range studs {
-					rows = append(rows, terminal.StudentRow{Name: s.FullName, Group: s.GroupCode, Status: string(s.Status), Email: s.Email})
-				}
-				return rows, nil
-			},
-			Grades: func(ctx context.Context, limit int) ([]terminal.GradeRow, error) {
-				grades, err := campusRepo.Journal(ctx, campus.JournalFilter{Limit: limit})
-				if err != nil {
-					return nil, err
-				}
-				rows := make([]terminal.GradeRow, 0, len(grades))
-				for _, g := range grades {
-					rows = append(rows, terminal.GradeRow{
-						Student: g.FullName, Group: g.GroupCode, Subject: g.Subject,
-						Grade: g.Grade, On: g.GradedOn,
-					})
-				}
-				return rows, nil
-			},
-
-			// Финансы — леджер.
-			Balances: func(ctx context.Context) ([]terminal.BalanceRow, error) {
-				balances, err := financeRepo.Accounts(ctx)
-				if err != nil {
-					return nil, err
-				}
-				rows := make([]terminal.BalanceRow, 0, len(balances))
-				for _, b := range balances {
-					rows = append(rows, terminal.BalanceRow{
-						Code: b.Account.Code, Name: b.Account.Name,
-						Type: string(b.Account.Type), Amount: b.Amount,
-					})
-				}
-				return rows, nil
-			},
-			Entries: func(ctx context.Context, limit int) ([]terminal.EntryRow, error) {
-				entries, err := financeRepo.Entries(ctx)
-				if err != nil {
-					return nil, err
-				}
-				if len(entries) > limit {
-					entries = entries[len(entries)-limit:] // свежие в конце — берём хвост
-				}
-				rows := make([]terminal.EntryRow, 0, len(entries))
-				for _, e := range entries {
-					var debit int64
-					for _, l := range e.Lines {
-						if l.Side == finance.Debit {
-							debit += l.Amount
-						}
-					}
-					rows = append(rows, terminal.EntryRow{
-						Memo: e.Memo, PostedBy: e.PostedBy, PostedAt: e.PostedAt, Amount: debit,
-					})
-				}
-				return rows, nil
-			},
-		}
-		mounts = append(mounts, terminal.Routes(termDeps, guard))
+		mounts = append(mounts, termMounts.mounts...)
+		searchSources = append(searchSources, termMounts.searchSources...)
 	}
 	if len(searchSources) > 0 {
 		mounts = append(mounts, httpapi.SearchRoutes(guard, searchSources...))
 	}
-	mounts = append(mounts, extraMounts...)
+	return mounts, nil
+}
 
-	router := httpapi.NewRouter(log, httpapi.RouterConfig{
-		Readiness:     readiness,
-		DevAuth:       cfg.Env == config.EnvDevelopment,
-		Pprof:         cfg.Env == config.EnvDevelopment,
-		ResolveTenant: resolveTenant,
-		Auth:          authCfg,
-		CORS:          httpapi.CORSConfig{AllowedOrigins: cfg.HTTP.CORSOrigins},
-		OpenAPI:       api.OpenAPI,
-		Observe:       observe,
-		Idempotency:   idemStore,
-		Mount:         mounts,
-	})
-	server := httpapi.New(router, httpapi.Options{
-		Addr:            cfg.HTTP.Addr,
-		ReadTimeout:     cfg.HTTP.ReadTimeout,
-		WriteTimeout:    cfg.HTTP.WriteTimeout,
-		IdleTimeout:     cfg.HTTP.IdleTimeout,
-		ShutdownTimeout: cfg.HTTP.ShutdownTimeout,
-		Logger:          log,
+// postgresModules — маршруты и поисковые источники модулей, доступных
+// только при PostgreSQL (кампус, уведомления, задачи, AI-терминал).
+type postgresModules struct {
+	mounts        []func(*http.ServeMux)
+	searchSources []httpapi.SearchSource
+}
+
+// buildPostgresModules подключает кампус, уведомления, задачи и AI-терминал
+// «Администратор · альфа». Терминал не имеет собственного знания о других
+// модулях — все адаптеры (Deps) для доступа к задачам, пользователям,
+// аудиту, группам/студентам, финансам собираются именно здесь через
+// замыкания поверх конкретных репозиториев; мутации всё равно идут через
+// bus.Dispatch, то есть проходят авторизацию и попадают в аудит наравне с
+// обычными HTTP-запросами.
+func buildPostgresModules(bus *command.MemoryBus, guard *authz.Guard, log *slog.Logger, in infra) (postgresModules, error) {
+	pgDB := in.pgDB
+	var out postgresModules
+
+	// Кампус: группы, студенты, учебный журнал.
+	campusRepo := campus.NewRepository(pgDB)
+	if err := campus.RegisterCommands(bus, campusRepo); err != nil {
+		return postgresModules{}, fmt.Errorf("register campus commands: %w", err)
+	}
+	out.mounts = append(out.mounts, campus.Routes(bus, campusRepo, guard))
+	out.searchSources = append(out.searchSources, campusRepo)
+
+	// Уведомления: лента пользователя + сервис для других модулей. Внешняя
+	// доставка уходит в outbox; пока обработчик темы только логирует —
+	// SMTP появится вместе с notification-каналами (M7+).
+	notifRepo := notifications.NewRepository(pgDB)
+	if err := notifications.RegisterCommands(bus, notifRepo); err != nil {
+		return postgresModules{}, fmt.Errorf("register notifications commands: %w", err)
+	}
+	out.mounts = append(out.mounts, notifications.Routes(bus, notifRepo, guard))
+	notifier := notifications.NewService(notifRepo, outbox.NewQueue(pgDB))
+	in.outboxWorker.Handle(notifications.TopicCreated, func(_ context.Context, m outbox.Message) error {
+		log.Info("notification delivery queued (no external channel yet)",
+			slog.String("payload", string(m.Payload)))
+		return nil
 	})
 
-	// HTTP-сервер, планировщик и outbox-воркер живут до общей отмены
-	// контекста.
+	// Задачи. Рассылка задач уведомляет получателей через notifier.
+	tasksRepo := tasks.NewRepository(pgDB)
+	if err := tasks.RegisterCommands(bus, tasksRepo, taskNotifier{svc: notifier}); err != nil {
+		return postgresModules{}, fmt.Errorf("register tasks commands: %w", err)
+	}
+	out.mounts = append(out.mounts, tasks.Routes(bus, tasksRepo, guard))
+	out.searchSources = append(out.searchSources, tasksRepo)
+
+	if err := terminal.RegisterCommands(bus, notifier); err != nil {
+		return postgresModules{}, fmt.Errorf("register terminal commands: %w", err)
+	}
+	authStore := postgres.NewAuthStore(pgDB)
+	auditReader := postgres.NewAuditReader(pgDB)
+	termDeps := terminal.Deps{
+		Tasks: func(ctx context.Context, status string, limit int) ([]terminal.TaskRow, error) {
+			items, err := tasksRepo.List(ctx, tasks.Filter{Status: status, Limit: limit})
+			if err != nil {
+				return nil, err
+			}
+			rows := make([]terminal.TaskRow, 0, len(items))
+			for _, t := range items {
+				row := terminal.TaskRow{ID: t.ID, Title: t.Title, Status: t.Status}
+				if !t.DueOn.IsZero() {
+					row.DueOn = t.DueOn.Format("2006-01-02")
+				}
+				rows = append(rows, row)
+			}
+			return rows, nil
+		},
+		AddTask: func(ctx context.Context, title string) error {
+			return bus.Dispatch(ctx, tasks.Create{Title: title})
+		},
+		DoneTask: func(ctx context.Context, id string) error {
+			return bus.Dispatch(ctx, tasks.Complete{ID: id})
+		},
+		Users: func(ctx context.Context, limit int) ([]terminal.UserRow, error) {
+			users, err := authStore.ListUsers(ctx, limit)
+			if err != nil {
+				return nil, err
+			}
+			rows := make([]terminal.UserRow, 0, len(users))
+			for _, u := range users {
+				rows = append(rows, terminal.UserRow{ID: u.ID, Email: u.Email, Name: u.DisplayName, Roles: u.Roles})
+			}
+			return rows, nil
+		},
+		Notify: func(ctx context.Context, userIDs []string, title string) error {
+			return bus.Dispatch(ctx, terminal.Notify{UserIDs: userIDs, Title: title})
+		},
+		Audit: func(ctx context.Context, limit int) ([]terminal.AuditRow, error) {
+			entries, err := auditReader.Entries(ctx, audit.Filter{Limit: limit})
+			if err != nil {
+				return nil, err
+			}
+			rows := make([]terminal.AuditRow, 0, len(entries))
+			for _, e := range entries {
+				rows = append(rows, terminal.AuditRow{
+					Command: e.Command, Outcome: string(e.Outcome),
+					ActorID: e.ActorID, OccurredAt: e.OccurredAt,
+				})
+			}
+			return rows, nil
+		},
+		Unread: notifRepo.CountUnread,
+
+		// Аналитика — модуль campus.
+		Groups: func(ctx context.Context) ([]terminal.GroupRow, error) {
+			groups, err := campusRepo.Groups(ctx)
+			if err != nil {
+				return nil, err
+			}
+			rows := make([]terminal.GroupRow, 0, len(groups))
+			for _, g := range groups {
+				rows = append(rows, terminal.GroupRow{Code: g.Code, Name: g.Name, Students: g.ActiveStudents})
+			}
+			return rows, nil
+		},
+		Students: func(ctx context.Context, query string, limit int) ([]terminal.StudentRow, error) {
+			studs, err := campusRepo.Students(ctx, campus.StudentFilter{Query: query, Limit: limit})
+			if err != nil {
+				return nil, err
+			}
+			rows := make([]terminal.StudentRow, 0, len(studs))
+			for _, s := range studs {
+				rows = append(rows, terminal.StudentRow{Name: s.FullName, Group: s.GroupCode, Status: string(s.Status), Email: s.Email})
+			}
+			return rows, nil
+		},
+		Grades: func(ctx context.Context, limit int) ([]terminal.GradeRow, error) {
+			grades, err := campusRepo.Journal(ctx, campus.JournalFilter{Limit: limit})
+			if err != nil {
+				return nil, err
+			}
+			rows := make([]terminal.GradeRow, 0, len(grades))
+			for _, g := range grades {
+				rows = append(rows, terminal.GradeRow{
+					Student: g.FullName, Group: g.GroupCode, Subject: g.Subject,
+					Grade: g.Grade, On: g.GradedOn,
+				})
+			}
+			return rows, nil
+		},
+
+		// Финансы — леджер.
+		Balances: func(ctx context.Context) ([]terminal.BalanceRow, error) {
+			balances, err := in.financeRepo.Accounts(ctx)
+			if err != nil {
+				return nil, err
+			}
+			rows := make([]terminal.BalanceRow, 0, len(balances))
+			for _, b := range balances {
+				rows = append(rows, terminal.BalanceRow{
+					Code: b.Account.Code, Name: b.Account.Name,
+					Type: string(b.Account.Type), Amount: b.Amount,
+				})
+			}
+			return rows, nil
+		},
+		Entries: func(ctx context.Context, limit int) ([]terminal.EntryRow, error) {
+			entries, err := in.financeRepo.Entries(ctx)
+			if err != nil {
+				return nil, err
+			}
+			if len(entries) > limit {
+				entries = entries[len(entries)-limit:] // свежие в конце — берём хвост
+			}
+			rows := make([]terminal.EntryRow, 0, len(entries))
+			for _, e := range entries {
+				var debit int64
+				for _, l := range e.Lines {
+					if l.Side == finance.Debit {
+						debit += l.Amount
+					}
+				}
+				rows = append(rows, terminal.EntryRow{
+					Memo: e.Memo, PostedBy: e.PostedBy, PostedAt: e.PostedAt, Amount: debit,
+				})
+			}
+			return rows, nil
+		},
+	}
+	out.mounts = append(out.mounts, terminal.Routes(termDeps, guard))
+	return out, nil
+}
+
+// runServers запускает HTTP-сервер, планировщик и outbox-воркер параллельно
+// через errgroup и ждёт либо первой ошибки, либо отмены ctx (грациозное
+// завершение по сигналу).
+func runServers(ctx context.Context, server *httpapi.Server, sched *cron.Scheduler, outboxWorker *outbox.Worker) error {
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return server.Run(gctx) })
 	g.Go(func() error { sched.Run(gctx); return nil })
 	if outboxWorker != nil {
 		g.Go(func() error { return outboxWorker.Run(gctx) })
 	}
-	if err := g.Wait(); err != nil {
-		return err
-	}
-
-	log.Info("nexd stopped")
-	return nil
+	return g.Wait()
 }
 
 // sameSiteMode переводит строку конфига в http.SameSite.

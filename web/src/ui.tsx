@@ -1,7 +1,8 @@
 import { createContext, useContext, useState, useEffect, type ReactNode, type FormEvent } from 'react';
+import { useLocation } from 'wouter';
 import { Sparkles, ArrowUp, AlertTriangle, Wallet, ShieldCheck } from 'lucide-react';
 import type { Role, Severity } from './data';
-import type { NexReply } from './nexbrain';
+import type { NexReply } from './features/ai/nexbrain';
 import { apiMe, authConfigured, primaryRole } from './api/auth';
 import { DEFAULT_HOME_BLOCKS, DEFAULT_HOME_SHORTCUTS } from './home';
 
@@ -135,16 +136,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (u) localStorage.setItem(DEMO_USER_KEY, JSON.stringify(u));
     else localStorage.removeItem(DEMO_USER_KEY);
   };
-  /* Текущий раздел переживает обновление страницы: восстанавливаем из
-     localStorage и сохраняем на каждом переходе. Неизвестный id не
-     страшен — рендер разделов падает обратно на «Главное»
-     (ALL_ITEMS[id]?.node ?? <Home />). Явные setPage('home') при входе
-     работают как раньше. */
-  const [page, setPageState] = useState(() => localStorage.getItem('nex-page') || 'home');
-  const setPage = (p: string) => {
-    setPageState(p);
-    localStorage.setItem('nex-page', p);
-  };
+  /* Текущий раздел живёт в URL (wouter), а не в localStorage: '/' и
+     '/home' — «Главное», '/students' и т.д. — соответствующий раздел.
+     Это даёт настоящий deep-linking (можно скопировать ссылку на
+     конкретный раздел) и переживает обновление страницы бесплатно —
+     адрес уже в адресной строке. Неизвестный id не страшен — рендер
+     разделов падает обратно на «Главное» (ALL_ITEMS[id]?.node ?? <Home
+     />). Явные setPage('home') при входе работают как раньше. */
+  const [location, navigate] = useLocation();
+  const page = location.replace(/^\//, '') || 'home';
+  const setPage = (p: string) => navigate('/' + p);
   const [objStudent, setObjStudent] = useState<number | null>(null);
   const [cmdOpen, setCmdOpen] = useState(false);
   const [inlineHost, setInlineHost] = useState<HTMLElement | null>(null);

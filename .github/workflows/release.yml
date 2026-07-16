@@ -1,0 +1,95 @@
+# Публикация Docker-образов в GHCR по git-тегу.
+#
+# Триггер — тег вида v1.2.3 (или v1.2.3-rc1 и т.п., см. semver-regex у
+# docker/metadata-action ниже). Собирает и пушит три образа: nexd (Go,
+# корневой Dockerfile), ai-gateway (Python, ai-gateway/Dockerfile), web
+# (SPA за Nginx, web/Dockerfile — самостоятельная альтернатива ручному
+# раннбуку deploy/README.md, см. докстринг web/Dockerfile).
+#
+# nexd публикуется как ghcr.io/<owner>/nex — то же имя, что уже
+# захардкожено в deploy/compose.prod.yaml ("публикуется CI по git-тегу");
+# ai-gateway и web — ghcr.io/<owner>/nex-ai-gateway и ghcr.io/<owner>/nex-web.
+#
+# Реальный прогон недоступен в среде, где писался этот файл (нет доступа
+# к GitHub Actions) — валидирован синтаксис (actionlint-подобная
+# проверка структуры) и логика тегирования, живой прогон на push тега
+# не выполнялся.
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+# Дефолт на уровне workflow — минимум прав; packages: write выдаётся
+# точечно джобе, которой он реально нужен (ниже).
+permissions:
+  contents: read
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      # Одна упавшая сборка (например, у ai-gateway) не должна отменять
+      # уже начатые сборки остальных образов — тег один на все три, и
+      # получить два из трёх опубликованными лучше, чем ни одного.
+      fail-fast: false
+      matrix:
+        include:
+          - name: nexd
+            image: nex
+            context: .
+            dockerfile: Dockerfile
+          - name: ai-gateway
+            image: nex-ai-gateway
+            context: ./ai-gateway
+            dockerfile: ai-gateway/Dockerfile
+          - name: web
+            image: nex-web
+            context: .
+            dockerfile: web/Dockerfile
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Теги: semver из самого git-тега (v1.2.3 → 1.2.3 и 1.2) + короткий
+      # sha — второй нужен, чтобы всегда можно было откатиться на точный
+      # коммит независимо от версии, даже если тег впоследствии
+      # переставили (не должны, но метка на этот случай не помешает).
+      # flavor.latest=auto (значение по умолчанию, но выписано явно) —
+      # "latest" получает только настоящий релиз (не rc/beta и не более
+      # старый тег, если сборки пришли не по порядку); deploy/
+      # compose.prod.yaml уже ссылается на ghcr.io/.../nex:latest.
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+          flavor: |
+            latest=auto
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short,prefix=sha-
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Кэш слоёв между запусками — отдельный scope на образ, чтобы
+          # сборка ai-gateway не грела/не портила кэш nexd и наоборот.
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}

@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 	"runtime/debug"
+	"strings"
 	"time"
 )
 
@@ -48,6 +49,13 @@ func (r *statusRecorder) Write(b []byte) (int, error) {
 
 // requestLogger emits one structured log line per request, recording the
 // method, path, resulting status and how long the request took.
+//
+// request_id идёт первым атрибутом не случайно: он — сквозной ключ,
+// которым инцидент ищется сразу во всех логах (nexd, ai-gateway,
+// журнал аудита) и в заголовке ответа клиенту (requestID middleware,
+// requestid.go). Тело запроса и заголовки авторизации сюда намеренно
+// не попадают — только метаданные, чтобы в логах не оказалось
+// секретов/ПДн.
 func requestLogger(log *slog.Logger) middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -57,12 +65,43 @@ func requestLogger(log *slog.Logger) middleware {
 			next.ServeHTTP(rec, r)
 
 			log.LogAttrs(r.Context(), slog.LevelInfo, "http request",
+				slog.String("request_id", RequestIDFrom(r.Context())),
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
 				slog.Int("status", rec.status),
 				slog.Duration("duration", time.Since(start)),
 				slog.String("remote", r.RemoteAddr),
 			)
+		})
+	}
+}
+
+// securityHeaders проставляет базовые защитные HTTP-заголовки на каждый
+// ответ nexd. Caddy на периметре (deploy/Caddyfile) уже задаёт часть этих
+// заголовков для статики SPA, но nexd не должен на это полагаться: прямое
+// обращение к сервису (внутри docker-сети, локальная разработка,
+// неверно настроенный прокси) обязано получать ту же защиту.
+//
+// nexd отдаёт только JSON/API-ответы (саму SPA раздаёт Caddy из
+// /srv/web), поэтому CSP здесь — узкий default-src 'none': ни один
+// API-ответ не должен исполняться браузером как скрипт/стиль/фрейм.
+// hsts включается только когда соединение реально идёт по HTTPS
+// (напрямую или через X-Forwarded-Proto от Caddy) — иначе в локальной
+// разработке по http://localhost браузер навсегда запомнит принудительный
+// редирект на https и сломает dev-окружение.
+func securityHeaders() middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			h := w.Header()
+			h.Set("X-Content-Type-Options", "nosniff")
+			h.Set("X-Frame-Options", "DENY")
+			h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+			h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()")
+			h.Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
+			if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+				h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+			}
+			next.ServeHTTP(w, r)
 		})
 	}
 }
@@ -77,6 +116,7 @@ func recoverer(log *slog.Logger) middleware {
 			defer func() {
 				if rec := recover(); rec != nil {
 					log.LogAttrs(r.Context(), slog.LevelError, "panic recovered",
+						slog.String("request_id", RequestIDFrom(r.Context())),
 						slog.Any("panic", rec),
 						slog.String("stack", string(debug.Stack())),
 					)

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { LayoutDashboard, TrendingUp, Grid3x3, Save, Download, Trash2, Sparkles, Wand2, PlayCircle } from 'lucide-react';
 import { PageHead, NexAsk, Beta, useApp } from '../ui';
-import { Bars, Line, Donut, Legend, type Segment } from '../charts';
+import { Bars, Line, Donut, Legend, type Segment } from '../components/charts';
 import { groups, gradesFor } from '../data';
 import { useCollection, type Entity } from '../beta/store';
 import { Field, Select } from '../beta/kit';

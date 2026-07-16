@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 )
 
@@ -16,7 +17,23 @@ type Problem struct {
 
 // WriteProblem пишет ошибку как application/problem+json. Используется
 // HTTP-хендлерами модулей для всех неуспешных ответов.
+//
+// Для 5xx detail в ответ клиенту не попадает: по всему бэкенду вызывающие
+// передают сюда err.Error() необработанных внутренних ошибок (pgx —
+// имена таблиц/колонок/constraint'ов, пути и т.п.), и это была бы прямая
+// утечка внутреннего устройства системы наружу. Настоящая причина уходит
+// в лог через slog.Default() (composition root настраивает его как
+// единый логгер процесса — см. slog.SetDefault в cmd/nexd) — оператор
+// найдёт её в логах по времени рядом со строкой requestLogger, где есть
+// путь и request id. 4xx (клиентские ошибки — например, невалидный JSON)
+// detail не трогает: там в detail собственная же ошибка клиента.
 func WriteProblem(w http.ResponseWriter, status int, title, detail string) {
+	if status >= http.StatusInternalServerError {
+		if detail != "" {
+			slog.Error("internal error", slog.String("title", title), slog.String("detail", detail))
+		}
+		detail = ""
+	}
 	w.Header().Set("Content-Type", "application/problem+json; charset=utf-8")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(Problem{

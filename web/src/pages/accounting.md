@@ -23,4 +23,4 @@
 
 ## Связи
 
-Зависит от `web/src/ui.tsx` (`PageHead`, `Chip`, `NexAsk`, `Beta`, `useApp`), `web/src/charts.tsx` (`Donut`, `Bars`, `Legend`, `Line`, `Segment`), `web/src/data.ts` (`finance`, `charges`, `payroll`, `budgetLines`, `reports`, `students`), `web/src/beta/store.ts` (`useCollection`, `Entity` — только для стипендий) и `web/src/beta/manager.tsx` (`EntityManager` — только для стипендий). Девять экспортируемых функций подключаются как отдельные маршруты финансового раздела в `App.tsx`.
+Зависит от `web/src/ui.tsx` (`PageHead`, `Chip`, `NexAsk`, `Beta`, `useApp`), `web/src/components/charts.tsx` (`Donut`, `Bars`, `Legend`, `Line`, `Segment`), `web/src/data.ts` (`finance`, `charges`, `payroll`, `budgetLines`, `reports`, `students`), `web/src/beta/store.ts` (`useCollection`, `Entity` — только для стипендий) и `web/src/beta/manager.tsx` (`EntityManager` — только для стипендий). Девять экспортируемых функций подключаются как отдельные маршруты финансового раздела в `App.tsx`.

@@ -1,0 +1,31 @@
+# .dockerignore специфичный для web/Dockerfile (BuildKit: файл с именем
+# "<Dockerfile>.dockerignore" рядом с самим Dockerfile приоритетнее
+# общего .dockerignore в корне репозитория — тот написан для сборки
+# nexd и намеренно исключает web/, что ломало бы сборку фронтенда,
+# которая тоже использует корень репозитория как контекст (pnpm-workspace).
+.git/
+.github/
+.idea/
+.vscode/
+.junie/
+.claude/
+
+ai-gateway/
+beta/
+docs/
+learning/
+load/
+tools/
+
+node_modules/
+web/dist/
+web/node_modules/
+
+*.md
+.env*
+!.env.example
+
+bin/
+tmp/
+*.test
+__pycache__/

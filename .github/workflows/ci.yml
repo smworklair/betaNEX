@@ -1,5 +1,6 @@
-# CI бэкенда: линт + тесты на каждый PR и push в main.
-# Фронтенд-джоба добавится на вехе M7, деплой — на M9.
+# CI: бэкенд (Go), фронтенд (web/) и ai-gateway (Python) — линт + тесты
+# на каждый PR и push в main. Джобы независимы и идут параллельно.
+# Деплой — на M9.
 name: ci
 
 on:
@@ -65,3 +66,133 @@ jobs:
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
+
+  frontend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Версия pnpm берётся из "packageManager" в корневом package.json —
+      # один источник правды с локальной разработкой (см. package.json).
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Типы (tsc --noEmit)
+        run: pnpm -C web lint
+
+      - name: ESLint
+        run: pnpm -C web lint:eslint
+
+      - name: Тесты (Vitest)
+        run: pnpm -C web test
+
+      - name: Build
+        run: pnpm -C web build
+
+  ai-gateway:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai-gateway
+
+    # GIGACHAT_MOCK — тот же детерминированный мок-режим, что использует
+    # tests/test_budget_e2e.py: app/main.py собирает FastAPI-приложение
+    # на уровне модуля (см. `app = create_app()`), и ему нужен хотя бы
+    # один зарегистрированный провайдер даже для импорта модуля тестами —
+    # без реального ключа и без сетевых вызовов.
+    env:
+      GIGACHAT_MOCK: "true"
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: ai-gateway/requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: ruff
+        run: ruff check .
+
+      - name: mypy (app/)
+        run: mypy
+
+      - name: pytest
+        run: pytest -q
+
+  # Статический анализ безопасности (семантические баги: SQL/командные
+  # инъекции, SSRF, небезопасная десериализация и т.п.) по всем трём
+  # языкам репозитория. Отдельно от job'ов выше — результаты идут не в
+  # статус джобы, а в GitHub Security → Code scanning.
+  codeql:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # CodeQL анализирует JS+TS одним экстрактором ("javascript-typescript").
+        language: [go, javascript-typescript, python]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - if: matrix.language == 'go'
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+
+      # Go — компилируемый язык, CodeQL нужен собранный код для анализа;
+      # JS/TS и Python анализируются без сборки — autobuild для них no-op.
+      - uses: github/codeql-action/autobuild@v4
+
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"
+
+  # Уязвимости в зависимостях (файлах-манифестах, БЕЗ сборки образов —
+  # чтобы не тянуть Docker-билд в каждый PR) + секреты, случайно
+  # закоммиченные в репозиторий. exit-code: 0 — джоба не блокирует PR,
+  # это первое подключение сканера на существующую кодовую базу и
+  # предзаполненный бэклог находок нежелательно превращать в стену перед
+  # каждым мержем; результаты идут в Security → Code scanning, порог
+  # блокировки — предмет отдельного осознанного PR после разбора отчёта.
+  trivy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Trivy — зависимости и секреты (файловая система)
+        uses: aquasecurity/trivy-action@0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: CRITICAL,HIGH
+          format: sarif
+          output: trivy-results.sarif
+          exit-code: "0"
+
+      - uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-results.sarif

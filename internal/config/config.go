@@ -53,6 +53,54 @@ type Config struct {
 
 	// Log configures structured logging.
 	Log LogConfig
+
+	// AIGateway configures the reverse proxy to the ai-gateway service.
+	AIGateway AIGatewayConfig
+
+	// Cache configures the cache backend (internal/platform/cache).
+	Cache CacheConfig
+}
+
+// CacheConfig selects the backend behind internal/platform/cache.Cache
+// (ADR-008). "memory" (default) keeps NEX at zero extra infrastructure,
+// as it has been since the interface was introduced; "redis" switches
+// to a network cache shared across instances, needed once nexd runs
+// more than one replica or a module wants a cache that survives a
+// single instance's restart. Switching backends is a config change, not
+// a code change — nothing that already runs in-memory is affected by
+// leaving Backend at its default.
+type CacheConfig struct {
+	// Backend is "memory" or "redis".
+	Backend string
+
+	// RedisURL is the connection string (e.g.
+	// redis://user:pass@host:6379/0), required when Backend is "redis".
+	// Accepted by any server speaking the Redis wire protocol (RESP),
+	// including Valkey — see compose.yaml and docs/decision-log.md,
+	// ADR-008.
+	RedisURL string
+}
+
+// AIGatewayConfig configures nexd's reverse proxy to ai-gateway
+// (internal/platform/httpapi/aiproxy.go). The browser never talks to
+// ai-gateway directly: it would have to send an unauthenticated
+// X-Tenant-Id header that any client could forge to ride another
+// tenant's budget. nexd proxies /api/v1/ai/* instead, deriving the
+// tenant from the caller's authenticated session and signing the
+// upstream request with a secret shared with ai-gateway.
+type AIGatewayConfig struct {
+	// URL is ai-gateway's internal address (e.g. http://ai-gateway:8090
+	// on the docker network). Empty disables the proxy entirely — no
+	// /api/v1/ai/* routes are mounted, so environments that don't run
+	// ai-gateway are unaffected.
+	URL string
+
+	// Secret is shared with ai-gateway (its NEX_AI_GATEWAY_SECRET /
+	// Settings.gateway_shared_secret) and sent as X-Gateway-Secret on
+	// every proxied request. Empty means the header is omitted —
+	// matches an ai-gateway that also has no secret configured (local
+	// development).
+	Secret string
 }
 
 // DBConfig configures the connection to PostgreSQL.
@@ -158,6 +206,14 @@ func Load() (Config, error) {
 			Level:  r.str("NEX_LOG_LEVEL", "info"),
 			Format: r.str("NEX_LOG_FORMAT", ""),
 		},
+		AIGateway: AIGatewayConfig{
+			URL:    r.str("NEX_AI_GATEWAY_URL", ""),
+			Secret: r.str("NEX_AI_GATEWAY_SECRET", ""),
+		},
+		Cache: CacheConfig{
+			Backend:  r.str("NEX_CACHE_BACKEND", "memory"),
+			RedisURL: r.str("NEX_REDIS_URL", ""),
+		},
 	}
 
 	// The default log format depends on the environment: human-readable text in
@@ -223,6 +279,33 @@ func (c Config) validate() error {
 			u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
 			errs = append(errs, fmt.Errorf("NEX_CORS_ORIGINS: %q is not an origin (want scheme://host[:port])", origin))
 		}
+	}
+
+	if c.AIGateway.URL != "" {
+		if u, err := url.Parse(c.AIGateway.URL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			errs = append(errs, fmt.Errorf("NEX_AI_GATEWAY_URL: %q is not a valid http(s) URL", c.AIGateway.URL))
+		}
+		// В production забытый секрет означает, что X-Tenant-Id для
+		// ai-gateway снова станет самопредставлением клиента (см.
+		// AIGatewayConfig, doc-комментарий) — отказываем сразу при
+		// старте, а не тихо запускаемся в небезопасном режиме.
+		if c.Env == EnvProduction && c.AIGateway.Secret == "" {
+			errs = append(errs, errors.New("NEX_AI_GATEWAY_SECRET: must be set in production when NEX_AI_GATEWAY_URL is configured"))
+		}
+	}
+
+	switch c.Cache.Backend {
+	case "memory":
+	case "redis":
+		if c.Cache.RedisURL == "" {
+			errs = append(errs, errors.New("NEX_REDIS_URL: must be set when NEX_CACHE_BACKEND=redis"))
+			break
+		}
+		if u, err := url.Parse(c.Cache.RedisURL); err != nil || (u.Scheme != "redis" && u.Scheme != "rediss") || u.Host == "" {
+			errs = append(errs, fmt.Errorf("NEX_REDIS_URL: %q is not a valid redis(s):// URL", c.Cache.RedisURL))
+		}
+	default:
+		errs = append(errs, fmt.Errorf("NEX_CACHE_BACKEND: unknown backend %q (want memory or redis)", c.Cache.Backend))
 	}
 
 	switch c.Log.Level {

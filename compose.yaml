@@ -1,5 +1,15 @@
-# Dev-окружение NEX: docker compose up -d (или make dev).
-# Прод-компоуз будет отдельным файлом на вехе M9.
+# Единый dev-стек NEX: docker compose up -d (или make dev).
+# Включает nexd (Go), postgres, web (фронт, dev-сервер Vite) и ai-gateway
+# (Python). Прод-компоуз — отдельный файл, deploy/compose.prod.yaml.
+#
+# beta/ (FrankAI, Nex-pilot) сознательно НЕ включены в композицию — это
+# самостоятельные учебные проекты, не часть runtime-стека NEX.
+#
+# Переменные — из .env в этом каталоге (см. .env.example и
+# ai-gateway/.env.example): docker compose автоматически подставляет
+# ${VAR} из .env рядом с этим файлом. Без .env сервис ai-gateway всё
+# равно поднимется — в режиме GIGACHAT_MOCK/YANDEXGPT_MOCK по умолчанию,
+# без единого реального ключа (см. ai-gateway/README.md, «Провайдеры»).
 name: nex
 
 services:
@@ -19,11 +29,149 @@ services:
       timeout: 3s
       retries: 10
 
-  # Valkey добавим, когда появится реальная потребность в сетевом кэше (ADR-008):
-  # valkey:
-  #   image: valkey/valkey:8-alpine
-  #   ports:
-  #     - "6379:6379"
+  # Valkey — опциональный сетевой backend кэша (ADR-008): интерфейс
+  # Cache в internal/platform/cache и rate-limiter/кэш ai-gateway
+  # (ai-gateway/app/core/ratelimit.py, response_cache.py) умеют работать
+  # поверх любого сервера, говорящего протоколом Redis (RESP) — образ тут
+  # Valkey (open-source форк без ограничений лицензии RSAL, см.
+  # обновлённый ADR-008 в docs/decision-log.md), клиенты — go-redis/
+  # redis-py, оба совместимы что с Redis, что с Valkey одинаково.
+  #
+  # Не поднимается по умолчанию — только с явным профилем:
+  #   docker compose --profile cache up -d
+  # и включённым конфигом (см. NEX_CACHE_BACKEND/AI_CACHE_BACKEND ниже).
+  valkey:
+    image: valkey/valkey:8-alpine
+    profiles: ["cache"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Prometheus — опциональный просмотр /metrics у nexd и ai-gateway
+  # локально (internal/platform/metrics, ai-gateway/app/core/metrics.py).
+  # Не часть постоянного дев-стека — поднимается профилем:
+  #   docker compose --profile observability up -d prometheus
+  # UI: http://localhost:9090. Подробнее — docs/observability.md.
+  prometheus:
+    image: prom/prometheus:v3.7.3
+    profiles: ["observability"]
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - nexd
+      - ai-gateway
+
+  nexd:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NEX_ENV: development
+      NEX_HTTP_ADDR: ":8080"
+      NEX_LOG_LEVEL: ${NEX_LOG_LEVEL:-debug}
+      NEX_LOG_FORMAT: ${NEX_LOG_FORMAT:-text}
+      # postgres — имя сервиса в этой сети, а не localhost.
+      NEX_DATABASE_URL: postgres://nex:nex@postgres:5432/nex?sslmode=disable
+      NEX_SESSION_TTL: ${NEX_SESSION_TTL:-24h}
+      NEX_DATA_DIR: /data
+      NEX_MAX_UPLOAD_BYTES: ${NEX_MAX_UPLOAD_BYTES:-20971520}
+      # Разрешить фронтенду (Vite dev-сервер) ходить с другого origin.
+      NEX_CORS_ORIGINS: http://localhost:3000
+      # ai-gateway — имя сервиса в этой сети, а не localhost. Секрет
+      # (NEX_AI_GATEWAY_SECRET) намеренно не задан: локальный docker-стек
+      # не защищаем от собственной сети разработчика (см. Secret == "" в
+      # AIGatewayConfig — то же поведение, что и раньше).
+      NEX_AI_GATEWAY_URL: http://ai-gateway:8090
+      # Кэш: по умолчанию memory (см. ADR-008) — ничего не меняется, пока
+      # не задано явно. Для сетевого кэша: профиль cache (см. сервис
+      # valkey выше) + `NEX_CACHE_BACKEND=redis` в .env этого каталога.
+      NEX_CACHE_BACKEND: ${NEX_CACHE_BACKEND:-memory}
+      NEX_REDIS_URL: ${NEX_REDIS_URL:-redis://valkey:6379/0}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    volumes:
+      - nexd_data:/data
+
+  web:
+    image: node:20-alpine
+    working_dir: /app
+    # Простой dev-контейнер: ставим зависимости через pnpm (реальный
+    # пакетный менеджер проекта — см. корневой package.json/pnpm-lock.yaml,
+    # НЕ npm, иначе получаем расходящийся package-lock.json) и поднимаем
+    # Vite с хот-релоадом. Монтируем весь репозиторий, а не только web/,
+    # потому что pnpm-workspace.yaml и pnpm-lock.yaml лежат в корне.
+    # Отдельный Dockerfile фронтенду для локальной разработки не нужен —
+    # прод-сборка (deploy/compose.prod.yaml) собирает статику иначе, см.
+    # раздел «Деплой» в README.
+    command: sh -c "corepack enable && pnpm install --frozen-lockfile && pnpm -C web dev -- --host 0.0.0.0 --port 3000"
+    environment:
+      VITE_API_URL: http://localhost:8080
+      # Флаг, не URL: браузер ходит в ai-gateway только через nexd
+      # (/api/v1/ai/*), сам ai-gateway ему больше не виден — см.
+      # web/src/llm.ts и internal/platform/httpapi/aiproxy.go.
+      VITE_AI_ENABLED: "1"
+      # Без этого pnpm кладёт свой content-addressable store прямо в
+      # примонтированный репозиторий (.pnpm-store/ на хосте) — уводим его
+      # в отдельный docker-том, чтобы репозиторий оставался чистым.
+      npm_config_store_dir: /pnpm-store
+    volumes:
+      - .:/app
+      - web_node_modules:/app/web/node_modules # не даём хостовым node_modules перекрыть контейнерные
+      - pnpm_store:/pnpm-store
+    ports:
+      - "3000:3000"
+    depends_on:
+      - nexd
+      - ai-gateway
+
+  ai-gateway:
+    build:
+      context: ./ai-gateway
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      HOST: 0.0.0.0
+      PORT: "8090"
+      LOG_LEVEL: ${AI_LOG_LEVEL:-info}
+      # Пусто: браузер сюда не обращается, только nexd по внутренней
+      # сети (см. NEX_AI_GATEWAY_URL у nexd выше) — CORS не нужен.
+      # Порт 8090 всё ещё пробрасывается на хост (см. ports ниже) для
+      # прямой отладки curl'ом, но это не браузерный сценарий.
+      CORS_ORIGINS: ""
+      DEFAULT_PROVIDER: ${AI_DEFAULT_PROVIDER:-gigachat}
+      # Ключи — пусто по умолчанию, задаются через .env рядом с этим
+      # файлом (docker compose подставит их сюда автоматически).
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      CUSTOM_API_KEY: ${CUSTOM_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      QWEN_API_KEY: ${QWEN_API_KEY:-}
+      KIMI_API_KEY: ${KIMI_API_KEY:-}
+      GIGACHAT_AUTH_KEY: ${GIGACHAT_AUTH_KEY:-}
+      GIGACHAT_MOCK: ${GIGACHAT_MOCK:-true}
+      YANDEXGPT_API_KEY: ${YANDEXGPT_API_KEY:-}
+      YANDEXGPT_FOLDER_ID: ${YANDEXGPT_FOLDER_ID:-}
+      YANDEXGPT_MOCK: ${YANDEXGPT_MOCK:-true}
+      # Кэш ответов и rate-limiter: по умолчанию memory — ничего не
+      # меняется, пока не задано явно (см. NEX_CACHE_BACKEND у nexd
+      # выше — та же идея, свой профиль valkey на оба сервиса).
+      CACHE_BACKEND: ${AI_CACHE_BACKEND:-memory}
+      REDIS_URL: ${AI_REDIS_URL:-redis://valkey:6379/1}
+    ports:
+      - "8090:8090"
 
 volumes:
   pgdata:
+  nexd_data:
+  web_node_modules:
+  pnpm_store:

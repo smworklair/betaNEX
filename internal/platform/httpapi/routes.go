@@ -61,7 +61,9 @@ type RouterConfig struct {
 // in the standard middleware chain. As kernel features and modules are added,
 // their routes will be registered here.
 //
-// Middleware order is deliberate. requestID is outermost so every log line and
+// Middleware order is deliberate. securityHeaders sits right after cors so
+// every response — including ones from requestID/recoverer — carries the
+// baseline protection headers. requestID is next so every log line and
 // audit record of the request can carry the same identifier. requestLogger
 // observes the final status of every request, including a 500 produced by
 // recoverer. recoverer sits closest to the handlers so it catches panics from
@@ -97,7 +99,7 @@ func NewRouter(log *slog.Logger, cfg RouterConfig) http.Handler {
 	// стража нет: Vite-прокси шлёт Origin дев-сервера (5173) на другой
 	// Host, а режим и так позволяет подменять актора dev-заголовками —
 	// защищать там нечего.
-	mws := []middleware{requestID(), requestLogger(log), recoverer(log)}
+	mws := []middleware{securityHeaders(), requestID(), requestLogger(log), recoverer(log)}
 	if !cfg.DevAuth {
 		mws = append(mws, csrfGuard(cfg.CORS))
 	}
@@ -115,6 +117,9 @@ func NewRouter(log *slog.Logger, cfg RouterConfig) http.Handler {
 	if cfg.DevAuth {
 		mws = append(mws, devIdentity())
 	}
+	// После sessionIdentity/devIdentity: актор в контексте уже есть,
+	// когда он есть вообще — лимитер использует его как ключ вместо IP.
+	mws = append(mws, mutationRateLimit(newRateLimiter(mutationBurst, mutationWindow)))
 	if cfg.ResolveTenant != nil {
 		mws = append(mws, tenantResolver(cfg.ResolveTenant))
 	}

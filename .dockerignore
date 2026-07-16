@@ -1,0 +1,28 @@
+# Контекст сборки корневого Dockerfile (nexd, Go) — не тащим сюда всё,
+# что нужно только фронтенду/ai-gateway/бета-проектам. Каждый из них
+# собирается своим Dockerfile из своего каталога с собственным
+# .dockerignore (см. ai-gateway/.dockerignore).
+.git/
+.github/
+.idea/
+.vscode/
+.junie/
+.claude/
+
+node_modules/
+web/
+ai-gateway/
+beta/
+docs/
+learning/
+load/
+tools/
+
+*.md
+.env*
+!.env.example
+
+bin/
+tmp/
+*.test
+__pycache__/

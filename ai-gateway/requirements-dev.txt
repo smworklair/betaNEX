@@ -1,0 +1,14 @@
+# Зависимости только для разработки/тестов — не нужны, чтобы запустить
+# сам сервис (см. requirements.txt). Установка: pip install -r requirements-dev.txt
+-r requirements.txt
+pytest==9.1.1
+# Мокаем httpx на транспортном уровне для тестов новых провайдеров —
+# проверяем реальные HTTP-контракты (URL/заголовки/тело), не переписывая
+# провайдеров под фейковый клиент. Без pytest-asyncio — тесты обычные
+# (def), сами управляют event loop через asyncio.run(), как в
+# test_budget_service.py (см. пояснение в шапке того файла).
+respx==0.23.1
+# Статические проверки (CI, см. ../.github/workflows/ci.yml): ruff — линт
+# + форматирование, mypy — типы (только app/, см. [tool.mypy] в pyproject.toml).
+ruff==0.15.21
+mypy==2.3.0

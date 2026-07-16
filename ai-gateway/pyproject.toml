@@ -1,0 +1,32 @@
+[project]
+name = "nex-ai-gateway"
+version = "0.1.0"
+description = "Учебный AI-шлюз к LLM-провайдерам (Gemini / OpenAI-совместимые) — практика выноса AI-вызовов из фронтенда на бэкенд для проекта NEX."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi==0.139.0",
+    "uvicorn[standard]==0.51.0",
+    "httpx==0.28.1",
+    "pydantic==2.13.4",
+    "pydantic-settings==2.14.2",
+    "python-dotenv==1.2.2",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_ignores = true
+warn_redundant_casts = true
+# tests/ намеренно не проверяем: **dict-фикстуры провайдеров и
+# ORM-подобные тестовые хелперы типизированы гораздо более свободно,
+# чем прод-код, и mypy там шумит на паттернах, которые для тестов
+# нормальны (см. CI-джобу ai-gateway в ../.github/workflows/ci.yml).
+files = ["app"]

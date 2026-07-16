@@ -2,10 +2,10 @@ import { useState, type ReactNode } from 'react';
 import {
   TrendingUp, Receipt, HandCoins, FileBarChart, Calculator, Banknote,
   PiggyBank, Landmark, Download, Send, CheckCircle2, Sparkles,
-  ArrowDownLeft, ArrowUpRight, CreditCard,
+  ArrowDownLeft, ArrowUpRight,
 } from 'lucide-react';
 import { PageHead, Chip, NexAsk, Beta, useApp } from '../ui';
-import { Donut, Bars, Legend, Line, type Segment } from '../charts';
+import { Donut, Legend, Line, type Segment } from '../components/charts';
 import { finance, charges, payroll, budgetLines, reports, students } from '../data';
 import { useCollection, type Entity } from '../beta/store';
 import { EntityManager } from '../beta/manager';

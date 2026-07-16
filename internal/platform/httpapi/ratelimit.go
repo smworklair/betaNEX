@@ -1,10 +1,13 @@
 package httpapi
 
 import (
+	"net/http"
 	"sync"
 	"time"
 
 	"golang.org/x/time/rate"
+
+	"github.com/smworklair/betakis/internal/kernel/identity"
 )
 
 // rateLimiter — лимитер по ключу поверх golang.org/x/time/rate:
@@ -71,5 +74,49 @@ func (l *rateLimiter) sweep(now time.Time) {
 		if now.Sub(e.seen) > time.Hour {
 			delete(l.limiters, k)
 		}
+	}
+}
+
+// mutationBurst/mutationWindow — лимит на мутирующие запросы вне
+// /auth/login (у которого свой, более строгий лимитер, см. auth.go).
+// Достаточно щедрый, чтобы не мешать обычной работе (массовый импорт
+// финансов, пакетная загрузка файлов) — это страховка от скриптового
+// злоупотребления/DoS, а не троттлинг легитимной нагрузки.
+const (
+	mutationBurst  = 120
+	mutationWindow = time.Minute
+)
+
+// mutationRateLimit — общий лимитер на все мутирующие запросы
+// (POST/PUT/PATCH/DELETE), которых раньше не касался ни один лимитер
+// (см. аудит: finance/files/tasks/campus/terminal exec были без единой
+// защиты от злоупотребления). Ключ — ID аутентифицированного актора,
+// если он есть; иначе IP.
+//
+// Актор, а не IP — намеренно: прод стоит за Caddy (см. clientIP,
+// комментарий про X-Forwarded-For), и все запросы приходят с одного и
+// того же внутреннего IP реверс-прокси. Лимитер по IP там выродился бы
+// в общий лимит на всё приложение сразу — троттлинг по актору не имеет
+// этой проблемы и вдобавок точнее: он бьёт по конкретному
+// скомпрометированному/скриптовому аккаунту, а не по всем, кто сидит
+// за одним IP.
+func mutationRateLimit(limiter *rateLimiter) middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.Method {
+			case http.MethodGet, http.MethodHead, http.MethodOptions:
+				next.ServeHTTP(w, r)
+				return
+			}
+			key := clientIP(r)
+			if actor, ok := identity.ActorFrom(r.Context()); ok && actor.ID != "" {
+				key = "actor:" + actor.ID
+			}
+			if !limiter.allow(key) {
+				WriteProblem(w, http.StatusTooManyRequests, "Слишком много запросов", "повторите чуть позже")
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
 	}
 }

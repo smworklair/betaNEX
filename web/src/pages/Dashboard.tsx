@@ -1,5 +1,5 @@
 import {
-  ShieldAlert, ShieldCheck, Users, CalendarCheck, Wallet, FileText, TrendingUp, TrendingDown,
+  ShieldAlert, ShieldCheck, Users, CalendarCheck, TrendingUp, TrendingDown,
   Monitor, LogIn, AlertTriangle, Sparkles, Bell, Activity, ChevronRight, CheckCircle2,
 } from 'lucide-react';
 import type { ReactNode, CSSProperties } from 'react';

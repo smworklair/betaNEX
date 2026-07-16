@@ -1,14 +1,24 @@
-import { useState, type ReactNode } from 'react';
-import { Sun, Moon, ShieldCheck, KeyRound, Sparkles, LogOut, PanelLeft, PanelTop, Bot, Palette, Check, Plus, Smartphone, Search, X as XIcon, LayoutDashboard, Settings2 } from 'lucide-react';
+import { useState, useEffect, type ReactNode } from 'react';
+import { Sun, Moon, ShieldCheck, KeyRound, Sparkles, LogOut, PanelLeft, PanelTop, Bot, Palette, Check, Plus, Smartphone, Search, LayoutDashboard, Settings2 } from 'lucide-react';
 import { PageHead, Chip, Avatar, Soon, Beta, useApp, type Prefs } from '../ui';
 import { DOCK_CATALOG, DEFAULT_DOCK, DOCK_MIN, DOCK_MAX, TOPBAR_CATALOG, DEFAULT_TOPBAR, TOPBAR_MIN } from '../dock';
 import { HOME_BLOCK_CATALOG, DEFAULT_HOME_BLOCKS } from '../home';
 import { roleLabel } from '../data';
-import {
-  getProvider, setProvider, getGeminiKey, setGeminiKey,
-  getCustomKey, setCustomKey, getCustomUrl, setCustomUrl, getCustomModel, setCustomModel,
-  testLlmKey, llmReady, CUSTOM_DEFAULT_URL, CUSTOM_DEFAULT_MODEL, type LlmProvider,
-} from '../llm';
+import { getProvider, setProvider, fetchProviders, checkGateway, llmReady, type LlmProvider } from '../features/ai/llm';
+
+/* Человекочитаемые названия провайдеров ai-gateway (см. ai-gateway/README.md, «Провайдеры») */
+const PROVIDER_LABELS: Record<LlmProvider, string> = {
+  gemini: 'Gemini', openai: 'OpenAI', deepseek: 'DeepSeek', qwen: 'Qwen',
+  kimi: 'Kimi', gigachat: 'GigaChat', yandexgpt: 'YandexGPT', custom: 'LLM API',
+};
+
+/* Полный список провайдеров, которые в принципе умеет ai-gateway — вне
+   зависимости от того, настроен ли для каждого ключ НА ЭТОМ сервере
+   (см. ai-gateway/README.md, «Провайдеры»). Показываем весь список
+   всегда, а не только реально доступные — так пользователь видит, что
+   вообще поддерживается, а не только текущее состояние одного сервера.
+   Недоступные варианты просто задизейблены (см. render ниже). */
+const ALL_PROVIDERS: LlmProvider[] = ['gemini', 'openai', 'deepseek', 'qwen', 'kimi', 'gigachat', 'yandexgpt', 'custom'];
 
 const ACCENTS: { id: Prefs['accent']; name: string; color: string }[] = [
   { id: 'blue', name: 'Синий', color: '#007aff' },
@@ -31,33 +41,31 @@ function Row({ title, desc, children }: { title: string; desc: string; children:
 
 export default function Settings() {
   const { theme, setTheme, user, setUser, sidebarEnabled, setSidebarEnabled, pulseEnabled, setPulseEnabled, prefs, setPref, setPage, setHomeEditing, openChat, toast } = useApp();
-  /* --- Интеллект: выбор провайдера + ключи --- */
-  const [provider, setProviderState] = useState<LlmProvider>(getProvider());
-  const [key, setKey] = useState(provider === 'custom' ? getCustomKey() : getGeminiKey());
-  const [customUrl, setCustomUrlState] = useState(getCustomUrl());
-  const [customModel, setCustomModelState] = useState(getCustomModel());
-  const [keyState, setKeyState] = useState<'idle' | 'checking' | 'ok' | 'bad'>(llmReady() ? 'ok' : 'idle');
+  /* --- Интеллект: выбор провайдера ai-gateway. Ключей здесь больше нет —
+     они настраиваются только на сервере (ai-gateway/.env.example), тут
+     лишь выбирается ИМЯ провайдера из списка, который сервер реально
+     поддерживает (см. GET /api/v1/ai/providers в web/src/llm.ts). --- */
+  const [provider, setProviderState] = useState<LlmProvider | ''>(getProvider());
+  const [available, setAvailable] = useState<LlmProvider[]>([]);
+  const [defaultProvider, setDefaultProvider] = useState<LlmProvider | null>(null);
+  const [gatewayState, setGatewayState] = useState<'off' | 'checking' | 'ok' | 'down'>(llmReady() ? 'checking' : 'off');
 
-  const switchProvider = (p: LlmProvider) => {
-    setProviderState(p);
-    setProvider(p);
-    setKey(p === 'custom' ? getCustomKey() : getGeminiKey());
-    setKeyState(llmReady() ? 'ok' : 'idle');
-  };
+  useEffect(() => {
+    if (!llmReady()) { setGatewayState('off'); return; }
+    let cancelled = false;
+    (async () => {
+      const [reachable, providers] = await Promise.all([
+        checkGateway(),
+        fetchProviders().catch(() => null),
+      ]);
+      if (cancelled) return;
+      setGatewayState(reachable ? 'ok' : 'down');
+      if (providers) { setAvailable(providers.providers); setDefaultProvider(providers.default); }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
-  const saveKey = async () => {
-    if (!key.trim()) {
-      if (provider === 'custom') setCustomKey(''); else setGeminiKey('');
-      setKeyState('idle'); toast('Ключ удалён — NEX в демо-режиме'); return;
-    }
-    setKeyState('checking');
-    const ok = await testLlmKey(provider, key, customUrl, customModel);
-    if (ok) {
-      if (provider === 'custom') { setCustomKey(key); setCustomUrl(customUrl || CUSTOM_DEFAULT_URL); setCustomModel(customModel || CUSTOM_DEFAULT_MODEL); }
-      else setGeminiKey(key);
-      setKeyState('ok'); toast('Подключено — NEX отвечает живой моделью');
-    } else { setKeyState('bad'); toast('Ключ не прошёл проверку'); }
-  };
+  const switchProvider = (p: LlmProvider | '') => { setProviderState(p); setProvider(p); };
 
   /* ---- настройка нижнего докбара (мобайл) ---- */
   const dock = prefs.dock && prefs.dock.length ? prefs.dock : DEFAULT_DOCK;
@@ -282,49 +290,46 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* ---- Интеллект: провайдер на выбор. Ключи хранятся только в этом браузере ---- */}
+      {/* ---- Интеллект: выбор провайдера ai-gateway. Ключи теперь только
+           на сервере (ai-gateway/.env.example) — здесь их больше нет,
+           см. docs/ai/README.md про перенос ИИ-вызовов на бэкенд. ---- */}
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="card-head">
           <div className="card-title"><Sparkles size={15} style={{ color: 'var(--ai)' }} /> Интеллект</div>
-          {keyState === 'ok' ? <Chip tone="chip-success">{provider === 'custom' ? 'LLM API подключён' : 'Gemini подключён'}</Chip> : <Chip tone="chip-neutral">демо-режим</Chip>}
+          {gatewayState === 'ok' && <Chip tone="chip-success">ai-gateway подключён</Chip>}
+          {gatewayState === 'down' && <Chip tone="chip-warn">ai-gateway недоступен</Chip>}
+          {gatewayState === 'off' && <Chip tone="chip-neutral">демо-режим</Chip>}
+          {gatewayState === 'checking' && <Chip tone="chip-neutral">проверяю…</Chip>}
         </div>
-        <Row title="Провайдер" desc="Кто отвечает в чате, инлайн-панелях и планировщике">
-          <div className="seg">
-            <button className={provider === 'gemini' ? 'on' : ''} onClick={() => switchProvider('gemini')}>Gemini</button>
-            <button className={provider === 'custom' ? 'on' : ''} onClick={() => switchProvider('custom')}>LLM API</button>
+        <div className="card-body">
+          <div className="muted" style={{ fontSize: 13, marginBottom: 10 }}>
+            NEX ходит за ответами в собственный ai-gateway (см. <code>ai-gateway/README.md</code>) —
+            ключи провайдеров живут только на сервере, в браузере их больше нет.
+            {gatewayState === 'off' && ' Шлюз не настроен (VITE_AI_ENABLED пуст) — чат работает на встроенных демо-ответах.'}
+            {gatewayState === 'down' && ' Шлюз настроен, но не отвечает — проверьте, что ai-gateway запущен.'}
+          </div>
+        </div>
+        <Row title="Провайдер" desc="Кто отвечает в чате, инлайн-панелях и планировщике — реально доступны только те, для кого на сервере задан ключ (серые — не настроены)">
+          <div className="seg" style={{ flexWrap: 'wrap' }}>
+            <button className={provider === '' ? 'on' : ''} disabled={gatewayState !== 'ok'} onClick={() => switchProvider('')}>
+              По умолчанию{defaultProvider ? ` (${PROVIDER_LABELS[defaultProvider]})` : ''}
+            </button>
+            {ALL_PROVIDERS.map((p) => {
+              const isAvailable = gatewayState === 'ok' && available.includes(p);
+              return (
+                <button
+                  key={p}
+                  className={provider === p ? 'on' : ''}
+                  disabled={!isAvailable}
+                  title={isAvailable ? undefined : 'Не настроен на сервере (нет ключа в ai-gateway/.env)'}
+                  onClick={() => switchProvider(p)}
+                >
+                  {PROVIDER_LABELS[p]}
+                </button>
+              );
+            })}
           </div>
         </Row>
-        <div className="card-body" style={{ borderTop: '1px solid var(--border)' }}>
-          <div className="muted" style={{ fontSize: 13, marginBottom: 10 }}>
-            {provider === 'custom'
-              ? <>OpenAI-совместимый API. Ключ хранится <b>только в этом браузере</b>.</>
-              : <>Ключ Gemini API из Google AI Studio. Хранится <b>только в этом браузере</b>.</>}
-          </div>
-          {provider === 'custom' && (
-            <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-              <input className="input" value={customUrl} onChange={(e) => setCustomUrlState(e.target.value)} placeholder={CUSTOM_DEFAULT_URL} style={{ flex: 2, minWidth: 200 }} />
-              <input className="input" value={customModel} onChange={(e) => setCustomModelState(e.target.value)} placeholder={CUSTOM_DEFAULT_MODEL} style={{ flex: 1, minWidth: 100 }} />
-            </div>
-          )}
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input className="input" type="password" value={key} onChange={(e) => { setKey(e.target.value); setKeyState('idle'); }}
-              placeholder={provider === 'custom' ? 'Ключ LLM API (llm-…)' : 'Ключ Gemini API…'} style={{ flex: 1 }} />
-            <button className="btn btn-primary" onClick={saveKey} disabled={keyState === 'checking'}>
-              {keyState === 'checking' ? 'Проверяю…' : 'Сохранить'}
-            </button>
-            {(provider === 'custom' ? getCustomKey() : getGeminiKey()) && (
-              <button className="btn btn-ghost" title="Отключить" onClick={() => {
-                if (provider === 'custom') setCustomKey(''); else setGeminiKey('');
-                setKey(''); setKeyState('idle'); toast('Отключено — демо-режим');
-              }}><XIcon size={15} /></button>
-            )}
-          </div>
-          {keyState === 'bad' && (
-            <div style={{ color: 'var(--danger)', fontSize: 12.5, marginTop: 8 }}>
-              Ключ не прошёл проверку. {provider === 'custom' ? 'Проверьте ключ, адрес и модель; возможно, сервис не разрешает запросы из браузера (CORS).' : 'Проверьте ключ в Google AI Studio.'}
-            </div>
-          )}
-        </div>
       </div>
 
       {/* ---- Центр агентов живёт здесь, а не в левом меню ---- */}

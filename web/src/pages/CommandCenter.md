@@ -17,4 +17,4 @@
 
 ## Связи
 
-Зависит от `web/src/ui.tsx` (`useApp`, `Chip`, `Avatar`, `Sparkline`, `NexAsk`, `AskHero`, `severityTone`, `severityLabel`), `web/src/blocks.tsx` (`AtRiskList`), `web/src/charts.tsx` (`Donut`, `Bars`, `Line`, `Legend`, `Segment`), `web/src/data.ts` (много моковых источников: `sessions`, `failedLogins`, `auditEvents`, `groups`, `gradesFor` и др.). Является одним из главных «показательных» экранов приложения — маршрутизируется из `App.tsx`.
+Зависит от `web/src/ui.tsx` (`useApp`, `Chip`, `Avatar`, `Sparkline`, `NexAsk`, `AskHero`, `severityTone`, `severityLabel`), `web/src/blocks.tsx` (`AtRiskList`), `web/src/components/charts.tsx` (`Donut`, `Bars`, `Line`, `Legend`, `Segment`), `web/src/data.ts` (много моковых источников: `sessions`, `failedLogins`, `auditEvents`, `groups`, `gradesFor` и др.). Является одним из главных «показательных» экранов приложения — маршрутизируется из `App.tsx`.
