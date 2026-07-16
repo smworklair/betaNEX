@@ -35,6 +35,13 @@ make test-db  # same, plus Postgres integration tests
 make help     # list all targets
 ```
 
+Prefer everything containerized instead (no local Go/Node/Python
+toolchains needed)? `make stack` starts the full dev stack from
+`compose.yaml`: Postgres, `nexd`, the web frontend (Vite dev server),
+and `ai-gateway` (see `ai-gateway/README.md`). `make stack-down` stops
+it. Don't run `dev`+`run` and `stack` at the same time — both try to
+bind port 8080.
+
 Without `NEX_DATABASE_URL` the service runs in **in-memory mode** (no
 persistence) — handy for a quick look, not for real use. With a database
 URL set, `nexd` applies embedded SQL migrations automatically on startup.

@@ -7,6 +7,9 @@ coverage/
 *.log
 .env*
 !.env.example
+# pnpm store, если случайно создастся в корне (см. compose.yaml:web — в
+# норме store живёт в именованном docker-томе, не в репозитории).
+.pnpm-store/
 
 # Go / NEX backend
 /bin/

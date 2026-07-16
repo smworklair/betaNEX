@@ -1,0 +1,16 @@
+# Не тащим в контекст сборки ничего, что не нужно рантайму образа.
+.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+tests/
+.env
+.env.*
+!.env.example
+tenants.json
+.git
+.gitignore
+README.md
+Dockerfile
+.dockerignore

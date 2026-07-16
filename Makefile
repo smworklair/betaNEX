@@ -7,7 +7,7 @@ DATABASE_URL ?= postgres://nex:nex@localhost:5432/nex?sslmode=disable
 SQLC_VERSION := v1.29.0
 
 .DEFAULT_GOAL := help
-.PHONY: help build run test test-db vet fmt tidy lint clean dev dev-down watch migrate sqlc smoke-api seed
+.PHONY: help build run test test-db vet fmt tidy lint clean dev dev-down stack stack-down watch migrate sqlc smoke-api seed
 
 # Show the available targets.
 help:
@@ -15,8 +15,10 @@ help:
 	@echo "  build         Compile the nexd binary into ./bin"
 	@echo "  run           Run nexd from source"
 	@echo "  watch         Run nexd with hot-reload (air)"
-	@echo "  dev           Start dev environment (docker compose: postgres)"
+	@echo "  dev           Start dev environment (docker compose: postgres only)"
 	@echo "  dev-down      Stop dev environment"
+	@echo "  stack         Start the FULL dev stack in Docker (postgres+nexd+web+ai-gateway)"
+	@echo "  stack-down    Stop the full dev stack"
 	@echo "  test          Run all tests with the race detector"
 	@echo "  test-db       Run tests including Postgres integration (needs DATABASE_URL)"
 	@echo "  migrate       Apply pending SQL migrations (nexd migrate)"
@@ -41,12 +43,23 @@ run:
 watch:
 	air
 
-# Start the local dev environment (Postgres).
+# Start the local dev environment (Postgres only) — pairs with `make run`
+# for the usual Go-from-source, hot-reload workflow.
 dev:
-	docker compose up -d --wait
+	docker compose up -d --wait postgres
 
 # Stop the local dev environment.
 dev-down:
+	docker compose down
+
+# Start the full stack in Docker: postgres + nexd + web + ai-gateway.
+# Use this instead of `dev`+`run` when you just want everything running
+# without local Go/Node/Python toolchains (see compose.yaml).
+stack:
+	docker compose up -d --wait
+
+# Stop the full stack.
+stack-down:
 	docker compose down
 
 # Run all tests with the race detector.
