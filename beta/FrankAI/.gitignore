@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+*.pyc
+# Обученные веса — регенерируются load_or_train()/scripts/train.py,
+# не бинарный артефакт для git.
+weights/*.npz

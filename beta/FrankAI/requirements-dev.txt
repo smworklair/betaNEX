@@ -1,0 +1,4 @@
+# Зависимости только для тестов — не нужны для использования FrankAI как
+# библиотеки (см. requirements.txt). Установка: pip install -r requirements-dev.txt
+-r requirements.txt
+pytest>=8.0
