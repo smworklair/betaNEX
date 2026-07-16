@@ -21,8 +21,8 @@ python3 tools/api_smoke.py                    # или: make smoke-api
 python3 tools/api_smoke.py --base-url http://localhost:8080 --tenant college-1
 ```
 
-Дополняет `load/smoke.js` (k6): тот меряет латентность под нагрузкой,
-этот проверяет поведение.
+Дополняет `load/smoke.js` (k6, см. `load/README.md`): тот меряет
+латентность под нагрузкой, этот проверяет поведение.
 
 ## seed_demo.py — демо-данные
 

@@ -7,7 +7,7 @@ DATABASE_URL ?= postgres://nex:nex@localhost:5432/nex?sslmode=disable
 SQLC_VERSION := v1.29.0
 
 .DEFAULT_GOAL := help
-.PHONY: help build run test test-db vet fmt tidy lint vuln clean dev dev-down stack stack-down watch migrate sqlc smoke-api seed
+.PHONY: help build run test test-db vet fmt tidy lint vuln clean dev dev-down stack stack-down watch migrate sqlc smoke-api seed smoke-load
 
 # Show the available targets.
 help:
@@ -24,6 +24,7 @@ help:
 	@echo "  migrate       Apply pending SQL migrations (nexd migrate)"
 	@echo "  smoke-api     Functional API smoke test against a running nexd (python3)"
 	@echo "  seed          Seed demo data through the API (python3)"
+	@echo "  smoke-load    Load smoke test against a running nexd (k6, see load/README.md)"
 	@echo "  sqlc          Generate type-safe query code from SQL"
 	@echo "  vet           Run go vet"
 	@echo "  fmt           Format all Go source with gofmt"
@@ -82,6 +83,11 @@ smoke-api:
 # Seed demo data through the API (see tools/README.md).
 seed:
 	python3 tools/seed_demo.py
+
+# Нагрузочный смоук k6 против запущенного nexd (см. load/README.md).
+# Требует установленный k6 (https://k6.io/docs/get-started/installation/).
+smoke-load:
+	k6 run load/smoke.js
 
 # Generate type-safe query code from SQL (sqlc).
 sqlc:
