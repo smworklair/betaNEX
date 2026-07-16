@@ -72,6 +72,11 @@ func run() error {
 	}
 
 	log := logging.New(os.Stdout, cfg.Log.Level, cfg.Log.Format)
+	// httpapi.WriteProblem логирует полную причину 5xx через slog.Default()
+	// (detail в ответ клиенту не попадает — см. problem.go), поэтому
+	// process-wide default должен быть тем же настроенным логгером, а не
+	// стандартным fallback-логгером slog.
+	slog.SetDefault(log)
 
 	// ctx is cancelled on the first SIGINT or SIGTERM, which triggers graceful
 	// shutdown. A second signal restores default behaviour and terminates the

@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 	"runtime/debug"
+	"strings"
 	"time"
 )
 
@@ -63,6 +64,36 @@ func requestLogger(log *slog.Logger) middleware {
 				slog.Duration("duration", time.Since(start)),
 				slog.String("remote", r.RemoteAddr),
 			)
+		})
+	}
+}
+
+// securityHeaders проставляет базовые защитные HTTP-заголовки на каждый
+// ответ nexd. Caddy на периметре (deploy/Caddyfile) уже задаёт часть этих
+// заголовков для статики SPA, но nexd не должен на это полагаться: прямое
+// обращение к сервису (внутри docker-сети, локальная разработка,
+// неверно настроенный прокси) обязано получать ту же защиту.
+//
+// nexd отдаёт только JSON/API-ответы (саму SPA раздаёт Caddy из
+// /srv/web), поэтому CSP здесь — узкий default-src 'none': ни один
+// API-ответ не должен исполняться браузером как скрипт/стиль/фрейм.
+// hsts включается только когда соединение реально идёт по HTTPS
+// (напрямую или через X-Forwarded-Proto от Caddy) — иначе в локальной
+// разработке по http://localhost браузер навсегда запомнит принудительный
+// редирект на https и сломает dev-окружение.
+func securityHeaders() middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			h := w.Header()
+			h.Set("X-Content-Type-Options", "nosniff")
+			h.Set("X-Frame-Options", "DENY")
+			h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+			h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()")
+			h.Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
+			if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+				h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+			}
+			next.ServeHTTP(w, r)
 		})
 	}
 }
