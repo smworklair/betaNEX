@@ -7,7 +7,7 @@ import {
 import { useApp, Chip, NexAsk } from './ui';
 import { students, finance } from './data';
 import { nexReply, attendanceRate, avgGrade, pageInsight, PAGE_TITLES } from './nexbrain';
-import { llmReady, llmAsk } from './llm';
+import { llmReady, llmAsk, type LlmTurn } from './llm';
 import { Md } from './md';
 import { useCollection, uid, nowIso, type Entity } from './beta/store';
 
@@ -64,9 +64,27 @@ function buildContext(objStudent: number | null, page: string): Ctx {
 /* ---------- 1) In-page inline panel (portaled under the clicked block) ---------- */
 interface Msg { who: 'u' | 'n'; text: string; nav?: { label: string; page: string }[]; action?: string }
 
+/* История инлайн-панели — своя на раздел (или на конкретного студента,
+   если открыто его досье, чтобы не путать с общим чатом раздела
+   «Студенты»). sessionStorage, а не localStorage — это лёгкий контекст
+   на время вкладки, не хочется хранить его вечно (см. web/src/pages/aibox.tsx
+   про такой же приём для встраиваемого мини-чата). */
+const INLINE_HISTORY_LIMIT = 12;
+function inlineHistoryKey(ctxKey: string): string { return `nex-ai-inline-hist:${ctxKey}`; }
+function loadInlineHistory(ctxKey: string): Msg[] {
+  try { const raw = sessionStorage.getItem(inlineHistoryKey(ctxKey)); return raw ? (JSON.parse(raw) as Msg[]) : []; }
+  catch { return []; }
+}
+function saveInlineHistory(ctxKey: string, msgs: Msg[]): void {
+  try { sessionStorage.setItem(inlineHistoryKey(ctxKey), JSON.stringify(msgs.slice(-INLINE_HISTORY_LIMIT))); }
+  catch { /* приватный режим / квота — не критично */ }
+}
+
 function InlinePanel() {
   const { inlineSeed, inlineTitle, objStudent, page, closeInline, openChat, setPage, toast } = useApp();
   const ctx = buildContext(objStudent, page);
+  // Досье студента — отдельная ветка от общего чата раздела «Студенты».
+  const ctxKey = ctx.sid != null ? `student:${ctx.sid}` : page;
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const endRef = useRef<HTMLDivElement | null>(null);
@@ -74,20 +92,27 @@ function InlinePanel() {
 
   useEffect(() => {
     let cancelled = false;
+    const prior = loadInlineHistory(ctxKey);
+    const priorTurns: LlmTurn[] = prior.filter((m) => m.text).map((m) => ({ role: m.who === 'u' ? 'user' : 'model', text: m.text }));
+
     if (inlineSeed) {
+      const withQuestion: Msg[] = [...prior, { who: 'u', text: inlineSeed }];
+      setMsgs([...withQuestion, { who: 'n', text: '…' }]);
+      const finish = (m: Msg) => { const next = [...withQuestion, m]; setMsgs(next); saveInlineHistory(ctxKey, next); };
       if (llmReady()) {
-        setMsgs([{ who: 'u', text: inlineSeed }, { who: 'n', text: '…' }]);
-        llmAsk(`Контекст: пользователь на экране «${ctx.title}». Вопрос: ${inlineSeed}`)
-          .then((text) => { if (!cancelled) setMsgs([{ who: 'u', text: inlineSeed }, { who: 'n', text }]); })
+        llmAsk(inlineSeed, { history: priorTurns, context: { page, title: ctx.title, facts: ctx.facts } })
+          .then((text) => { if (!cancelled) finish({ who: 'n', text }); })
           .catch(() => {
             if (cancelled) return;
             const a = nexReply(inlineSeed, { student: ctx.sid ?? null, page });
-            setMsgs([{ who: 'u', text: inlineSeed }, { who: 'n', text: a.text, nav: a.nav, action: a.action }]);
+            finish({ who: 'n', text: a.text, nav: a.nav, action: a.action });
           });
       } else {
         const a = nexReply(inlineSeed, { student: ctx.sid ?? null, page });
-        setMsgs([{ who: 'u', text: inlineSeed }, { who: 'n', text: a.text, nav: a.nav, action: a.action }]);
+        finish({ who: 'n', text: a.text, nav: a.nav, action: a.action });
       }
+    } else if (prior.length > 0) {
+      setMsgs(prior);
     } else {
       setMsgs([{ who: 'n', text: `Я раскрылся прямо в этом блоке и вижу контекст страницы «${ctx.title}». Спрашивайте.` }]);
     }
@@ -99,23 +124,27 @@ function InlinePanel() {
 
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'nearest' }); }, [msgs]);
 
-  /* Gemini, если ключ подключён; иначе локальный мок (nexbrain) */
+  /* ai-gateway, если сконфигурирован; иначе локальный мок (nexbrain) */
   const ask = async (q: string) => {
     if (!q.trim()) return;
     setInput('');
-    setMsgs((m) => [...m, { who: 'u', text: q }]);
+    const priorTurns: LlmTurn[] = msgs.filter((m) => m.text).map((m) => ({ role: m.who === 'u' ? 'user' : 'model', text: m.text }));
+    const withQuestion: Msg[] = [...msgs, { who: 'u', text: q }];
+    setMsgs(withQuestion);
+    const finish = (m: Msg) => { const next = [...withQuestion, m]; setMsgs(next); saveInlineHistory(ctxKey, next); };
+
     if (llmReady()) {
-      setMsgs((m) => [...m, { who: 'n', text: '…' }]);
+      setMsgs([...withQuestion, { who: 'n', text: '…' }]);
       try {
-        const text = await llmAsk(`Контекст: пользователь на экране «${ctx.title}». Вопрос: ${q}`);
-        setMsgs((m) => [...m.slice(0, -1), { who: 'n', text }]);
+        const text = await llmAsk(q, { history: priorTurns, context: { page, title: ctx.title, facts: ctx.facts } });
+        finish({ who: 'n', text });
         return;
       } catch {
-        setMsgs((m) => m.slice(0, -1)); // откат к моку ниже
+        setMsgs(withQuestion); // откат к моку ниже
       }
     }
     const a = nexReply(q, { student: ctx.sid ?? null, page });
-    setMsgs((m) => [...m, { who: 'n', text: a.text, nav: a.nav, action: a.action }]);
+    finish({ who: 'n', text: a.text, nav: a.nav, action: a.action });
   };
   const submit = (e: FormEvent) => { e.preventDefault(); ask(input); };
 

@@ -1,46 +1,53 @@
 /* ============================================================
-   LLM-слой NEX — два провайдера на выбор (Настройки → Интеллект):
-   1) Gemini (Google, gemini-2.5-flash)
-   2) LLM API — любой OpenAI-совместимый endpoint (/chat/completions)
+   LLM-слой NEX — единая точка входа к ai-gateway (бэкенд, ai-gateway/).
 
-   Ключи вводятся в Настройках и хранятся ТОЛЬКО в localStorage
-   браузера — в репозиторий и на сервер не попадают.
-   BACKEND: в проде этот файл заменяется на вызов /api/nex,
-   где ключ лежит в переменной окружения, а не у клиента.
+   ДО этой задачи фронтенд ходил напрямую в Gemini/OpenAI-совместимый
+   API из браузера, а ключ пользователь вводил в Настройках и он жил в
+   localStorage (см. историю в docs/ai/README.md, §1 — "как это было").
+   Два системных недостатка такого подхода: ключ есть у каждого клиента
+   (нельзя ни спрятать, ни отозвать) и нет единой точки для лимитов и
+   таймаутов. Поэтому все вызовы теперь идут в ai-gateway — ключи живут
+   только там, в переменных окружения сервера (см. ai-gateway/.env.example).
+
+   Конфигурация — через VITE_AI_GATEWAY_URL (см. .env.example), тот же
+   принцип, что и у web/src/api/client.ts:VITE_API_URL:
+     • пусто / не задано → демо-режим: ИИ выключен, все точки входа
+       (Chat.tsx, ai.tsx, aibox.tsx) сами откатываются на локальный мок
+       (nexReply/fallback), сеть не трогаем;
+     • URL шлюза          → реальные вызовы к ai-gateway.
    ============================================================ */
 
-const GEMINI_MODEL = 'gemini-2.5-flash';
+const RAW_BASE = (import.meta.env.VITE_AI_GATEWAY_URL ?? '').trim();
 
-export type LlmProvider = 'gemini' | 'custom';
+/** Базовый URL ai-gateway. Пусто = ИИ не сконфигурирован (демо-режим). */
+export const AI_GATEWAY_BASE = RAW_BASE.replace(/\/+$/, '');
+
+/** Сконфигурирован ли шлюз — если нет, весь ИИ-слой отдаёт моки. */
+export const AI_GATEWAY_CONFIGURED = AI_GATEWAY_BASE.length > 0;
+
+/** Имя провайдера на ai-gateway (см. ai-gateway/app/api/schemas.py:ProviderName). */
+export type LlmProvider = 'gemini' | 'custom' | 'openai' | 'deepseek' | 'qwen' | 'kimi' | 'gigachat' | 'yandexgpt';
 
 const store = {
   get: (k: string, def = '') => localStorage.getItem(k) ?? def,
   set: (k: string, v: string) => (v.trim() ? localStorage.setItem(k, v.trim()) : localStorage.removeItem(k)),
 };
 
-/* --- активный провайдер --- */
-export const getProvider = (): LlmProvider => (store.get('nex-llm-provider') === 'custom' ? 'custom' : 'gemini');
-export const setProvider = (p: LlmProvider) => store.set('nex-llm-provider', p);
+/* --- выбор провайдера: только предпочтение, БЕЗ ключей — ключи теперь
+   только на сервере ai-gateway (см. .env.example там же). Пустая строка
+   означает "пусть шлюз возьмёт провайдера по умолчанию из своего конфига". --- */
+export const getProvider = (): LlmProvider | '' => (store.get('nex-llm-provider') as LlmProvider | '') || '';
+export const setProvider = (p: LlmProvider | '') => store.set('nex-llm-provider', p);
 
-/* --- Gemini --- */
-export const getGeminiKey = () => store.get('nex-gemini-key');
-export const setGeminiKey = (k: string) => store.set('nex-gemini-key', k);
-
-/* --- LLM API (OpenAI-совместимый) --- */
-export const CUSTOM_DEFAULT_URL = 'https://llm-api.fun/v1';
-export const CUSTOM_DEFAULT_MODEL = 'agent';
-export const getCustomKey = () => store.get('nex-custom-key');
-export const setCustomKey = (k: string) => store.set('nex-custom-key', k);
-export const getCustomUrl = () => store.get('nex-custom-url', CUSTOM_DEFAULT_URL);
-export const setCustomUrl = (u: string) => store.set('nex-custom-url', u.replace(/\/+$/, ''));
-export const getCustomModel = () => store.get('nex-custom-model', CUSTOM_DEFAULT_MODEL);
-export const setCustomModel = (m: string) => store.set('nex-custom-model', m);
-
-/** Активный провайдер настроен и готов отвечать. */
-export const llmReady = () =>
-  getProvider() === 'custom' ? getCustomKey().length > 5 : getGeminiKey().length > 10;
+/** ИИ готов отвечать — то есть шлюз сконфигурирован. Ключей проверять больше не нужно. */
+export const llmReady = () => AI_GATEWAY_CONFIGURED;
 
 /** Системный контекст NEX — личность + данные организации.
+    Используется ГЛАВНЫМ чатом (Chat.tsx) как явный system-override —
+    он не завязан на один раздел фронтенда, в отличие от мини-чатов на
+    страницах (AiBox/InlinePanel), которые вместо этого шлют `context`
+    (page/facts) и получают промпт раздела с сервера, см. PageContext
+    ниже и ai-gateway/app/core/context_registry.py.
     BACKEND: данные заменяются на RAG по реальной БД. */
 export const ORG_CONTEXT = `
 Ты — NEX (Neural Executive eXpert), интеллектуальный помощник корпоративной информационной системы колледжа.
@@ -261,7 +268,18 @@ export const ORG_CONTEXT = `
 `;
 
 export interface LlmTurn { role: 'user' | 'model'; text: string; }
-interface AskOpts { system?: string; history?: LlmTurn[]; }
+
+/** Контекст страницы — откуда открыт мини-чат. Сервер (ai-gateway)
+    превращает `page` в ролевую инструкцию, а `facts`/`state` подмешивает
+    как данные экрана (см. ai-gateway/app/core/context_registry.py). */
+export interface PageContext {
+  page: string;
+  title?: string;
+  facts?: string[];
+  state?: string;
+}
+
+interface AskOpts { system?: string; history?: LlmTurn[]; context?: PageContext; }
 
 const withTimeout = async (ms: number, run: (signal: AbortSignal) => Promise<Response>) => {
   const ctrl = new AbortController();
@@ -269,71 +287,47 @@ const withTimeout = async (ms: number, run: (signal: AbortSignal) => Promise<Res
   try { return await run(ctrl.signal); } finally { clearTimeout(timer); }
 };
 
-/* --- путь 1: Gemini generateContent --- */
-async function askGemini(user: string, opts: AskOpts, key = getGeminiKey()): Promise<string> {
-  if (!key) throw new Error('no-key');
-  const contents = [
-    ...(opts.history || []).map((t) => ({ role: t.role, parts: [{ text: t.text }] })),
-    { role: 'user', parts: [{ text: user }] },
-  ];
-  const res = await withTimeout(40000, (signal) => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`, {
-    method: 'POST',
-    signal,
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: opts.system || ORG_CONTEXT }] },
-      contents,
-      /* лёгкое «мышление» ради связности, но без долгих пауз */
-      generationConfig: { temperature: 0.75, topP: 0.95, maxOutputTokens: 2048, thinkingConfig: { thinkingBudget: 256 } },
-    }),
-  }));
-  if (!res.ok) throw new Error(`gemini-${res.status}`);
-  const data = await res.json();
-  const text: string = data?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text || '').join('') || '';
-  if (!text.trim()) throw new Error('gemini-empty');
-  return text.trim();
-}
-
-/* --- путь 2: OpenAI-совместимый /chat/completions (LLM API) --- */
-async function askCustom(user: string, opts: AskOpts, key = getCustomKey(), url = getCustomUrl(), model = getCustomModel()): Promise<string> {
-  if (!key) throw new Error('no-key');
-  const messages = [
-    { role: 'system', content: opts.system || ORG_CONTEXT },
-    ...(opts.history || []).map((t) => ({ role: t.role === 'model' ? 'assistant' : 'user', content: t.text })),
-    { role: 'user', content: user },
-  ];
-  const res = await withTimeout(60000, (signal) => fetch(`${url}/chat/completions`, {
-    method: 'POST',
-    signal,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-    body: JSON.stringify({ model, messages, temperature: 0.75, max_tokens: 2048 }),
-  }));
-  if (!res.ok) throw new Error(`custom-${res.status}`);
-  const data = await res.json();
-  const text: string = data?.choices?.[0]?.message?.content || '';
-  if (!text.trim()) throw new Error('custom-empty');
-  return text.trim();
-}
-
-/** Единая точка входа: спросить активного провайдера. Бросает исключение
-    при ошибке — вызывающий код обязан откатиться на локальный мок (nexbrain). */
+/** Единая точка входа: спросить ai-gateway. Бросает исключение при
+    ошибке/не-конфигурации — вызывающий код обязан откатиться на
+    локальный мок (nexbrain/fallback), см. вызовы llmAsk по проекту. */
 export async function llmAsk(user: string, opts: AskOpts = {}): Promise<string> {
-  return getProvider() === 'custom' ? askCustom(user, opts) : askGemini(user, opts);
+  if (!AI_GATEWAY_CONFIGURED) throw new Error('gateway-not-configured');
+
+  const history = (opts.history || []).map((t) => ({ role: t.role === 'model' ? 'assistant' : 'user', content: t.text }));
+  const body: Record<string, unknown> = { message: user, history };
+  if (opts.system) body.system = opts.system;
+  if (opts.context) body.context = opts.context;
+  const provider = getProvider();
+  if (provider) body.provider = provider;
+
+  const res = await withTimeout(45000, (signal) => fetch(`${AI_GATEWAY_BASE}/api/v1/ai/ask`, {
+    method: 'POST',
+    signal,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }));
+  if (!res.ok) throw new Error(`gateway-${res.status}`);
+  const data = await res.json();
+  const text: string = data?.text || '';
+  if (!text.trim()) throw new Error('gateway-empty');
+  return text.trim();
 }
 
-/** Проверка ключа из Настроек: короткий дешёвый запрос выбранному провайдеру. */
-export async function testLlmKey(provider: LlmProvider, key: string, url?: string, model?: string): Promise<boolean> {
+/** Список провайдеров, реально настроенных на сервере — для выбора в
+    Настройках (никаких ключей на клиенте, только имена). */
+export interface GatewayProviders { providers: LlmProvider[]; default: LlmProvider; }
+export async function fetchProviders(): Promise<GatewayProviders> {
+  const res = await fetch(`${AI_GATEWAY_BASE}/api/v1/ai/providers`);
+  if (!res.ok) throw new Error(`providers-${res.status}`);
+  return res.json();
+}
+
+/** Проверка, что шлюз вообще отвечает — для индикатора статуса в Настройках. */
+export async function checkGateway(): Promise<boolean> {
+  if (!AI_GATEWAY_CONFIGURED) return false;
   try {
-    if (provider === 'gemini') {
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key.trim() },
-        body: JSON.stringify({ contents: [{ parts: [{ text: 'ok' }] }], generationConfig: { maxOutputTokens: 5 } }),
-      });
-      return res.ok;
-    }
-    const text = await askCustom('Ответь одним словом: ок', {}, key.trim(), (url || CUSTOM_DEFAULT_URL).replace(/\/+$/, ''), model || CUSTOM_DEFAULT_MODEL);
-    return text.length > 0;
+    const res = await withTimeout(5000, (signal) => fetch(`${AI_GATEWAY_BASE}/healthz`, { signal }));
+    return res.ok;
   } catch { return false; }
 }
 

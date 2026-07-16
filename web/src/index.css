@@ -924,9 +924,12 @@ table.tbl { width: 100%; border-collapse: separate; border-spacing: 0; }
    что у .nex-inline/.inline-badge (см. ai.tsx): ответ должен читаться
    как часть страницы, а не как отдельный подсвеченный ИИ-виджет. */
 .ai-box-quick { display: flex; flex-wrap: wrap; gap: 7px; }
-/* AiBox — вопрос-ответ в карточке раздела: ответ приходит чатовым
-   пузырём NEX (нейтральный surface-2), тем же, что в мини-чатах. */
-.ai-box-answer { margin-top: 12px; padding: 11px 14px; border-radius: 4px 14px 14px 14px; background: var(--surface-2); font-size: 13.5px; line-height: 1.6; max-width: 660px; }
+/* AiBox — короткий тред вопрос-ответ в карточке раздела: ответ приходит
+   чатовым пузырём NEX (нейтральный surface-2), тем же, что в мини-чатах.
+   История своя на раздел (page) — см. web/src/pages/aibox.tsx. */
+.ai-box-thread { display: flex; flex-direction: column; gap: 8px; }
+.ai-box-question { font-size: 13.5px; font-weight: 600; color: var(--text-2); }
+.ai-box-answer { padding: 11px 14px; border-radius: 4px 14px 14px 14px; background: var(--surface-2); font-size: 13.5px; line-height: 1.6; max-width: 660px; }
 
 /* индикатор «печатает» */
 .typing { display: inline-flex; gap: 5px; padding: 6px 2px; }

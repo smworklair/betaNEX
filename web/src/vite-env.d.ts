@@ -11,6 +11,15 @@ interface ImportMetaEnv {
    * Пример: https://nex-api.example.com
    */
   readonly VITE_API_URL?: string;
+
+  /**
+   * Базовый URL ai-gateway (см. ai-gateway/README.md). Пусто/не задано —
+   * ИИ выключен, мини-чаты и главный чат работают на встроенных моках
+   * (демо-режим), сеть не трогается. Ключи провайдеров LLM НЕ хранятся
+   * во фронтенде — они живут только в переменных окружения ai-gateway.
+   * Пример: http://localhost:8090
+   */
+  readonly VITE_AI_GATEWAY_URL?: string;
 }
 
 interface ImportMeta {
