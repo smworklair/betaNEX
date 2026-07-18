@@ -8,7 +8,7 @@
 # и прочего, что нужно только на этапе сборки.
 
 # --- Этап 1: сборка зависимостей в venv -----------------------------------
-FROM python:3.12-slim AS build
+FROM python:3.14-slim AS build
 
 WORKDIR /app
 
@@ -20,7 +20,7 @@ RUN python -m venv /venv \
     && /venv/bin/pip install --no-cache-dir -r requirements.txt
 
 # --- Этап 2: рантайм --------------------------------------------------------
-FROM python:3.12-slim AS runtime
+FROM python:3.14-slim AS runtime
 
 # curl нужен только для HEALTHCHECK ниже — не тянем ничего лишнего.
 RUN apt-get update \
