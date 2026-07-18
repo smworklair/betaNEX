@@ -72,7 +72,7 @@ jobs:
       # старый тег, если сборки пришли не по порядку); deploy/
       # compose.prod.yaml уже ссылается на ghcr.io/.../nex:latest.
       - id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
           flavor: |
