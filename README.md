@@ -19,6 +19,21 @@ applications depend on modules, modules depend on the kernel, the kernel depends
 on nothing above it. AI is treated as a future *actor* that uses the same
 authorized, audited paths as any other actor — it is not part of the kernel.
 
+## Built with Codex & GPT-5.6
+
+This hackathon prototype was developed with **OpenAI Codex powered by
+GPT-5.6**. Codex was used as an engineering copilot to iterate on the modular
+architecture, implement and refine the Go and Python services, write and
+review tests, and improve the project documentation. The resulting code and
+technical decisions were reviewed by the project author; Codex is a
+development tool, not a runtime dependency of NEX.
+
+NEX itself exposes AI through the separate `ai-gateway` service. That gateway
+keeps provider credentials server-side and routes AI requests through the same
+authenticated, tenant-scoped, and audited paths as human actions. See
+[the hackathon project description](DEVPOST-022.md) and
+[AI gateway documentation](ai-gateway/README.md) for details.
+
 ## Requirements
 
 - Go 1.25 or newer (older toolchains auto-upgrade via the `go` directive).
