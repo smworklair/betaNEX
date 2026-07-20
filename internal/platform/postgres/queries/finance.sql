@@ -1,4 +1,4 @@
--- Запросы модуля «Финансы». Генерация: make sqlc → internal/platform/postgres/db.
+x``-- Запросы модуля «Финансы». Генерация: make sqlc → internal/platform/postgres/db.
 -- Фильтра по tenant_id в тексте запросов нет намеренно: каждый запрос
 -- выполняется в транзакции с app.tenant_id, и границу проводит RLS.
 

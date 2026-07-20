@@ -5,8 +5,17 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="81f15d5b-4d4c-4edd-82fe-179c9ae2b750" name="Изменения" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/betaNEX.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/betaNEX.iml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/GoNex.md.docx.md" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/DEVPOST-004.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/DEVPOST-004ru.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/DEVPOST-005.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/DEVPOST-005ru.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/DEVPOST_003.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/DEVPOST_003ru.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/devpost_006.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/devpost_006ru.md" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/internal/platform/postgres/queries/finance.sql" beforeDir="false" afterPath="$PROJECT_DIR$/internal/platform/postgres/queries/finance.sql" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -14,20 +23,45 @@
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
   <component name="EmbeddingIndexingInfo">
-    <option name="cachedIndexableFilesCount" value="531" />
+    <option name="cachedIndexableFilesCount" value="540" />
   </component>
   <component name="GOROOT" url="file://$PROJECT_DIR$/../Program Files/Go" />
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
+  <component name="GitToolBoxStore">
+    <option name="branchesCleanupHistory">
+      <BranchesCleanupHistory>
+        <option name="history">
+          <list>
+            <BranchCleanupEntry>
+              <option name="deletions">
+                <list>
+                  <BranchDeletion>
+                    <option name="hash" value="9170607d1db22c7ea60bf6f1ee76a3d89254709b" />
+                    <option name="name" value="claude/backend-session-improvements-mfonkr" />
+                  </BranchDeletion>
+                  <BranchDeletion>
+                    <option name="hash" value="48e26989eb22c0b8844d176f3688b2d14a8fcff8" />
+                    <option name="name" value="revert-31-claude/backend-session-improvements-mfonkr" />
+                  </BranchDeletion>
+                </list>
+              </option>
+              <option name="timestamp" value="1784545267312" />
+            </BranchCleanupEntry>
+          </list>
+        </option>
+      </BranchesCleanupHistory>
+    </option>
+  </component>
   <component name="McpProjectServerCommands">
     <commands />
     <urls />
   </component>
-  <component name="ProjectColorInfo"><![CDATA[{
-  "associatedIndex": 8,
-  "fromUser": false
-}]]></component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 8,
+  &quot;fromUser&quot;: false
+}</component>
   <component name="ProjectId" id="3GgZy02ABIqbLItyAtbz15h5aFa" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
@@ -49,8 +83,9 @@
     "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
     "git-widget-placeholder": "main",
     "go.sdk.automatically.set": "true",
+    "ignore.virus.scanning.warn.message": "true",
     "junie.onboarding.icon.badge.shown": "true",
-    "last_opened_file_path": "C:/Users/Admin",
+    "last_opened_file_path": "C:/betaNEX",
     "node.js.detected.package.eslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
     "nodejs_package_manager_path": "pnpm",
@@ -58,6 +93,11 @@
     "to.speed.mode.migration.done": "true"
   }
 }]]></component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="C:\betaNEX" />
+    </key>
+  </component>
   <component name="RunManager">
     <configuration name="go build github.com/smworklair/betakis/cmd/nexd" type="GoApplicationRunConfiguration" factoryName="Go Application" nameIsGenerated="true">
       <module name="betaNEX" />
@@ -89,5 +129,16 @@
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
   </component>
 </project>
