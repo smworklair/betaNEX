@@ -21,7 +21,7 @@
     "dotenv": "^17.2.3",
     "framer-motion": "^12.38.0",
     "lucide-react": "^1.24.0",
-    "react": "^19.0.1",
+    "react": "^19.2.8",
     "react-dom": "^19.0.1",
     "wouter": "^3.10.0"
   },
