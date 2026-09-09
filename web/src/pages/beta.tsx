@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Search, Send, Paperclip, FileText, Download, Upload, Bell, Heart, MessageCircle,
-  Share2, Megaphone, Sparkles, ChevronLeft,
+  Share2, Megaphone, Sparkles, ChevronLeft, CheckSquare, AlertTriangle,
 } from 'lucide-react';
 import { PageHead, Chip, Avatar, Beta, NexAsk, useApp, useIsMobile } from '../ui';
 import { AiBox } from './aibox';
 import { llmReady, llmAsk } from '../features/ai/llm';
+import { notificationsApi } from '../api';
 
 function BetaNote({ text }: { text: string }) {
   return (
@@ -118,39 +119,63 @@ export function Messenger() {
 }
 
 /* ===================== Notifications ===================== */
-const NOTES = [
-  { id: 1, icon: Megaphone, tone: 'chip-danger', title: 'Подозрительные входы', desc: '12 неудачных попыток с одного IP за ночь', time: '2 мин', unread: true },
-  { id: 2, icon: Bell, tone: 'chip-warn', title: 'Срок оплаты', desc: 'У 8 студентов оплата истекает 30.06', time: '1 ч', unread: true },
-  { id: 3, icon: Sparkles, tone: 'chip-ai', title: 'NEX: 4 студента в зоне риска', desc: 'Сформирован список и план действий', time: '3 ч', unread: false },
-  { id: 4, icon: FileText, tone: 'chip-info', title: 'Новое заявление в приём', desc: 'ИС-21 · средний балл 248', time: 'Вчера', unread: false },
-];
 export function NotificationsPage() {
   const [tab, setTab] = useState<'all' | 'unread'>('all');
-  const list = tab === 'unread' ? NOTES.filter((n) => n.unread) : NOTES;
+  const [rows, setRows] = useState<notificationsApi.UiNotification[]>([]);
+
+  // Лента с бэкенда (/api/v1/notifications) с автофолбэком на моки.
+  useEffect(() => {
+    let live = true;
+    notificationsApi.listNotifications({ limit: 50 }).then((r) => { if (live) setRows(r); });
+    return () => { live = false; };
+  }, []);
+
+  const list = tab === 'unread' ? rows.filter((n) => n.unread) : rows;
+  const unreadN = rows.filter((n) => n.unread).length;
+
+  // Клик по строке = «прочитано» локально сразу, на сервере — best-effort.
+  const openRow = (n: notificationsApi.UiNotification) => {
+    if (!n.unread) return;
+    setRows((p) => p.map((x) => (x.id === n.id ? { ...x, unread: false } : x)));
+    notificationsApi.markRead(n.id).catch(() => {});
+  };
+
+  const readAll = () => {
+    setRows((p) => p.map((x) => ({ ...x, unread: false })));
+    notificationsApi.markAllRead().catch(() => {});
+  };
+
+  const icoOf = (kind: string): { Icon: typeof Bell; tone: string } =>
+    kind.startsWith('task') ? { Icon: CheckSquare, tone: 'chip-info' }
+    : kind === 'alert' ? { Icon: AlertTriangle, tone: 'chip-warn' }
+    : { Icon: Bell, tone: 'chip-neutral' };
+
   return (
     <div className="fade content-narrow">
-      <PageHead title="Уведомления" sub="Всё важное в одном потоке" actions={<Beta />} />
-      <BetaNote text="Единый центр уведомлений с приоритетами от NEX." />
+      <PageHead title="Уведомления" sub={`Всё важное в одном потоке · непрочитанных: ${unreadN}`}
+        actions={unreadN > 0
+          ? <button className="btn btn-outline btn-sm" onClick={readAll}>Прочитать все</button>
+          : <Beta />} />
+      <BetaNote text="Единый центр уведомлений: сюда приходит то, что создают люди, задачи и агенты (outbox на бэкенде)." />
       <div className="seg" style={{ marginBottom: 16 }}>
         <button className={tab === 'all' ? 'on' : ''} onClick={() => setTab('all')}>Все</button>
         <button className={tab === 'unread' ? 'on' : ''} onClick={() => setTab('unread')}>Непрочитанные</button>
       </div>
       <div className="card"><div className="row-list">
-        {list.map((n) => { const Icon = n.icon; return (
+        {list.map((n) => { const { Icon, tone } = icoOf(n.kind); return (
           // Полоса-акцент вместо заливки всей строки — тот же приём,
           // что у карточки-подсказки NEX (border-left), а не сплошной
           // подсвеченный блок: непрочитанное заметно, но не «кричит».
-          <div className="feed-row" key={n.id} style={n.unread ? { borderLeft: '2px solid var(--ai)', paddingLeft: 14 } : undefined}>
+          <div className="feed-row" key={n.id} style={n.unread ? { borderLeft: '2px solid var(--ai)', paddingLeft: 14, cursor: 'pointer' } : { cursor: 'pointer' }}
+            onClick={() => openRow(n)}>
             <div className="feed-ico"><Icon size={14} /></div>
-            <div className="feed-main"><div className="t">{n.title}</div><div className="m">{n.desc} · {n.time}</div></div>
-            {/* Цвет тона (danger/warn/ai/info) значим только для «новое» —
-                он должен привлекать внимание к непрочитанному. Для уже
-                прочитанного тот же цвет читается как ложная тревога
-                («опять что-то важное/AI»), поэтому бейдж гасится до
-                нейтрального серого. */}
-            <Chip tone={n.unread ? n.tone : 'chip-neutral'}>{n.unread ? 'новое' : 'прочитано'}</Chip>
+            <div className="feed-main"><div className="t">{n.title}</div><div className="m">{n.body} · {n.time}</div></div>
+            {/* Цвет тона значим только для «новое» — он привлекает внимание
+                к непрочитанному. Прочитанное гасится до нейтрального серого. */}
+            <Chip tone={n.unread ? tone : 'chip-neutral'}>{n.unread ? 'новое' : 'прочитано'}</Chip>
           </div>
         ); })}
+        {list.length === 0 && <div className="card-body muted" style={{ fontSize: 13 }}>Пусто — всё прочитано.</div>}
       </div></div>
     </div>
   );

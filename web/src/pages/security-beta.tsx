@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import {
   Users, KeyRound, Activity, Monitor, ShieldCheck, Fingerprint, Sparkles, Plus, Trash2,
   Copy, Smartphone, Globe, Lock, DatabaseBackup, ScrollText, Wifi, BadgeCheck,
@@ -8,6 +8,7 @@ import { useCollection, uid, humanTime, type Entity } from '../beta/store';
 import { EntityManager, type Col, type FieldDef } from '../beta/manager';
 import { Modal, Field, Text, Select, AddButton, Confirm } from '../beta/kit';
 import { sessions as seedSessions, auditEvents, services, roleLabel } from '../data';
+import { auditApi } from '../api';
 
 function Screen({ title, sub, icon, children, ask }: { title: string; sub: string; icon: ReactNode; children: ReactNode; ask?: string }) {
   return (
@@ -80,9 +81,21 @@ interface AuditRow extends Entity, Record<string, unknown> { actor: string; acti
 const SEED_AUDIT: AuditRow[] = auditEvents.map((e) => ({ id: e.id, actor: e.actor, action: e.action, target: e.target, severity: e.severity, time: e.time }));
 export function SecAudit() {
   const col = useCollection<AuditRow>('sec-audit', SEED_AUDIT);
-  return <Screen title="Аудит и журнал событий" sub="Кто, что и когда изменил" icon={<Activity size={18} />} ask="Что необычного в журнале за последнее время">
+  // Живой журнал хребта Commands → Events → Audit: если бэкенд отвечает,
+  // его записи заменяют локальные (fallback ниже сам откатывается к сиду).
+  // Каждая мутация в системе (задачи, уведомления, файлы) появляется здесь.
+  useEffect(() => {
+    let live = true;
+    auditApi.listAudit({ limit: 100 }).then((rows) => {
+      if (!live || rows.length === 0) return;
+      col.replace(rows.map((r) => ({ ...r }) as AuditRow));
+    });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return <Screen title="Аудит и журнал событий" sub="Кто, что и когда изменил · каждая мутация проходит через шину команд" icon={<Activity size={18} />} ask="Что необычного в журнале за последнее время">
     <EntityManager title="Журнал аудита" col={col} empty="Событий пока нет"
-      columns={cols<AuditRow>({ key: 'actor', label: 'Инициатор' }, { key: 'action', label: 'Действие' }, { key: 'target', label: 'Объект' }, { key: 'severity', label: 'Уровень', kind: 'chip' }, { key: 'time', label: 'Время' })}
+      columns={cols<AuditRow>({ key: 'actor', label: 'Инициатор' }, { key: 'action', label: 'Команда' }, { key: 'target', label: 'Детали' }, { key: 'severity', label: 'Уровень', kind: 'chip' }, { key: 'time', label: 'Время' })}
       fields={flds<AuditRow>({ key: 'actor', label: 'Инициатор' }, { key: 'action', label: 'Действие' }, { key: 'target', label: 'Объект' }, { key: 'severity', label: 'Уровень', options: ['low', 'medium', 'high', 'critical'] }, { key: 'time', label: 'Время' })} />
   </Screen>;
 }

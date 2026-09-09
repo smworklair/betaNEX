@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import {
   CheckCircle2, Circle, Sparkles, Plus, Trash2, Edit3, Send, Users, Repeat, LayoutTemplate,
   Wand2, MessageSquare, History as HistoryIcon, Paperclip, ListChecks, Flag,
@@ -7,6 +7,7 @@ import {
 import { PageHead, Chip, NexAsk, Beta, useApp } from '../ui';
 import { tasks as seedTasks } from '../data';
 import { staff, groups } from '../data';
+import { tasksApi } from '../api';
 import { useCollection, uid, nowIso, humanTime, type Entity } from '../beta/store';
 import { Modal, Field, Text, Area, Select, TagInput, MultiSelect, Toolbar, AddButton, BulkBar, Confirm, Empty, RowCheck } from '../beta/kit';
 
@@ -103,6 +104,40 @@ export function Tasks() {
   const col = useCollection<BTask>('tasks', TASK_SEED);
   const [tab, setTab] = useState<'list' | 'templates' | 'rules'>('list');
 
+  /* Живая синхронизация с бэкендом: серверные задачи (/api/v1/tasks)
+     подтягиваются в коллекцию и сохраняются в ней, локальные записи при
+     этом не теряются. Без бэкенда listTasks сам откатывается на моки. */
+  useEffect(() => {
+    let live = true;
+    tasksApi.listTasks().then((server) => {
+      if (!live) return;
+      const have = new Set(col.items.map((i) => i.id));
+      const incoming: BTask[] = server
+        .filter((s) => !have.has(s.id))
+        .map((s) => ({
+          id: s.id,
+          title: s.title,
+          note: s.note || '',
+          status: (s.status === 'done' ? 'done' : 'open') as Status,
+          priority: 'normal' as Priority,
+          category: 'Общее',
+          tags: [],
+          due: s.due === '—' ? '' : s.due,
+          assignees: s.who && s.who !== '—' ? [s.who] : [],
+          watchers: [],
+          recurrence: 'none' as Recurrence,
+          subtasks: [],
+          checklist: [],
+          comments: [],
+          history: [],
+          attachments: [],
+        }));
+      if (incoming.length > 0) col.replace([...incoming, ...col.items]);
+    });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div className="fade content-narrow">
       <PageHead title="Задачи" sub="Полноценный планировщик: подзадачи, чек-листы, исполнители, повторы, шаблоны и правила"
@@ -152,7 +187,12 @@ function TaskList({ col, toast }: { col: ReturnType<typeof useCollection<BTask>>
       status: done ? 'open' : 'done',
       history: [...t.history, { id: uid('h'), text: done ? 'Возвращена в работу' : 'Отмечена выполненной', at: nowIso() }],
     });
-    if (!done) toast('Задача выполнена');
+    if (!done) {
+      toast('Задача выполнена');
+      // Best-effort на бэкенде: для серверных задач (uuid) команда пройдёт
+      // через шину и попадёт в аудит; для локальных 404 тихо игнорируется.
+      tasksApi.completeTask(t.id).catch(() => {});
+    }
   };
 
   const detailTask = detail ? col.items.find((t) => t.id === detail) || null : null;
@@ -240,7 +280,12 @@ function TaskList({ col, toast }: { col: ReturnType<typeof useCollection<BTask>>
       {editing && <TaskEditor col={col} task={editing === 'new' ? null : editing} onClose={() => setEditing(null)} toast={toast} />}
       {detailTask && <TaskDetail col={col} task={detailTask} onClose={() => setDetail(null)} onEdit={() => { setEditing(detailTask); setDetail(null); }} onSend={() => setSend(detailTask)} />}
       {confirmDel && <Confirm title="Удалить задачи?" body={`Будет удалено: ${confirmDel.length}. Действие необратимо.`}
-        onConfirm={() => { col.removeMany(confirmDel); clearSel(); toast('Удалено'); }} onClose={() => setConfirmDel(null)} />}
+        onConfirm={() => {
+          col.removeMany(confirmDel);
+          confirmDel.forEach((id) => tasksApi.deleteTask(id).catch(() => {}));
+          clearSel();
+          toast('Удалено');
+        }} onClose={() => setConfirmDel(null)} />}
       {send && <SendDialog task={send} onClose={() => setSend(null)} toast={toast} />}
     </>
   );
@@ -260,6 +305,14 @@ function TaskEditor({ col, task, onClose, toast }: {
       toast('Задача сохранена');
     } else {
       col.add({ ...f, history: [{ id: uid('h'), text: 'Задача создана', at: nowIso() }] });
+      // Параллельно — на сервер через шину команд (title/note/due_on/assignee);
+      // id на бэкенде свой, локальная запись остаётся зеркалом для UI.
+      tasksApi.createTask({
+        title: f.title.trim(),
+        note: f.note || undefined,
+        due_on: f.due || undefined,
+        assignee: f.assignees[0] || undefined,
+      }).catch(() => {});
       toast('Задача создана');
     }
     onClose();

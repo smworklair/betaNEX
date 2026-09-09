@@ -14,3 +14,5 @@ export * as auth from './auth';
 export * as tasksApi from './tasks';
 export * as campusApi from './campus';
 export * as agentsApi from './agents';
+export * as notificationsApi from './notifications';
+export * as auditApi from './audit';

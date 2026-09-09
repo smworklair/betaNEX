@@ -29,11 +29,24 @@ export default defineConfig(({mode}) => {
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
-      // Локальная разработка «фронт+бэк» на одном origin: /api/* → nexd.
-      // Так фронт с пустым VITE_API_URL ходит на реальный бэкенд без CORS.
-      // Адрес nexd переопределяется через NEX_DEV_PROXY (по умолчанию :8080).
+      // Локальная разработка «фронт+бэк» на одном origin: /api/*, /healthz,
+      // /readyz и /metrics → nexd. Так фронт с пустым VITE_API_URL ходит на
+      // реальный бэкенд без CORS. Адрес nexd переопределяется через
+      // NEX_DEV_PROXY (по умолчанию :8080).
       proxy: {
         '/api': {
+          target: env.NEX_DEV_PROXY || 'http://localhost:8080',
+          changeOrigin: true,
+        },
+        '/healthz': {
+          target: env.NEX_DEV_PROXY || 'http://localhost:8080',
+          changeOrigin: true,
+        },
+        '/readyz': {
+          target: env.NEX_DEV_PROXY || 'http://localhost:8080',
+          changeOrigin: true,
+        },
+        '/metrics': {
           target: env.NEX_DEV_PROXY || 'http://localhost:8080',
           changeOrigin: true,
         },

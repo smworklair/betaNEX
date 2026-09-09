@@ -332,6 +332,33 @@ export default function Settings() {
         </Row>
       </div>
 
+      {/* ---- AI-источники (BYOK + локальные модели): скелет под ADR-022.
+           Эндпоинтов /api/v1/ai/sources на бэкенде пока нет — действия
+           отвечают тостом «в разработке», как остальные не подключённые
+           функции прототипа. ---- */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card-head">
+          <div className="card-title"><KeyRound size={15} /> AI-источники</div><Beta />
+        </div>
+        <div className="card-body muted" style={{ fontSize: 13 }}>
+          Три источника интеллекта с единым агентным режимом: ключи платформы (дефолт, расход ограничен бюджетом организации),
+          собственные ключи (BYOK) и локальная/внешняя модель. Приоритет: ключ организации → ключ платформы.
+          Учёт токенов ведётся при любом источнике, шаги агентов фиксируются в аудите.
+        </div>
+        <Row title="Свои ключи провайдеров (BYOK)" desc="Ключи шифруются и хранятся на сервере; запросы через них не расходуют бюджет платформы. Поддерживаются все провайдеры из списка выше.">
+          <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <Chip tone="chip-neutral">нет ключей</Chip>
+            <button className="btn btn-sm btn-outline" onClick={() => toast('Подключение ключей организации — в разработке (ADR-022)')}>Подключить</button>
+          </span>
+        </Row>
+        <Row title="Локальная или внешняя модель" desc="OpenAI-совместимый endpoint (Ollama, vLLM, корпоративный шлюз). Слабые ПК годятся: модель живёт на одном сервере, клиенты — тонкие.">
+          <button className="btn btn-sm btn-outline" onClick={() => toast('Подключение endpoint — в разработке (ADR-022)')}>Указать адрес</button>
+        </Row>
+        <Row title="Модель для агентного режима" desc="Агентам нужен tool calls: модель без него доступна только в чате. При сбое шаг агента автоматически падает на платформенную модель и фиксируется в аудите.">
+          <Chip tone="chip-ai">платформенная по умолчанию</Chip>
+        </Row>
+      </div>
+
       {/* ---- Центр агентов живёт здесь, а не в левом меню ---- */}
       <div className="card" style={{ marginBottom: 16 }}>
         <div className="card-head"><div className="card-title"><Bot size={15} /> Агенты NEX</div><Beta /></div>

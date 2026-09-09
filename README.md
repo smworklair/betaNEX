@@ -1,151 +1,202 @@
 # NEX
 
-NEX is a web-first platform for building specialized information systems on a
-single reusable backend. The first system built on it targets colleges and
-universities, but the core is deliberately domain-free so the same foundation
-can serve other organizations.
+NEX — это веб-платформа для построения специализированных информационных
+систем на одном переиспользуемом бэкенде. Первая система на её основе
+ориентирована на колледжи и университеты («КИС Колледж»), однако ядро
+намеренно не привязано к предметной области, чтобы та же основа обслуживала
+и другие организации.
 
-This repository contains the NEX backend (Go). The existing front-end under
-`src/` and `index.html` ("КИС Колледж") is an earlier **visual prototype** kept
-for reference; it is not the architecture and the backend does not depend on it.
+Репозиторий содержит три части:
 
-## Architecture in one paragraph
+- **`cmd/nexd`** — бэкенд на Go (модульный монолит `nexd`);
+- **`web/`** — фронтенд на React 19 + Vite (прототип «КИС Колледж»);
+- **`ai-gateway/`** — AI-шлюз на Python/FastAPI (см.
+  [ai-gateway/README.md](ai-gateway/README.md)).
 
-NEX is a **modular monolith**: a thin, domain-free **kernel** (identity,
-authorization, tenancy, and a Commands → Events → Audit spine) hosts independent
-**modules** that contain the actual domain logic. Concrete systems are
-**applications** that compose modules. Dependencies only ever point inward:
-applications depend on modules, modules depend on the kernel, the kernel depends
-on nothing above it. AI is treated as a future *actor* that uses the same
-authorized, audited paths as any other actor — it is not part of the kernel.
+## Архитектура в одном абзаце
 
-## Built with Codex & GPT-5.6
+NEX — это **модульный монолит**: тонкое, свободное от предметной области
+**ядро** (идентичность, аутентификация, авторизация, мультиарендность и
+хребет Commands → Events → Audit) размещает независимые **модули**, в которых
+находится собственно доменная логика. Конкретные системы — это
+**приложения**, собирающие модули воедино. Зависимости направлены только
+внутрь: приложения зависят от модулей, модули — от ядра, а ядро не зависит
+ни от чего из перечисленного. AI — это такой же *актор*, как и люди: он
+проходит через те же авторизованные и аудируемые пути, а не является частью
+ядра или внешней надстройкой.
 
-This hackathon prototype was developed with **OpenAI Codex powered by
-GPT-5.6**. Codex was used as an engineering copilot to iterate on the modular
-architecture, implement and refine the Go and Python services, write and
-review tests, and improve the project documentation. The resulting code and
-technical decisions were reviewed by the project author; Codex is a
-development tool, not a runtime dependency of NEX.
+## Что внутри
 
-NEX itself exposes AI through the separate `ai-gateway` service. That gateway
-keeps provider credentials server-side and routes AI requests through the same
-authenticated, tenant-scoped, and audited paths as human actions. See
-[the hackathon project description](DEVPOST-022.md) and
-[AI gateway documentation](ai-gateway/README.md) for details.
+**Ядро (`internal/kernel/`)** — идентичность, сессии, RBAC-авторизация,
+изоляция тенантов на уровне PostgreSQL RLS и командная шина
+Commands → Events → Audit: каждая мутация проходит валидацию, авторизацию
+и транзакцию с append-only журналом аудита.
 
-## Requirements
+**Доменные модули (`internal/module/`)**:
 
-- Go 1.25 or newer (older toolchains auto-upgrade via the `go` directive).
-- PostgreSQL 16+ for persistent mode (`docker compose up -d` provides one).
+- `finance` — бухгалтерия с двойной записью (счета, проводки, балансы) и
+  экспортом JSON/CSV/XLSX;
+- `campus` — группы, студенты, учебный журнал с оценками;
+- `tasks` — задачи с назначением исполнителей;
+- `notifications` — лента уведомлений, доставка через transactional outbox;
+- `files` — файловое хранилище (метаданные в БД, содержимое на диске);
+- `terminal` — AI-консоль администратора.
 
-## Running
+**Инфраструктура (`internal/platform/`)** — HTTP-транспорт (роутер,
+middleware, problem+json, поиск, AI-прокси), пул pgx с RLS-транзакциями и
+запросами sqlc, кэш (in-memory или Redis/Valkey), blob-хранилище, cron,
+метрики Prometheus, outbox.
+
+**AI-шлюз (`ai-gateway/`)** — отдельный FastAPI-сервис: хранит ключи
+LLM-провайдеров на сервере, проксирует запросы, поддерживает rate-limit,
+кэш ответов и бюджеты по тенантам. Браузер обращается к шлюзу не напрямую,
+а через `nexd` (`/api/v1/ai/*`).
+
+**Контракт и документация** — OpenAPI 3.1 в `api/openapi.yaml` (источник
+истины) + Bruno-коллекция запросов; `docs/` содержит журнал решений (21 ADR),
+роадмап, гайды по написанию модулей и наблюдаемости.
+
+## Требования
+
+- Go 1.25 или новее (более старые тулчейны автоматически обновляются через
+  директиву `go`).
+- PostgreSQL 16+ для режима с сохранением состояния
+  (`docker compose up -d` поднимает его).
+- Для фронтенда: Node 20+, pnpm.
+- Для AI-шлюза: Python 3.11+.
+
+## Запуск
 
 ```sh
-make dev      # start Postgres (docker compose)
-make run      # run nexd from source
-make build    # compile to ./bin/nexd
-make test     # run all tests with the race detector
-make test-db  # same, plus Postgres integration tests
-make help     # list all targets
+make dev      # запустить Postgres (docker compose)
+make run      # запустить nexd из исходников
+make build    # скомпилировать в ./bin/nexd
+make test     # прогнать все тесты с race detector
+make test-db  # то же + интеграционные тесты с Postgres
+make help     # список всех целей
 ```
 
-Prefer everything containerized instead (no local Go/Node/Python
-toolchains needed)? `make stack` starts the full dev stack from
-`compose.yaml`: Postgres, `nexd`, the web frontend (Vite dev server),
-and `ai-gateway` (see `ai-gateway/README.md`). `make stack-down` stops
-it. Don't run `dev`+`run` and `stack` at the same time — both try to
-bind port 8080.
-
-Without `NEX_DATABASE_URL` the service runs in **in-memory mode** (no
-persistence) — handy for a quick look, not for real use. With a database
-URL set, `nexd` applies embedded SQL migrations automatically on startup.
-
-Administrative subcommands:
+Фронтенд и AI-шлюз запускаются отдельно:
 
 ```sh
-nexd migrate                      # apply migrations and exit
-nexd tenant create <slug> <name>  # register an organization
+pnpm --dir web dev        # Vite dev server на :3000
+uvicorn app.main:app ...  # см. ai-gateway/README.md
+```
+
+Предпочитаете полностью контейнеризованный вариант (без локальных тулчейнов
+Go/Node/Python)? `make stack` поднимает полный dev-стек из `compose.yaml`:
+Postgres, `nexd`, веб-фронтенд (Vite dev server) и `ai-gateway`.
+`make stack-down` его останавливает. Не запускайте `dev`+`run` и `stack`
+одновременно — оба пытаются занять порт 8080.
+
+Без `NEX_DATABASE_URL` сервис работает в **in-memory режиме** (без
+сохранения состояния) — удобно для быстрого знакомства, но не для реального
+использования. Если переменная задана, `nexd` автоматически применяет
+встроенные SQL-миграции при старте.
+
+Административные подкоманды:
+
+```sh
+nexd migrate                      # применить миграции и выйти
+nexd tenant create <slug> <name>  # зарегистрировать организацию
 nexd user create --tenant <slug> --email <email> [--name <n>] [--role admin]
-                                  # password: NEX_USER_PASSWORD or generated
+                                  # пароль: NEX_USER_PASSWORD или сгенерированный
 ```
 
-## Authentication
+Полезные цели для демо и проверки:
 
-Server-side sessions (ADR-004): `POST /api/v1/auth/login` with
-`{"tenant": "<slug>", "email": "...", "password": "..."}` sets an
-httpOnly `nex_session` cookie; `GET /api/v1/auth/me` returns the current
-user; `POST /api/v1/auth/logout` revokes the session instantly. Passwords
-are stored as argon2id hashes, session tokens as sha256 hashes. Login
-attempts are rate-limited and audited. In development, `X-Dev-*` headers
-remain available as a shortcut alongside real sessions.
+```sh
+make seed       # наполнить демо-данными через API (tools/seed_demo.py)
+make smoke-api  # функциональный смоук API (tools/api_smoke.py)
+make smoke-load # нагрузочный смоук k6 (load/)
+```
 
-Once running, the liveness endpoint is available:
+## Аутентификация
+
+Серверные сессии (ADR-004): `POST /api/v1/auth/login` с телом
+`{"tenant": "<slug>", "email": "...", "password": "..."}` устанавливает
+httpOnly-cookie `nex_session`; `GET /api/v1/auth/me` возвращает текущего
+пользователя; `POST /api/v1/auth/logout` мгновенно отзывает сессию. Пароли
+хранятся в виде хэшей argon2id, токены сессий — в виде хэшей sha256. Попытки
+входа ограничены по частоте (rate-limit) и попадают в аудит. В режиме
+разработки заголовки `X-Dev-*` остаются доступны как быстрый путь наряду с
+реальными сессиями.
+
+После запуска доступен liveness-эндпоинт:
 
 ```sh
 curl http://localhost:8080/healthz
 # {"status":"ok"}
 ```
 
-## Observability
+## Наблюдаемость
 
-Structured JSON logs with a cross-cutting `request_id` (propagated to
-`ai-gateway`), `/metrics` in Prometheus format on both `nexd` and
-`ai-gateway`, and an optional Redis/Valkey cache backend — see
-`docs/observability.md` for details and how to view them (including an
-optional local Prometheus via `docker compose --profile observability up`).
+Структурированные JSON-логи со сквозным `request_id` (пробрасывается в
+`ai-gateway`), `/metrics` в формате Prometheus на обоих сервисах — `nexd` и
+`ai-gateway` — и опциональный кэш-бэкенд Redis/Valkey. Подробности и способы
+просмотра — в `docs/observability.md` (включая опциональный локальный
+Prometheus через `docker compose --profile observability up`).
 
-## Configuration
+## Конфигурация
 
-All configuration is read from the environment at startup (12-factor). Every
-variable is optional and falls back to a sensible default.
+Вся конфигурация читается из переменных окружения при старте (12-factor).
+Каждая переменная опциональна и имеет разумное значение по умолчанию.
 
-| Variable                    | Default        | Description                                        |
-| --------------------------- | -------------- | -------------------------------------------------- |
-| `NEX_ENV`                   | `development`  | `development` or `production`.                     |
-| `NEX_HTTP_ADDR`             | `:8080`        | TCP address the HTTP server listens on.            |
-| `NEX_HTTP_READ_TIMEOUT`     | `10s`          | Max time to read a request.                        |
-| `NEX_HTTP_WRITE_TIMEOUT`    | `15s`          | Max time to write a response.                      |
-| `NEX_HTTP_IDLE_TIMEOUT`     | `60s`          | Max idle time for keep-alive connections.          |
-| `NEX_HTTP_SHUTDOWN_TIMEOUT` | `15s`          | Grace period for in-flight requests on shutdown.   |
-| `NEX_LOG_LEVEL`             | `info`         | `debug`, `info`, `warn` or `error`.                |
-| `NEX_LOG_FORMAT`            | env-dependent  | `json` or `text` (defaults: text in dev, json in prod). |
-| `NEX_DATABASE_URL`          | *(empty)*      | PostgreSQL DSN. Empty = in-memory mode (no persistence). |
-| `NEX_SESSION_TTL`           | `168h`         | Session (and cookie) lifetime. Sessions are sliding: any authenticated request in the second half of the TTL extends it by a full TTL. |
-| `NEX_CORS_ORIGINS`          | *(empty)*      | Comma-separated browser origins allowed to call the API with credentials (e.g. the Vercel frontend). Empty = same-origin only. The same list is the allowlist for the CSRF origin check on mutations. |
-| `NEX_COOKIE_SAMESITE`       | auto           | `lax`, `strict` or `none` for the session cookie. Auto: `none` when `NEX_CORS_ORIGINS` is set (cross-origin frontend), `lax` otherwise. `none` forces the `Secure` flag. |
-| `NEX_CACHE_BACKEND`         | `memory`       | `memory` or `redis` (ADR-008). `redis` requires `NEX_REDIS_URL`; works with Redis or Valkey (RESP protocol). See `docs/observability.md`. |
-| `NEX_REDIS_URL`             | *(empty)*      | `redis://host:6379/0` — required when `NEX_CACHE_BACKEND=redis`. |
+| Переменная                 | По умолчанию   | Описание                                           |
+| -------------------------- | -------------- | -------------------------------------------------- |
+| `NEX_ENV`                  | `development`  | `development` или `production`.                    |
+| `NEX_HTTP_ADDR`            | `:8080`        | TCP-адрес, который слушает HTTP-сервер.            |
+| `NEX_HTTP_READ_TIMEOUT`    | `10s`          | Максимальное время чтения запроса.                 |
+| `NEX_HTTP_WRITE_TIMEOUT`   | `15s`          | Максимальное время записи ответа.                  |
+| `NEX_HTTP_IDLE_TIMEOUT`    | `60s`          | Максимальное время простоя keep-alive соединений.  |
+| `NEX_HTTP_SHUTDOWN_TIMEOUT`| `15s`          | Льготный период для незавершённых запросов при остановке. |
+| `NEX_LOG_LEVEL`            | `info`         | `debug`, `info`, `warn` или `error`.               |
+| `NEX_LOG_FORMAT`           | зависит от env | `json` или `text` (по умолчанию: text в dev, json в prod). |
+| `NEX_DATABASE_URL`         | *(пусто)*      | DSN PostgreSQL. Пусто = in-memory режим (без сохранения состояния). |
+| `NEX_SESSION_TTL`          | `168h`         | Время жизни сессии (и cookie). Сессии скользящие: любой аутентифицированный запрос во второй половине TTL продлевает её на полный TTL. |
+| `NEX_CORS_ORIGINS`         | *(пусто)*      | Разделённые запятыми браузерные origins, которым разрешено вызывать API с учётными данными (например, фронтенд на Vercel). Пусто = только same-origin. Тот же список — allowlist для проверки origin при CSRF-защите мутаций. |
+| `NEX_COOKIE_SAMESITE`      | auto           | `lax`, `strict` или `none` для cookie сессии. Auto: `none`, если задан `NEX_CORS_ORIGINS` (кросс-доменный фронтенд), иначе `lax`. `none` принудительно включает флаг `Secure`. |
+| `NEX_CACHE_BACKEND`        | `memory`       | `memory` или `redis` (ADR-008). Для `redis` требуется `NEX_REDIS_URL`; работает с Redis или Valkey (протокол RESP). См. `docs/observability.md`. |
+| `NEX_REDIS_URL`            | *(пусто)*      | `redis://host:6379/0` — обязательно при `NEX_CACHE_BACKEND=redis`. |
 
-### Cross-origin frontend (Vercel + separate API host)
+### Кросс-доменный фронтенд (Vercel + отдельный API-хост)
 
-Browsers do not attach `SameSite=Lax` cookies to cross-site `fetch` calls, so
-a frontend served from another origin loses its session on every page load
-unless the backend is configured for it. Set on the backend:
+Браузеры не прикрепляют cookie с `SameSite=Lax` к кросс-доменным `fetch`-запросам,
+поэтому фронтенд с другого origin теряет сессию при каждой загрузке страницы,
+если бэкенд не настроен соответствующим образом. Задайте на бэкенде:
 
 ```sh
-NEX_CORS_ORIGINS=https://your-app.vercel.app   # exact frontend origin(s)
-# NEX_COOKIE_SAMESITE=none  — derived automatically from NEX_CORS_ORIGINS
+NEX_CORS_ORIGINS=https://your-app.vercel.app   # точный origin(ы) фронтенда
+# NEX_COOKIE_SAMESITE=none  — выводится автоматически из NEX_CORS_ORIGINS
 ```
 
-and point the frontend at the API with `VITE_API_URL=https://api.example.com`.
-With the same-origin deploy (Caddy in front of both, `VITE_API_URL=/`) no CORS
-configuration is needed and the cookie stays `Lax`.
+и укажите фронтенду адрес API через `VITE_API_URL=https://api.example.com`.
+При same-origin-развёртывании (Caddy перед обоими сервисами,
+`VITE_API_URL=/`) CORS-конфигурация не нужна, и cookie остаётся `Lax`.
 
-## Project layout
+## Структура проекта
 
 ```
-cmd/nexd/            Service entry point (composition root, subcommands).
-migrations/          SQL migrations (goose), embedded into the binary.
-internal/config/     Environment configuration: load + validate.
-internal/kernel/     Domain-free core: identity, tenancy, authz,
-                     command/event/audit spine.
-internal/module/     Domain modules (finance: double-entry ledger).
-internal/platform/   Cross-cutting infrastructure adapters.
-  httpapi/           Inbound HTTP transport: router, middleware, problem+json.
-  logging/           slog construction.
-  postgres/          pgx pool, tenant-scoped transactions (RLS), goose
-                     migrations, sqlc-generated queries (db/).
-api/                 OpenAPI contract and Bruno request collection.
-web/                 Frontend prototype (design reference only).
+cmd/nexd/            Точка входа сервиса (composition root, подкоманды).
+migrations/          SQL-миграции (goose), встроенные в бинарник.
+internal/config/     Конфигурация окружения: загрузка + валидация.
+internal/kernel/     Ядро без предметной области: identity, auth, authz,
+                     tenancy, хребет command/event/audit.
+internal/module/     Доменные модули: finance, campus, tasks, notifications,
+                     files, terminal.
+internal/platform/   Сквозные инфраструктурные адаптеры.
+  httpapi/           Входящий HTTP-транспорт: роутер, middleware, problem+json,
+                     поиск, AI-прокси.
+  postgres/          Пул pgx, транзакции в контексте тенанта (RLS), миграции
+                     goose, запросы, сгенерированные sqlc (db/).
+  cache/             In-memory или Redis/Valkey (ADR-008).
+  outbox/            Transactional outbox для доставки уведомлений.
+api/                 OpenAPI 3.1 (источник истины) и Bruno-коллекция запросов.
+web/                 Фронтенд: React 19, Vite, Tailwind CSS 4, Vitest (pnpm).
+ai-gateway/          AI-шлюз: Python/FastAPI, прокси к LLM-провайдерам.
+docs/                Журнал решений (ADR), роадмап, гайды, наблюдаемость.
+tools/               Смоук-тесты и сид демо-данных (Python).
+load/                Нагрузочные сценарии k6.
+deploy/              Прод-стек (compose.prod.yaml) и конфиг Caddy.
+beta/                Песочница экспериментов; не является частью runtime.
 ```

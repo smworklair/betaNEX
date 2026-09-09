@@ -11,7 +11,7 @@ import {
   Building2, BookOpenCheck, ReceiptText, FileCheck2, FileSignature, CreditCard,
   BookMarked, NotebookPen, FileSpreadsheet, ScrollText, Building, UserCog,
   LayoutDashboard, KeyRound, Activity, Monitor, BadgeCheck, DatabaseBackup,
-  PanelLeftClose, PanelLeftOpen, ArrowLeftRight, LineChart,
+  PanelLeftClose, PanelLeftOpen, ArrowLeftRight, LineChart, Server,
   type LucideIcon,
 } from 'lucide-react';
 import { useApp, Beta, useIsMobile, type User } from './ui';
@@ -105,6 +105,7 @@ const PAGES: Record<string, ComponentType> = {
   cloud: lazyOf(() => import('./pages/beta'), 'Cloud'),
   campus: Campus,
   agents: Agents,
+  backend: lazyOf(() => import('./pages/backend'), 'Backend'),
 };
 
 /* ---- Двухуровневая навигация: разделы сверху → подстраницы слева ---- */
@@ -186,6 +187,7 @@ const SECTIONS: Section[] = [
     { id: 'cloud', label: 'Облако', icon: CloudIcon, beta: true },
     { id: 'campus', label: 'Кампус', icon: Compass, beta: true },
     { id: 'agents', label: 'Агенты', icon: Bot, beta: true },
+    { id: 'backend', label: 'Бэкенд · API', icon: Server },
   ] },
 ];
 

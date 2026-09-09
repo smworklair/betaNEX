@@ -105,3 +105,14 @@ export async function withFallback<T>(
 export function apiStatus(): { configured: boolean; base: string } {
   return { configured: API_CONFIGURED, base: API_BASE || '(тот же origin)' };
 }
+
+/** Человекочитаемое время из ISO — «сегодня, 14:32» / «12 июл, 09:05». */
+export function humanIso(iso?: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(+d)) return iso;
+  const now = new Date();
+  const time = d.toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' });
+  if (d.toDateString() === now.toDateString()) return `сегодня, ${time}`;
+  return d.toLocaleDateString('ru', { day: 'numeric', month: 'short' }) + ', ' + time;
+}
